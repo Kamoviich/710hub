@@ -8,6 +8,17 @@ if game.GameId ~= 1268927906 then
     return
 end
 
+local ENV = (getgenv and getgenv()) or _G
+if ENV.__710HubSession then
+    ENV.__710HubSession.Alive = false
+end
+
+local SESSION = {
+    Alive = true,
+    Version = "2026.09-stable",
+}
+ENV.__710HubSession = SESSION
+
 local Players = game:GetService("Players")
 local RS = game:GetService("ReplicatedStorage")
 local VU = game:GetService("VirtualUser")
@@ -24,16 +35,27 @@ local function getMuscleEvent()
         or rEvents:FindFirstChild("muscleEvent")
 end
 
-local R = {
-    Rebirth = rEvents:FindFirstChild("rebirthRemote"),
-    Crystal = rEvents:FindFirstChild("openCrystalRemote"),
-    Chest = rEvents:FindFirstChild("checkChestRemote"),
-    EquipPet = rEvents:FindFirstChild("equipPetEvent"),
-    EvolvePet = rEvents:FindFirstChild("petEvolveEvent"),
-    Brawl = rEvents:FindFirstChild("brawlEvent"),
-    Machine = rEvents:FindFirstChild("machineInteractRemote"),
-    PetShop = rEvents:FindFirstChild("cPetShopRemote"),
+local REMOTE_NAMES = {
+    Rebirth = "rebirthRemote",
+    Crystal = "openCrystalRemote",
+    Chest = "checkChestRemote",
+    EquipPet = "equipPetEvent",
+    EvolvePet = "petEvolveEvent",
+    Brawl = "brawlEvent",
+    Machine = "machineInteractRemote",
+    PetShop = "cPetShopRemote",
 }
+
+local R = {}
+local function refreshRemotes()
+    for key, name in pairs(REMOTE_NAMES) do
+        local current = R[key]
+        if not current or not current.Parent then
+            R[key] = rEvents:FindFirstChild(name)
+        end
+    end
+end
+refreshRemotes()
 
 local S = {
     Train=false, Rebirth=false, Chests=false, Hatch=false, Brawl=false,
@@ -52,6 +74,8 @@ local HubRuntime = {
     LastError = "Nenhum",
     RemoteCalls = 0,
     StartedAt = os.clock(),
+    Respawns = 0,
+    RemoteRefreshes = 1,
 }
 
 local function setHubStatus(text)
@@ -61,6 +85,13 @@ end
 local function setHubError(text)
     HubRuntime.LastError = tostring(text or "Desconhecido")
 end
+
+task.spawn(function()
+    while SESSION.Alive and task.wait(3) do
+        refreshRemotes()
+        HubRuntime.RemoteRefreshes += 1
+    end
+end)
 
 local old = game:GetService("CoreGui"):FindFirstChild("710Hub_MuscleLegends")
 if old then old:Destroy() end
@@ -119,6 +150,8 @@ local function currentRebirths()
 end
 
 local lockedCFrame = nil
+local agilityOriginalWalkSpeed = nil
+local agilityLastTeleport = 0
 
 local function captureLockPosition()
     local character = LP.Character
@@ -130,13 +163,26 @@ local function captureLockPosition()
     return false
 end
 
-LP.CharacterAdded:Connect(function()
+LP.CharacterAdded:Connect(function(character)
+    HubRuntime.Respawns += 1
     lockedCFrame = nil
     S.LockPosition = false
+    agilityOriginalWalkSpeed = nil
+    agilityLastTeleport = 0
+    setHubStatus("Respawn detectado • retomando automações")
+
+    task.spawn(function()
+        local humanoid = character:WaitForChild("Humanoid", 10)
+        local root = character:WaitForChild("HumanoidRootPart", 10)
+        if SESSION.Alive and humanoid and root then
+            task.wait(.75)
+            setHubStatus("Pronto após respawn")
+        end
+    end)
 end)
 
 task.spawn(function()
-    while task.wait(.08) do
+    while SESSION.Alive and task.wait(.08) do
         if S.LockPosition then
             local character = LP.Character
             local root = character and character:FindFirstChild("HumanoidRootPart")
@@ -166,6 +212,9 @@ local function stopAllAutomations()
     S.StrengthRebirth = false
     S.AutoAgility = false
     S.SmartFarm = false
+    S.AutoEquipAfterHatch = false
+    S.AutoEvolveAfterHatch = false
+    S.GoalEnabled = false
     S.LockPosition = false
     lockedCFrame = nil
     setHubStatus("Automações paradas")
@@ -209,7 +258,9 @@ local function bestAvailableRock()
     local bestRock, bestNeed = nil, -1
 
     for _, node in ipairs(machines:GetDescendants()) do
-        if node.Name == "neededDurability" and tonumber(node.Value) then
+        if node.Name == "neededDurability"
+            and (node:IsA("IntValue") or node:IsA("NumberValue"))
+            and tonumber(node.Value) then
             local need = tonumber(node.Value)
             local parent = node.Parent
             local rock = parent and (parent:FindFirstChild("Rock") or parent.Parent and parent.Parent:FindFirstChild("Rock"))
@@ -437,11 +488,8 @@ local function bestTreadmill()
     return best
 end
 
-local agilityOriginalWalkSpeed = nil
-local agilityLastTeleport = 0
-
 task.spawn(function()
-    while task.wait(.05) do
+    while SESSION.Alive and task.wait(.05) do
         if S.AutoAgility then
             if S.LockPosition then
                 S.LockPosition = false
@@ -679,7 +727,7 @@ local function evolveReadyOwned()
 end
 
 task.spawn(function()
-    while task.wait(math.max(S.RepDelay, 0.12)) do
+    while SESSION.Alive and task.wait(math.max(S.RepDelay, 0.12)) do
         if S.Train then
             -- Prefer the game's normal Tool activation: this keeps the
             -- character animation visible and lets the tool's own LocalScript
@@ -693,7 +741,7 @@ task.spawn(function()
 end)
 
 task.spawn(function()
-    while task.wait(.18) do
+    while SESSION.Alive and task.wait(.18) do
         if S.Rebirth then
             if S.RebirthTarget and currentRebirths() >= S.RebirthTarget then
                 S.Rebirth = false
@@ -705,7 +753,7 @@ task.spawn(function()
 end)
 
 task.spawn(function()
-    while task.wait(.16) do
+    while SESSION.Alive and task.wait(.16) do
         if S.AutoPunch then
             doAnimatedPunch()
         end
@@ -713,7 +761,7 @@ task.spawn(function()
 end)
 
 task.spawn(function()
-    while task.wait(.18) do
+    while SESSION.Alive and task.wait(.18) do
         if S.SmartRock then
             farmBestRock()
         end
@@ -721,7 +769,7 @@ task.spawn(function()
 end)
 
 task.spawn(function()
-    while task.wait(2) do
+    while SESSION.Alive and task.wait(2) do
         if S.AutoBestMachine then
             selectBestMachine()
         end
@@ -729,7 +777,7 @@ task.spawn(function()
 end)
 
 task.spawn(function()
-    while task.wait(.22) do
+    while SESSION.Alive and task.wait(.22) do
         if S.AutoMachine then
             useSelectedMachine(false)
         end
@@ -737,7 +785,7 @@ task.spawn(function()
 end)
 
 task.spawn(function()
-    while task.wait(.25) do
+    while SESSION.Alive and task.wait(.25) do
         if S.StrengthRebirth then
             if not S.AutoMachine then
                 local animated = activateTrainingTool()
@@ -751,7 +799,7 @@ task.spawn(function()
 end)
 
 task.spawn(function()
-    while task.wait(2) do
+    while SESSION.Alive and task.wait(2) do
         if S.Chests then
             for _,name in ipairs(CHESTS) do
                 safeInvoke(R.Chest, name)
@@ -762,7 +810,7 @@ task.spawn(function()
 end)
 
 task.spawn(function()
-    while task.wait(.1) do
+    while SESSION.Alive and task.wait(.1) do
         if S.Hatch then
             safeInvoke(R.Crystal, "openCrystal", S.HatchCrystal)
             task.wait(S.HatchDelay)
@@ -773,7 +821,7 @@ end)
 task.spawn(function()
     local lastEquip = 0
     local lastEvolve = 0
-    while task.wait(1) do
+    while SESSION.Alive and task.wait(1) do
         if S.Hatch and S.AutoEquipAfterHatch and os.clock() - lastEquip >= 8 then
             equipBestOwned()
             lastEquip = os.clock()
@@ -788,7 +836,7 @@ task.spawn(function()
 end)
 
 task.spawn(function()
-    while task.wait(2) do
+    while SESSION.Alive and task.wait(2) do
         if S.Brawl then safeFire(R.Brawl, "joinBrawl") end
     end
 end)
@@ -823,7 +871,7 @@ local function applySmartObjective()
 end
 
 task.spawn(function()
-    while task.wait(.8) do
+    while SESSION.Alive and task.wait(.8) do
         if S.SmartFarm then
             applySmartObjective()
         end
@@ -836,7 +884,7 @@ local function goalCurrentValue()
 end
 
 task.spawn(function()
-    while task.wait(.5) do
+    while SESSION.Alive and task.wait(.5) do
         if S.GoalEnabled and S.GoalValue and goalCurrentValue() >= S.GoalValue then
             stopAllAutomations()
             S.GoalEnabled = false
@@ -1486,7 +1534,7 @@ card(
 )
 
 task.spawn(function()
-    while task.wait(1) do
+    while SESSION.Alive and task.wait(1) do
         if S.SelectedMachine then
             machineTitle.Text = "Máquina: "..S.SelectedMachine
         end
@@ -1509,7 +1557,7 @@ local _, treadmillTitle, treadmillDesc = card(
 )
 
 task.spawn(function()
-    while task.wait(1) do
+    while SESSION.Alive and task.wait(1) do
         local tm = bestTreadmill()
         if tm then
             treadmillTitle.Text = "Esteira recomendada: "..tm.name
@@ -1572,7 +1620,7 @@ local _, apexTitle, apexDesc = card(
 )
 
 task.spawn(function()
-    while task.wait(2) do
+    while SESSION.Alive and task.wait(2) do
         local apex = findShopPetByNamePart("apex")
         if apex then
             apexTitle.Text = "Comprar "..apex.Name
@@ -1816,7 +1864,7 @@ local function compactNumber(n)
 end
 
 task.spawn(function()
-    while task.wait(1) do
+    while SESSION.Alive and task.wait(1) do
         local elapsed = math.max(1, os.clock() - startTime)
         local minutes = math.max(1/60, elapsed/60)
 
@@ -1865,7 +1913,7 @@ local _, diagTitle, diagDesc = card(
 )
 
 task.spawn(function()
-    while task.wait(1) do
+    while SESSION.Alive and task.wait(1) do
         local remoteCount = 0
         for _, remote in pairs(R) do
             if remote then remoteCount += 1 end
@@ -1970,5 +2018,5 @@ footer.Font = Enum.Font.Gotham
 footer.TextSize = 9
 footer.Parent = scroll
 
-setHubStatus("Pronto")
-print("[710Hub] Muscle Legends carregado • Jamaica Edition")
+setHubStatus("Pronto • "..SESSION.Version)
+print("[710Hub] Muscle Legends carregado • Jamaica Edition • "..SESSION.Version)
