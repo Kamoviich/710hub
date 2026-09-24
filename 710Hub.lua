@@ -9,14 +9,27 @@ if game.GameId ~= 1268927906 then
 end
 
 local ENV = (getgenv and getgenv()) or _G
-if ENV.__710HubSession then
-    ENV.__710HubSession.Alive = false
+local previousSession = ENV.__710HubSession
+if previousSession then
+    previousSession.Alive = false
+    if previousSession.Cleanup then
+        pcall(previousSession.Cleanup)
+    end
 end
 
 local SESSION = {
     Alive = true,
-    Version = "2026.09-stable",
+    Version = "2026.09-stable.2",
+    Connections = {},
 }
+
+local function trackConnection(connection)
+    if connection then
+        SESSION.Connections[#SESSION.Connections+1] = connection
+    end
+    return connection
+end
+
 ENV.__710HubSession = SESSION
 
 local Players = game:GetService("Players")
@@ -96,15 +109,17 @@ end)
 local old = game:GetService("CoreGui"):FindFirstChild("710Hub_MuscleLegends")
 if old then old:Destroy() end
 
-LP.Idled:Connect(function()
+trackConnection(LP.Idled:Connect(function()
+    if not SESSION.Alive then return end
     pcall(function()
         VU:Button2Down(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
         task.wait(.2)
         VU:Button2Up(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
     end)
-end)
+end))
 
 local function safeInvoke(remote, ...)
+    if not SESSION.Alive then return nil end
     if not remote then
         setHubError("RemoteFunction não encontrada")
         return nil
@@ -120,6 +135,7 @@ local function safeInvoke(remote, ...)
 end
 
 local function safeFire(remote, ...)
+    if not SESSION.Alive then return false end
     if not remote then
         setHubError("RemoteEvent não encontrado")
         return false
@@ -163,7 +179,8 @@ local function captureLockPosition()
     return false
 end
 
-LP.CharacterAdded:Connect(function(character)
+trackConnection(LP.CharacterAdded:Connect(function(character)
+    if not SESSION.Alive then return end
     HubRuntime.Respawns += 1
     lockedCFrame = nil
     S.LockPosition = false
@@ -179,7 +196,7 @@ LP.CharacterAdded:Connect(function(character)
             setHubStatus("Pronto após respawn")
         end
     end)
-end)
+end))
 
 task.spawn(function()
     while SESSION.Alive and task.wait(.08) do
@@ -935,6 +952,23 @@ local function setPerformanceMode(enabled)
     end
 end
 
+SESSION.Cleanup = function()
+    SESSION.Alive = false
+
+    for _, connection in ipairs(SESSION.Connections) do
+        pcall(function()
+            connection:Disconnect()
+        end)
+    end
+    table.clear(SESSION.Connections)
+
+    if S.PerformanceMode and setPerformanceMode then
+        pcall(function()
+            setPerformanceMode(false)
+        end)
+    end
+end
+
 local TweenService = game:GetService("TweenService")
 local UIS = game:GetService("UserInputService")
 
@@ -996,6 +1030,16 @@ gui.ResetOnSpawn = false
 gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 gui.IgnoreGuiInset = false
 gui.Parent = guiParent
+
+local baseCleanup = SESSION.Cleanup
+SESSION.Cleanup = function()
+    pcall(baseCleanup)
+    pcall(function()
+        if gui and gui.Parent then
+            gui:Destroy()
+        end
+    end)
+end
 
 -- sombra
 local shadow = Instance.new("Frame")
@@ -1427,8 +1471,8 @@ end
 minimize.MouseButton1Click:Connect(hideMenu)
 mini.MouseButton1Click:Connect(showMenu)
 
-UIS.InputBegan:Connect(function(input, processed)
-    if processed then return end
+trackConnection(UIS.InputBegan:Connect(function(input, processed)
+    if not SESSION.Alive or processed then return end
 
     if input.KeyCode == Enum.KeyCode.RightShift then
         if menuOpen then hideMenu() else showMenu() end
@@ -1436,7 +1480,7 @@ UIS.InputBegan:Connect(function(input, processed)
         stopAllAutomations()
         renderAllToggles()
     end
-end)
+end))
 
 -- conteúdo em português --------------------------------------------------------
 section("FARM", "Automatizações principais para evoluir sua conta.")
