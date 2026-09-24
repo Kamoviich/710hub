@@ -12,6 +12,8 @@ local Players = game:GetService("Players")
 local RS = game:GetService("ReplicatedStorage")
 local VU = game:GetService("VirtualUser")
 local RunService = game:GetService("RunService")
+local TeleportService = game:GetService("TeleportService")
+local Lighting = game:GetService("Lighting")
 local LP = Players.LocalPlayer
 local rEvents = RS:WaitForChild("rEvents")
 local Backpack = LP:WaitForChild("Backpack")
@@ -37,10 +39,27 @@ local S = {
     AutoPunch=false, SmartRock=false, LockPosition=false,
     AutoMachine=false, AutoBestMachine=false, StrengthRebirth=false,
     AutoAgility=false, SmartFarm=false,
-    SmartObjective="Força",
+    AutoEquipAfterHatch=false, AutoEvolveAfterHatch=false,
+    PerformanceMode=false, GoalEnabled=false,
+    SmartObjective="Força", GoalStat="Strength", GoalValue=nil,
     HatchCrystal="Blue Crystal", RepDelay=.065, HatchDelay=.45,
     RebirthTarget=nil, SelectedMachine=nil,
 }
+
+local HubRuntime = {
+    Status = "Inicializando...",
+    LastError = "Nenhum",
+    RemoteCalls = 0,
+    StartedAt = os.clock(),
+}
+
+local function setHubStatus(text)
+    HubRuntime.Status = tostring(text or "")
+end
+
+local function setHubError(text)
+    HubRuntime.LastError = tostring(text or "Desconhecido")
+end
 
 local old = game:GetService("CoreGui"):FindFirstChild("710Hub_MuscleLegends")
 if old then old:Destroy() end
@@ -54,20 +73,35 @@ LP.Idled:Connect(function()
 end)
 
 local function safeInvoke(remote, ...)
-    if not remote then return nil end
+    if not remote then
+        setHubError("RemoteFunction não encontrada")
+        return nil
+    end
     local args = table.pack(...)
     local ok, a, b = pcall(function()
+        HubRuntime.RemoteCalls += 1
         return remote:InvokeServer(table.unpack(args, 1, args.n))
     end)
     if ok then return a, b end
+    setHubError(a)
+    return nil
 end
 
 local function safeFire(remote, ...)
-    if not remote then return end
+    if not remote then
+        setHubError("RemoteEvent não encontrado")
+        return false
+    end
     local args = table.pack(...)
-    pcall(function()
+    local ok, err = pcall(function()
+        HubRuntime.RemoteCalls += 1
         remote:FireServer(table.unpack(args, 1, args.n))
     end)
+    if not ok then
+        setHubError(err)
+        return false
+    end
+    return true
 end
 
 local function numberStat(name)
@@ -117,6 +151,24 @@ task.spawn(function()
         end
     end
 end)
+
+local function stopAllAutomations()
+    S.Train = false
+    S.Rebirth = false
+    S.Chests = false
+    S.Hatch = false
+    S.Brawl = false
+    S.AutoPunch = false
+    S.SmartRock = false
+    S.AutoMachine = false
+    S.AutoBestMachine = false
+    S.StrengthRebirth = false
+    S.AutoAgility = false
+    S.SmartFarm = false
+    S.LockPosition = false
+    lockedCFrame = nil
+    setHubStatus("Automações paradas")
+end
 
 local function findPunchTool()
     local character = LP.Character
@@ -661,6 +713,23 @@ task.spawn(function()
 end)
 
 task.spawn(function()
+    local lastEquip = 0
+    local lastEvolve = 0
+    while task.wait(1) do
+        if S.Hatch and S.AutoEquipAfterHatch and os.clock() - lastEquip >= 8 then
+            equipBestOwned()
+            lastEquip = os.clock()
+            setHubStatus("Melhores pets equipados automaticamente")
+        end
+        if S.Hatch and S.AutoEvolveAfterHatch and os.clock() - lastEvolve >= 25 then
+            evolveReadyOwned()
+            lastEvolve = os.clock()
+            setHubStatus("Verificação de evolução concluída")
+        end
+    end
+end)
+
+task.spawn(function()
     while task.wait(2) do
         if S.Brawl then safeFire(R.Brawl, "joinBrawl") end
     end
@@ -702,6 +771,60 @@ task.spawn(function()
         end
     end
 end)
+
+local function goalCurrentValue()
+    if S.GoalStat == "Rebirths" then return currentRebirths() end
+    return numberStat(S.GoalStat)
+end
+
+task.spawn(function()
+    while task.wait(.5) do
+        if S.GoalEnabled and S.GoalValue and goalCurrentValue() >= S.GoalValue then
+            stopAllAutomations()
+            S.GoalEnabled = false
+            setHubStatus("Meta atingida: "..S.GoalStat)
+        end
+    end
+end)
+
+local performanceSaved = {}
+local function setPerformanceMode(enabled)
+    S.PerformanceMode = enabled
+
+    if enabled then
+        performanceSaved.GlobalShadows = Lighting.GlobalShadows
+        Lighting.GlobalShadows = false
+
+        for _, obj in ipairs(game:GetDescendants()) do
+            if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") then
+                if performanceSaved[obj] == nil then
+                    performanceSaved[obj] = obj.Enabled
+                end
+                obj.Enabled = false
+            elseif obj:IsA("BloomEffect") or obj:IsA("SunRaysEffect") or obj:IsA("DepthOfFieldEffect") then
+                if performanceSaved[obj] == nil then
+                    performanceSaved[obj] = obj.Enabled
+                end
+                obj.Enabled = false
+            end
+        end
+
+        setHubStatus("Modo desempenho ativado")
+    else
+        if performanceSaved.GlobalShadows ~= nil then
+            Lighting.GlobalShadows = performanceSaved.GlobalShadows
+        end
+
+        for obj, value in pairs(performanceSaved) do
+            if typeof(obj) == "Instance" and obj.Parent and type(value) == "boolean" then
+                pcall(function() obj.Enabled = value end)
+            end
+        end
+
+        performanceSaved = {}
+        setHubStatus("Modo desempenho desativado")
+    end
+end
 
 local TweenService = game:GetService("TweenService")
 local UIS = game:GetService("UserInputService")
@@ -1154,8 +1277,12 @@ mini.MouseButton1Click:Connect(showMenu)
 
 UIS.InputBegan:Connect(function(input, processed)
     if processed then return end
+
     if input.KeyCode == Enum.KeyCode.RightShift then
         if menuOpen then hideMenu() else showMenu() end
+    elseif input.KeyCode == Enum.KeyCode.End then
+        stopAllAutomations()
+        for _,render in pairs(toggleRefs) do render() end
     end
 end)
 
@@ -1412,6 +1539,18 @@ card(
     COLORS.Green
 )
 
+toggle(
+    "Auto-equip após hatch",
+    "Enquanto o Auto Hatch estiver ligado, atualiza periodicamente os melhores pets equipados.",
+    "AutoEquipAfterHatch"
+)
+
+toggle(
+    "Auto-evoluir após hatch",
+    "Verifica periodicamente pets repetidos enquanto estiver abrindo cristais.",
+    "AutoEvolveAfterHatch"
+)
+
 section("TELEPORTES", "Navegação rápida usando os pontos de teleporte encontrados no mapa.")
 
 local tpNames = {}
@@ -1508,6 +1647,51 @@ card(
     COLORS.Yellow
 )
 
+section("METAS", "Defina um objetivo e o hub para automaticamente quando alcançar o valor.")
+
+local goalStats = {"Strength","Agility","Durability","Rebirths"}
+local goalStatIndex = 1
+local goalAdds = {
+    Strength = {10000,100000,1000000,10000000},
+    Agility = {1000,5000,20000,50000},
+    Durability = {10000,100000,1000000,10000000},
+    Rebirths = {10,50,100,500},
+}
+local goalAddIndex = 1
+
+local _, goalStatTitle = card(
+    "Estatística da meta: Strength",
+    "Clique para alternar entre Strength, Agility, Durability e Rebirths.",
+    function(_,titleLabel)
+        goalStatIndex = goalStatIndex % #goalStats + 1
+        S.GoalStat = goalStats[goalStatIndex]
+        goalAddIndex = 1
+        S.GoalValue = nil
+        titleLabel.Text = "Estatística da meta: "..S.GoalStat
+    end,
+    COLORS.Yellow
+)
+
+local _, goalValueTitle = card(
+    "Definir meta: clique para escolher",
+    "Cria uma meta relativa ao seu valor atual.",
+    function(_,titleLabel)
+        local choices = goalAdds[S.GoalStat]
+        goalAddIndex = goalAddIndex % #choices + 1
+        local add = choices[goalAddIndex]
+        S.GoalValue = goalCurrentValue() + add
+        titleLabel.Text = "Meta: "..S.GoalStat.." = "..math.floor(S.GoalValue)
+        setHubStatus("Meta configurada: +"..add.." em "..S.GoalStat)
+    end,
+    COLORS.Green
+)
+
+toggle(
+    "Parar ao atingir a meta",
+    "Quando o valor definido for alcançado, todas as automações são desligadas.",
+    "GoalEnabled"
+)
+
 section("SESSÃO", "Informações úteis sobre seu progresso desde que o 710Hub foi iniciado.")
 
 local startTime = os.clock()
@@ -1581,6 +1765,43 @@ task.spawn(function()
     end
 end)
 
+section("DIAGNÓSTICO", "Mostra o estado das partes principais do 710Hub em tempo real.")
+
+local _, diagTitle, diagDesc = card(
+    "Status: verificando...",
+    "Inicializando diagnóstico.",
+    function() end,
+    COLORS.Green
+)
+
+task.spawn(function()
+    while task.wait(1) do
+        local remoteCount = 0
+        for _, remote in pairs(R) do
+            if remote then remoteCount += 1 end
+        end
+
+        local muscleOK = getMuscleEvent() ~= nil
+        local machineCount = #scanMachines()
+
+        diagTitle.Text = "Status: "..HubRuntime.Status
+        diagDesc.Text = "Remotes: "..remoteCount.."/7"
+            .." • muscleEvent: "..(muscleOK and "OK" or "AUSENTE")
+            .." • Máquinas: "..machineCount
+            .." • Chamadas: "..HubRuntime.RemoteCalls
+    end
+end)
+
+card(
+    "Último erro",
+    "Exibe o último erro capturado pelas chamadas protegidas do hub.",
+    function(_,titleLabel,descLabel)
+        titleLabel.Text = "Último erro capturado"
+        descLabel.Text = HubRuntime.LastError
+    end,
+    COLORS.Yellow
+)
+
 section("UTILIDADES", "Controles gerais do 710Hub.")
 
 local lockButton = toggle(
@@ -1608,24 +1829,34 @@ card(
     COLORS.Yellow
 )
 
+local performanceButton, performanceTitle, performanceDesc = card(
+    "Modo desempenho: OFF",
+    "Desliga efeitos visuais pesados localmente para melhorar FPS.",
+    function(_,titleLabel)
+        setPerformanceMode(not S.PerformanceMode)
+        titleLabel.Text = "Modo desempenho: "..(S.PerformanceMode and "ON" or "OFF")
+    end,
+    COLORS.Green
+)
+
+card(
+    "Reentrar no servidor",
+    "Reconecta sua conta ao mesmo jogo caso a sessão fique travada.",
+    function()
+        stopAllAutomations()
+        setHubStatus("Reconectando...")
+        pcall(function()
+            TeleportService:Teleport(game.PlaceId, LP)
+        end)
+    end,
+    COLORS.Yellow
+)
+
 card(
     "Parar todas as automações",
     "Desliga treino, rebirth, baús, cristais e Brawl de uma vez.",
     function()
-        S.Train = false
-        S.Rebirth = false
-        S.Chests = false
-        S.Hatch = false
-        S.Brawl = false
-        S.AutoPunch = false
-        S.SmartRock = false
-        S.AutoMachine = false
-        S.AutoBestMachine = false
-        S.StrengthRebirth = false
-        S.AutoAgility = false
-        S.SmartFarm = false
-        S.LockPosition = false
-        lockedCFrame = nil
+        stopAllAutomations()
         for _,render in pairs(toggleRefs) do
             render()
         end
@@ -1643,10 +1874,11 @@ card(
 local footer = Instance.new("TextLabel")
 footer.Size = UDim2.new(1,-6,0,36)
 footer.BackgroundTransparency = 1
-footer.Text = "RightShift abre/fecha • O ícone 710 permanece na tela"
+footer.Text = "RightShift abre/fecha • END para tudo • Ícone 710 permanece na tela"
 footer.TextColor3 = COLORS.Muted
 footer.Font = Enum.Font.Gotham
 footer.TextSize = 9
 footer.Parent = scroll
 
+setHubStatus("Pronto")
 print("[710Hub] Muscle Legends carregado • Jamaica Edition")
