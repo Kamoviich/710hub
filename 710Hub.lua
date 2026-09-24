@@ -19,7 +19,7 @@ end
 
 local SESSION = {
     Alive = true,
-    Version = "2026.09-stable.3",
+    Version = "2026.09-stable.4",
     Connections = {},
 }
 
@@ -976,6 +976,87 @@ end
 local function canPetShop()
     refreshRemotes()
     return R.PetShop ~= nil and getPetShopFolder() ~= nil
+end
+
+local function runSelfTest()
+    refreshRemotes()
+
+    local results = {}
+    local passed, failed = 0, 0
+
+    local function check(name, fn)
+        local ok, value = pcall(fn)
+        local success = ok and value == true
+        if success then passed += 1 else failed += 1 end
+        results[#results+1] = (success and "OK  " or "OFF ") .. name
+        if not ok then
+            results[#results+1] = "    erro: "..tostring(value)
+        end
+        return success
+    end
+
+    check("Jogo correto", function() return game.GameId == 1268927906 end)
+    check("LocalPlayer disponível", function() return LP ~= nil end)
+    check("Personagem/Humanoid/HRP", hasCharacter)
+    check("Backpack disponível", function()
+        local bp = getBackpack and getBackpack() or Backpack
+        return bp ~= nil and bp.Parent ~= nil
+    end)
+    check("muscleEvent disponível", function() return getMuscleEvent() ~= nil end)
+    check("Treino disponível", canTrain)
+    check("Rebirth disponível", canRebirth)
+    check("Punch disponível", canPunch)
+    check("Farm de pedra disponível", canRockFarm)
+    check("Máquinas disponíveis", canMachineFarm)
+    check("Agilidade disponível", canAgilityFarm)
+    check("Baús disponíveis", canChestFarm)
+    check("Brawl disponível", canBrawl)
+    check("Cristais disponíveis", canHatch)
+    check("Gerenciador de pets", canPetManager)
+    check("Pet Shop disponível", canPetShop)
+    check("Teleportes disponíveis", function()
+        local folder = workspace:FindFirstChild("areaTeleportParts")
+        return folder ~= nil and #folder:GetDescendants() > 0
+    end)
+    check("Lock Position disponível", hasCharacter)
+    check("Modo desempenho disponível", function() return Lighting ~= nil end)
+    check("Esteira recomendada encontrada", function() return bestTreadmill() ~= nil end)
+    check("Máquina recomendada encontrada", function() return selectBestMachine() ~= nil end)
+    check("Apex no catálogo", function() return findShopPetByNamePart("apex") ~= nil end)
+
+    local lines = {
+        "710Hub "..SESSION.Version,
+        "Autoteste seguro - não compra pets, não abre cristal e não faz rebirth",
+        "Resultado: "..passed.." OK / "..failed.." indisponíveis",
+        "",
+    }
+
+    for _, line in ipairs(results) do
+        lines[#lines+1] = line
+    end
+
+    lines[#lines+1] = ""
+    lines[#lines+1] = "Executor gethui: "..(type(gethui) == "function" and "OK" or "N/A")
+    lines[#lines+1] = "Executor firetouchinterest: "..(type(firetouchinterest) == "function" and "OK" or "N/A")
+    lines[#lines+1] = "Executor setclipboard: "..(type(setclipboard) == "function" and "OK" or "N/A")
+    lines[#lines+1] = "Máquinas detectadas: "..#scanMachines()
+
+    local remoteCount = 0
+    for _, remote in pairs(R) do
+        if remote then remoteCount += 1 end
+    end
+    lines[#lines+1] = "Remotes encontrados: "..remoteCount.."/8"
+
+    HubRuntime.SelfTestPassed = passed
+    HubRuntime.SelfTestFailed = failed
+    HubRuntime.SelfTestReport = table.concat(lines, "\n")
+    setHubStatus("Autoteste: "..passed.." OK / "..failed.." indisponíveis")
+
+    print("========== 710Hub AUTOTESTE ==========")
+    print(HubRuntime.SelfTestReport)
+    print("======================================")
+
+    return passed, failed, HubRuntime.SelfTestReport
 end
 
 local function applySmartObjective()
@@ -2372,13 +2453,56 @@ task.spawn(function()
         local machineCount = #scanMachines()
 
         diagTitle.Text = "Status: "..HubRuntime.Status
+        local selfTest = HubRuntime.SelfTestPassed
+            and (" • Teste: "..HubRuntime.SelfTestPassed.." OK/"..HubRuntime.SelfTestFailed.." OFF")
+            or ""
         diagDesc.Text = "Remotes: "..remoteCount.."/8"
             .." • muscleEvent: "..(muscleOK and "OK" or "AUSENTE")
             .." • Máquinas: "..machineCount
             .." • Respawns: "..HubRuntime.Respawns
             .." • Chamadas: "..HubRuntime.RemoteCalls
+            ..selfTest
     end
 end)
+
+local _, selfTestTitle, selfTestDesc = card(
+    "Executar autoteste do 710Hub",
+    "Verifica funções e dependências sem gastar Gems, abrir cristais ou fazer rebirth.",
+    function(_,titleLabel,descLabel)
+        titleLabel.Text = "Autoteste em andamento..."
+        descLabel.Text = "Verificando personagem, remotes, máquinas, pets e executor."
+        local passed, failed = runSelfTest()
+        titleLabel.Text = "Autoteste: "..passed.." OK • "..failed.." indisponíveis"
+        descLabel.Text = failed == 0
+            and "Todas as dependências verificáveis estão disponíveis nesta sessão."
+            or "Abra o console ou use Copiar relatório para ver quais itens falharam."
+    end,
+    COLORS.Green
+)
+
+card(
+    "Copiar relatório do autoteste",
+    "Copia o diagnóstico completo para você colar aqui caso alguma função não esteja funcionando.",
+    function(_,titleLabel,descLabel)
+        if not HubRuntime.SelfTestReport then
+            runSelfTest()
+        end
+
+        if type(setclipboard) == "function" then
+            local ok = pcall(function()
+                setclipboard(HubRuntime.SelfTestReport)
+            end)
+            titleLabel.Text = ok and "Relatório copiado" or "Falha ao copiar relatório"
+            descLabel.Text = ok
+                and "Cole o relatório na conversa para eu analisar."
+                or "O executor não permitiu acesso à área de transferência."
+        else
+            titleLabel.Text = "Clipboard indisponível"
+            descLabel.Text = "O relatório completo foi enviado ao console do executor."
+        end
+    end,
+    COLORS.Yellow
+)
 
 card(
     "Último erro",
