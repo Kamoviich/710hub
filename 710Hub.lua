@@ -32,7 +32,9 @@ local R = {
 
 local S = {
     Train=false, Rebirth=false, Chests=false, Hatch=false, Brawl=false,
+    AutoPunch=false, SmartRock=false,
     HatchCrystal="Blue Crystal", RepDelay=.065, HatchDelay=.45,
+    RebirthTarget=nil,
 }
 
 local old = game:GetService("CoreGui"):FindFirstChild("710Hub_MuscleLegends")
@@ -61,6 +63,104 @@ local function safeFire(remote, ...)
     pcall(function()
         remote:FireServer(table.unpack(args, 1, args.n))
     end)
+end
+
+local function numberStat(name)
+    local direct = LP:FindFirstChild(name)
+    if direct and tonumber(direct.Value) then return tonumber(direct.Value) end
+    local leaderstats = LP:FindFirstChild("leaderstats")
+    local stat = leaderstats and leaderstats:FindFirstChild(name)
+    if stat and tonumber(stat.Value) then return tonumber(stat.Value) end
+    return 0
+end
+
+local function currentRebirths()
+    return numberStat("Rebirths")
+end
+
+local function findPunchTool()
+    local character = LP.Character
+    local equipped = character and character:FindFirstChild("Punch")
+    if equipped and equipped:IsA("Tool") then return equipped end
+    local tool = Backpack:FindFirstChild("Punch")
+    if tool and tool:IsA("Tool") then return tool end
+end
+
+local function doAnimatedPunch()
+    local character = LP.Character
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    local tool = findPunchTool()
+    if not tool or not humanoid then return false end
+
+    if tool.Parent == Backpack then
+        pcall(function() humanoid:EquipTool(tool) end)
+        task.wait(.04)
+    end
+
+    local event = getMuscleEvent()
+    if event then
+        safeFire(event, "punch", "rightHand")
+        task.wait(.035)
+        safeFire(event, "punch", "leftHand")
+    end
+
+    pcall(function() tool:Activate() end)
+    return true
+end
+
+local function bestAvailableRock()
+    local machines = workspace:FindFirstChild("machinesFolder")
+    if not machines then return nil end
+
+    local durability = numberStat("Durability")
+    local bestRock, bestNeed = nil, -1
+
+    for _, node in ipairs(machines:GetDescendants()) do
+        if node.Name == "neededDurability" and tonumber(node.Value) then
+            local need = tonumber(node.Value)
+            local parent = node.Parent
+            local rock = parent and (parent:FindFirstChild("Rock") or parent.Parent and parent.Parent:FindFirstChild("Rock"))
+            if rock and rock:IsA("BasePart") and need <= durability and need > bestNeed then
+                bestRock, bestNeed = rock, need
+            end
+        end
+    end
+
+    return bestRock, bestNeed
+end
+
+local function farmBestRock()
+    local rock = bestAvailableRock()
+    if not rock then return false end
+
+    local character = LP.Character
+    local left = character and (character:FindFirstChild("LeftHand") or character:FindFirstChild("Left Arm"))
+    local right = character and (character:FindFirstChild("RightHand") or character:FindFirstChild("Right Arm"))
+
+    if firetouchinterest and (left or right) then
+        pcall(function()
+            if right then
+                firetouchinterest(rock, right, 0)
+                firetouchinterest(rock, right, 1)
+            end
+            if left then
+                firetouchinterest(rock, left, 0)
+                firetouchinterest(rock, left, 1)
+            end
+        end)
+        return true
+    end
+
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    if root then
+        pcall(function()
+            root.CFrame = rock.CFrame + Vector3.new(0,3,2)
+        end)
+        doAnimatedPunch()
+        return true
+    end
+
+    return false
 end
 
 local CHESTS = {"Golden Chest","Enchanted Chest","Magma Chest","Mythical Chest","Legends Chest","Jungle Chest"}
@@ -219,8 +319,30 @@ task.spawn(function()
 end)
 
 task.spawn(function()
-    while task.wait(.15) do
-        if S.Rebirth then safeInvoke(R.Rebirth, "rebirthRequest") end
+    while task.wait(.18) do
+        if S.Rebirth then
+            if S.RebirthTarget and currentRebirths() >= S.RebirthTarget then
+                S.Rebirth = false
+            else
+                safeInvoke(R.Rebirth, "rebirthRequest")
+            end
+        end
+    end
+end)
+
+task.spawn(function()
+    while task.wait(.16) do
+        if S.AutoPunch then
+            doAnimatedPunch()
+        end
+    end
+end)
+
+task.spawn(function()
+    while task.wait(.18) do
+        if S.SmartRock then
+            farmBestRock()
+        end
     end
 end)
 
@@ -717,8 +839,39 @@ toggle(
 
 toggle(
     "Rebirth automático",
-    "Tenta fazer rebirth automaticamente quando o jogo permitir.",
+    "Faz rebirth automaticamente. Pode ser usado junto da meta de rebirth abaixo.",
     "Rebirth"
+)
+
+local rebirthSteps = {0,10,50,100,500}
+local rebirthStepIndex = 1
+card(
+    "Meta de rebirth: sem limite",
+    "Define até quantos rebirths a automação deve continuar a partir de agora.",
+    function(_,titleLabel)
+        rebirthStepIndex = rebirthStepIndex % #rebirthSteps + 1
+        local add = rebirthSteps[rebirthStepIndex]
+        if add == 0 then
+            S.RebirthTarget = nil
+            titleLabel.Text = "Meta de rebirth: sem limite"
+        else
+            S.RebirthTarget = currentRebirths() + add
+            titleLabel.Text = "Meta de rebirth: +"..add.." (até "..math.floor(S.RebirthTarget)..")"
+        end
+    end,
+    COLORS.Yellow
+)
+
+toggle(
+    "Soco automático animado",
+    "Usa a ferramenta Punch e alterna as duas mãos mantendo a animação do personagem.",
+    "AutoPunch"
+)
+
+toggle(
+    "Farm inteligente de pedras",
+    "Procura automaticamente a pedra mais forte que sua Durability atual consegue usar.",
+    "SmartRock"
 )
 
 toggle(
@@ -821,6 +974,78 @@ card(
     COLORS.Green
 )
 
+section("PERFIS RÁPIDOS", "Atalhos que combinam várias funções para objetivos diferentes.")
+
+card(
+    "Perfil: Força",
+    "Ativa treino automático e soco animado; desliga farm de pets.",
+    function()
+        S.Train = true
+        S.AutoPunch = true
+        S.SmartRock = false
+        S.Hatch = false
+        for _,render in pairs(toggleRefs) do render() end
+    end,
+    COLORS.Green
+)
+
+card(
+    "Perfil: Durabilidade",
+    "Ativa o farm inteligente de pedras e soco animado.",
+    function()
+        S.Train = false
+        S.AutoPunch = true
+        S.SmartRock = true
+        for _,render in pairs(toggleRefs) do render() end
+    end,
+    COLORS.Green
+)
+
+card(
+    "Perfil: Pets",
+    "Ativa abertura automática do cristal selecionado e desliga farms de combate.",
+    function()
+        S.Train = false
+        S.AutoPunch = false
+        S.SmartRock = false
+        S.Hatch = true
+        for _,render in pairs(toggleRefs) do render() end
+    end,
+    COLORS.Yellow
+)
+
+section("SESSÃO", "Informações úteis sobre seu progresso desde que o 710Hub foi iniciado.")
+
+local startTime = os.clock()
+local startRebirths = currentRebirths()
+local startStrength = numberStat("Strength")
+local _, sessionTitle, sessionDesc = card(
+    "Sessão: iniciando...",
+    "Calculando seus ganhos.",
+    function() end,
+    COLORS.Green
+)
+
+task.spawn(function()
+    while task.wait(1) do
+        local elapsed = math.max(1, os.clock() - startTime)
+        local rebirthGain = currentRebirths() - startRebirths
+        local strengthGain = numberStat("Strength") - startStrength
+        sessionTitle.Text = string.format(
+            "Sessão: %02d:%02d:%02d",
+            math.floor(elapsed/3600),
+            math.floor((elapsed%3600)/60),
+            math.floor(elapsed%60)
+        )
+        sessionDesc.Text = string.format(
+            "Força ganha: %s  •  Rebirths ganhos: %s  •  Rebirths/min: %.2f",
+            tostring(math.floor(strengthGain)),
+            tostring(math.floor(rebirthGain)),
+            rebirthGain / (elapsed/60)
+        )
+    end
+end)
+
 section("UTILIDADES", "Controles gerais do 710Hub.")
 
 card(
@@ -832,6 +1057,8 @@ card(
         S.Chests = false
         S.Hatch = false
         S.Brawl = false
+        S.AutoPunch = false
+        S.SmartRock = false
         for _,render in pairs(toggleRefs) do
             render()
         end
