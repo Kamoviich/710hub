@@ -11,6 +11,7 @@ end
 local Players = game:GetService("Players")
 local RS = game:GetService("ReplicatedStorage")
 local VU = game:GetService("VirtualUser")
+local RunService = game:GetService("RunService")
 local LP = Players.LocalPlayer
 local rEvents = RS:WaitForChild("rEvents")
 local Backpack = LP:WaitForChild("Backpack")
@@ -34,7 +35,9 @@ local R = {
 local S = {
     Train=false, Rebirth=false, Chests=false, Hatch=false, Brawl=false,
     AutoPunch=false, SmartRock=false, LockPosition=false,
-    AutoMachine=false, StrengthRebirth=false,
+    AutoMachine=false, AutoBestMachine=false, StrengthRebirth=false,
+    AutoAgility=false, SmartFarm=false,
+    SmartObjective="Força",
     HatchCrystal="Blue Crystal", RepDelay=.065, HatchDelay=.45,
     RebirthTarget=nil, SelectedMachine=nil,
 }
@@ -225,6 +228,68 @@ local function scanMachines()
     return list
 end
 
+local MACHINE_TIERS = {
+    {"jungle", 10000},
+    {"muscle king", 9000},
+    {"legends", 8000},
+    {"eternal", 7000},
+    {"mythical", 6000},
+    {"inferno", 5500},
+    {"frost", 5000},
+    {"frozen", 5000},
+    {"golden", 4000},
+}
+
+local MACHINE_TYPES = {
+    {"bar lift", 90},
+    {"squat", 80},
+    {"press", 70},
+    {"throw", 60},
+    {"bench", 50},
+    {"pullup", 40},
+    {"lift", 30},
+}
+
+local function machineScore(name)
+    local lower = string.lower(name)
+    local score = 0
+
+    for _, entry in ipairs(MACHINE_TIERS) do
+        if string.find(lower, entry[1], 1, true) then
+            score += entry[2]
+            break
+        end
+    end
+
+    for _, entry in ipairs(MACHINE_TYPES) do
+        if string.find(lower, entry[1], 1, true) then
+            score += entry[2]
+            break
+        end
+    end
+
+    return score
+end
+
+local function selectBestMachine()
+    local machines = scanMachines()
+    if #machines == 0 then
+        S.SelectedMachine = nil
+        return nil
+    end
+
+    table.sort(machines, function(a,b)
+        local sa, sb = machineScore(a.name), machineScore(b.name)
+        if sa == sb then
+            return string.lower(a.name) < string.lower(b.name)
+        end
+        return sa > sb
+    end)
+
+    S.SelectedMachine = machines[1].name
+    return machines[1]
+end
+
 local function getSelectedMachine()
     local machines = scanMachines()
     if #machines == 0 then return nil end
@@ -242,7 +307,7 @@ local function getSelectedMachine()
 end
 
 local function useSelectedMachine(moveCharacter)
-    local info = getSelectedMachine()
+    local info = S.AutoBestMachine and selectBestMachine() or getSelectedMachine()
     if not info then return false end
 
     local character = LP.Character
@@ -266,6 +331,103 @@ local function useSelectedMachine(moveCharacter)
 
     return true
 end
+
+local TREADMILLS = {
+    {
+        name = "Praia",
+        minAgility = 0,
+        priority = 1,
+        cf = CFrame.new(238.671112, 5.40315914, 387.713165, -0.0160072874, -2.90710176e-08, -0.99987185, -3.3434191e-09, 1, -2.90212157e-08, 0.99987185, 2.87843993e-09, -0.0160072874)
+    },
+    {
+        name = "Frost Gym",
+        minAgility = 2000,
+        priority = 2,
+        cf = CFrame.new(-3005.37866, 14.3221855, -464.697876, -0.015773816, -1.38508964e-08, 0.999875605, -5.13225586e-08, 1, 1.30429667e-08, -0.999875605, -5.11104332e-08, -0.015773816)
+    },
+    {
+        name = "Mythical Gym",
+        minAgility = 2000,
+        priority = 3,
+        cf = CFrame.new(2571.23706, 15.6896839, 898.650391, 0.999968231, 2.23868635e-09, -0.00797206629, -1.73198844e-09, 1, 6.35660768e-08, 0.00797206629, -6.3550246e-08, 0.999968231)
+    },
+    {
+        name = "Legends Gym",
+        minAgility = 3000,
+        priority = 4,
+        cf = CFrame.new(4370.82812, 999.358704, -3621.42773, -0.960604727, -8.41949266e-09, -0.27791819, -6.12478646e-09, 1, -9.12496567e-09, 0.27791819, -7.06329528e-09, -0.960604727)
+    },
+    {
+        name = "Eternal Gym",
+        minAgility = 3500,
+        priority = 5,
+        cf = CFrame.new(-7077.79102, 29.6702118, -1457.59961, -0.0322036594, -3.31122768e-10, 0.99948132, -6.44344267e-09, 1, 1.23684493e-10, -0.99948132, -6.43611742e-09, -0.0322036594)
+    },
+    {
+        name = "Jungle Gym",
+        minAgility = 20000,
+        priority = 6,
+        cf = CFrame.new(-8138.67919921875, 28.270538330078125, 2833.511474609375, -0.960604727, -8.41949266e-09, -0.27791819, -6.12478646e-09, 1, -9.12496567e-09, 0.27791819, -7.06329528e-09, -0.960604727)
+    },
+}
+
+local function bestTreadmill()
+    local agility = numberStat("Agility")
+    local best = TREADMILLS[1]
+
+    for _, tm in ipairs(TREADMILLS) do
+        if agility >= tm.minAgility and tm.priority >= best.priority then
+            best = tm
+        end
+    end
+
+    return best
+end
+
+local agilityOriginalWalkSpeed = nil
+local agilityLastTeleport = 0
+
+task.spawn(function()
+    while task.wait(.05) do
+        if S.AutoAgility then
+            if S.LockPosition then
+                S.LockPosition = false
+                lockedCFrame = nil
+            end
+
+            local character = LP.Character
+            local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+            local root = character and character:FindFirstChild("HumanoidRootPart")
+            local tm = bestTreadmill()
+
+            if humanoid and root and tm then
+                if not agilityOriginalWalkSpeed then
+                    agilityOriginalWalkSpeed = humanoid.WalkSpeed
+                end
+
+                humanoid.WalkSpeed = 10
+
+                if os.clock() - agilityLastTeleport > 1.2 then
+                    pcall(function()
+                        root.CFrame = tm.cf
+                    end)
+                    agilityLastTeleport = os.clock()
+                end
+
+                pcall(function()
+                    humanoid:Move(Vector3.new(10000, 0, -1), true)
+                end)
+            end
+        elseif agilityOriginalWalkSpeed then
+            local character = LP.Character
+            local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+            if humanoid then
+                humanoid.WalkSpeed = agilityOriginalWalkSpeed
+            end
+            agilityOriginalWalkSpeed = nil
+        end
+    end
+end)
 
 -- Uses the actual equipped training tool whenever possible so the character
 -- plays the normal lifting/punching animation instead of only changing stats.
@@ -449,6 +611,14 @@ task.spawn(function()
 end)
 
 task.spawn(function()
+    while task.wait(2) do
+        if S.AutoBestMachine then
+            selectBestMachine()
+        end
+    end
+end)
+
+task.spawn(function()
     while task.wait(.22) do
         if S.AutoMachine then
             useSelectedMachine(false)
@@ -493,6 +663,43 @@ end)
 task.spawn(function()
     while task.wait(2) do
         if S.Brawl then safeFire(R.Brawl, "joinBrawl") end
+    end
+end)
+
+local function applySmartObjective()
+    if not S.SmartFarm then return end
+
+    S.Train = false
+    S.Rebirth = false
+    S.AutoPunch = false
+    S.SmartRock = false
+    S.AutoMachine = false
+    S.AutoBestMachine = false
+    S.StrengthRebirth = false
+    S.AutoAgility = false
+
+    if S.SmartObjective == "Força" then
+        S.AutoBestMachine = true
+        selectBestMachine()
+        S.AutoMachine = true
+    elseif S.SmartObjective == "Durabilidade" then
+        S.AutoPunch = true
+        S.SmartRock = true
+    elseif S.SmartObjective == "Agilidade" then
+        S.AutoAgility = true
+    elseif S.SmartObjective == "Rebirths" then
+        S.AutoBestMachine = true
+        selectBestMachine()
+        S.AutoMachine = true
+        S.StrengthRebirth = true
+    end
+end
+
+task.spawn(function()
+    while task.wait(.8) do
+        if S.SmartFarm then
+            applySmartObjective()
+        end
     end
 end)
 
@@ -1060,6 +1267,22 @@ toggle(
 )
 
 toggle(
+    "Selecionar melhor máquina",
+    "Escolhe automaticamente a máquina de maior nível detectada no servidor.",
+    "AutoBestMachine"
+)
+
+card(
+    "Escolher melhor máquina agora",
+    "Analisa os nomes e níveis das máquinas carregadas e seleciona a melhor opção encontrada.",
+    function()
+        local info = selectBestMachine()
+        machineTitle.Text = "Máquina: "..(info and info.name or "nenhuma encontrada")
+    end,
+    COLORS.Yellow
+)
+
+toggle(
     "Ciclo Força + Rebirth",
     "Mantém o treino ativo e tenta rebirth continuamente para acelerar o ciclo de evolução.",
     "StrengthRebirth"
@@ -1076,6 +1299,71 @@ card(
     end,
     COLORS.Yellow
 )
+
+task.spawn(function()
+    while task.wait(1) do
+        if S.SelectedMachine then
+            machineTitle.Text = "Máquina: "..S.SelectedMachine
+        end
+    end
+end)
+
+section("AGILIDADE", "Farm automático de Agility usando a melhor esteira disponível para sua estatística atual.")
+
+toggle(
+    "Auto Agilidade / Esteira",
+    "Vai para a melhor esteira liberada pela sua Agility e mantém o personagem correndo nela.",
+    "AutoAgility"
+)
+
+local _, treadmillTitle, treadmillDesc = card(
+    "Esteira recomendada: calculando...",
+    "O 710Hub troca automaticamente para uma esteira melhor quando sua Agility aumenta.",
+    function() end,
+    COLORS.Green
+)
+
+task.spawn(function()
+    while task.wait(1) do
+        local tm = bestTreadmill()
+        if tm then
+            treadmillTitle.Text = "Esteira recomendada: "..tm.name
+            treadmillDesc.Text = "Agility atual: "..math.floor(numberStat("Agility")).." • Requisito usado: "..tm.minAgility
+        end
+    end
+end)
+
+section("FARM INTELIGENTE", "Escolha um objetivo e o hub configura automaticamente o método adequado.")
+
+local smartObjectives = {"Força","Durabilidade","Agilidade","Rebirths"}
+local smartObjectiveIndex = 1
+local _, smartObjectiveTitle = card(
+    "Objetivo: "..S.SmartObjective,
+    "Clique para alternar entre Força, Durabilidade, Agilidade e Rebirths.",
+    function(_,titleLabel)
+        smartObjectiveIndex = smartObjectiveIndex % #smartObjectives + 1
+        S.SmartObjective = smartObjectives[smartObjectiveIndex]
+        titleLabel.Text = "Objetivo: "..S.SmartObjective
+        if S.SmartFarm then
+            applySmartObjective()
+            for _,render in pairs(toggleRefs) do render() end
+        end
+    end,
+    COLORS.Yellow
+)
+
+local smartFarmButton = toggle(
+    "Farm inteligente automático",
+    "Ativa apenas as funções necessárias para o objetivo selecionado e ajusta o método automaticamente.",
+    "SmartFarm"
+)
+
+smartFarmButton.MouseButton1Click:Connect(function()
+    if S.SmartFarm then
+        applySmartObjective()
+        for _,render in pairs(toggleRefs) do render() end
+    end
+end)
 
 section("PETS E CRISTAIS", "Funções para abrir cristais e organizar os pets que você já possui.")
 
@@ -1171,6 +1459,11 @@ card(
     "Perfil: Força",
     "Ativa treino automático e soco animado; desliga farm de pets.",
     function()
+        S.SmartFarm = false
+        S.AutoAgility = false
+        S.AutoBestMachine = false
+        S.AutoMachine = false
+        S.StrengthRebirth = false
         S.Train = true
         S.AutoPunch = true
         S.SmartRock = false
@@ -1184,6 +1477,11 @@ card(
     "Perfil: Durabilidade",
     "Ativa o farm inteligente de pedras e soco animado.",
     function()
+        S.SmartFarm = false
+        S.AutoAgility = false
+        S.AutoBestMachine = false
+        S.AutoMachine = false
+        S.StrengthRebirth = false
         S.Train = false
         S.AutoPunch = true
         S.SmartRock = true
@@ -1196,6 +1494,11 @@ card(
     "Perfil: Pets",
     "Ativa abertura automática do cristal selecionado e desliga farms de combate.",
     function()
+        S.SmartFarm = false
+        S.AutoAgility = false
+        S.AutoBestMachine = false
+        S.AutoMachine = false
+        S.StrengthRebirth = false
         S.Train = false
         S.AutoPunch = false
         S.SmartRock = false
@@ -1209,7 +1512,11 @@ section("SESSÃO", "Informações úteis sobre seu progresso desde que o 710Hub 
 
 local startTime = os.clock()
 local startRebirths = currentRebirths()
-local startStrength = numberStat("Strength")
+local startAgility = numberStat("Agility")
+local startDurability = numberStat("Durability")
+local lastStrength = numberStat("Strength")
+local totalStrength = 0
+
 local _, sessionTitle, sessionDesc = card(
     "Sessão: iniciando...",
     "Calculando seus ganhos.",
@@ -1217,23 +1524,60 @@ local _, sessionTitle, sessionDesc = card(
     COLORS.Green
 )
 
+local _, efficiencyTitle, efficiencyDesc = card(
+    "Eficiência: calculando...",
+    "Mede os ganhos por minuto da sessão atual.",
+    function() end,
+    COLORS.Yellow
+)
+
+local function compactNumber(n)
+    n = tonumber(n) or 0
+    local a = math.abs(n)
+    if a >= 1e12 then return string.format("%.2fT", n/1e12) end
+    if a >= 1e9 then return string.format("%.2fB", n/1e9) end
+    if a >= 1e6 then return string.format("%.2fM", n/1e6) end
+    if a >= 1e3 then return string.format("%.1fK", n/1e3) end
+    return tostring(math.floor(n))
+end
+
 task.spawn(function()
     while task.wait(1) do
         local elapsed = math.max(1, os.clock() - startTime)
-        local rebirthGain = currentRebirths() - startRebirths
-        local strengthGain = numberStat("Strength") - startStrength
+        local minutes = math.max(1/60, elapsed/60)
+
+        local strengthNow = numberStat("Strength")
+        if strengthNow >= lastStrength then
+            totalStrength += (strengthNow - lastStrength)
+        end
+        lastStrength = strengthNow
+
+        local rebirthGain = math.max(0, currentRebirths() - startRebirths)
+        local agilityGain = math.max(0, numberStat("Agility") - startAgility)
+        local durabilityGain = math.max(0, numberStat("Durability") - startDurability)
+
+        local strengthPerMin = totalStrength / minutes
+        local agilityPerMin = agilityGain / minutes
+        local durabilityPerMin = durabilityGain / minutes
+        local rebirthPerMin = rebirthGain / minutes
+
         sessionTitle.Text = string.format(
             "Sessão: %02d:%02d:%02d",
             math.floor(elapsed/3600),
             math.floor((elapsed%3600)/60),
             math.floor(elapsed%60)
         )
-        sessionDesc.Text = string.format(
-            "Força ganha: %s  •  Rebirths ganhos: %s  •  Rebirths/min: %.2f",
-            tostring(math.floor(strengthGain)),
-            tostring(math.floor(rebirthGain)),
-            rebirthGain / (elapsed/60)
-        )
+
+        sessionDesc.Text = "Força: +"..compactNumber(totalStrength)
+            .." • Agility: +"..compactNumber(agilityGain)
+            .." • Rebirths: +"..compactNumber(rebirthGain)
+
+        efficiencyTitle.Text = "Eficiência • Força/min: "..compactNumber(strengthPerMin)
+            .." • Reb/min: "..string.format("%.2f", rebirthPerMin)
+
+        efficiencyDesc.Text = "Agility/min: "..compactNumber(agilityPerMin)
+            .." • Durability/min: "..compactNumber(durabilityPerMin)
+            .." • Objetivo: "..S.SmartObjective
     end
 end)
 
@@ -1276,7 +1620,10 @@ card(
         S.AutoPunch = false
         S.SmartRock = false
         S.AutoMachine = false
+        S.AutoBestMachine = false
         S.StrengthRebirth = false
+        S.AutoAgility = false
+        S.SmartFarm = false
         S.LockPosition = false
         lockedCFrame = nil
         for _,render in pairs(toggleRefs) do
