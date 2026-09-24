@@ -218,6 +218,9 @@ local function stopAllAutomations()
     S.LockPosition = false
     lockedCFrame = nil
     setHubStatus("Automações paradas")
+    if HubRuntime.RenderToggles then
+        task.defer(HubRuntime.RenderToggles)
+    end
 end
 
 local function findPunchTool()
@@ -1018,6 +1021,15 @@ main.Parent = gui
 addCorner(main, 17)
 addStroke(main, COLORS.Green, 2, .02)
 
+main:GetPropertyChangedSignal("Position"):Connect(function()
+    shadow.Position = UDim2.new(
+        main.Position.X.Scale,
+        main.Position.X.Offset - 8,
+        main.Position.Y.Scale,
+        main.Position.Y.Offset - 8
+    )
+end)
+
 -- faixa superior
 local header = Instance.new("Frame")
 header.Size = UDim2.new(1,0,0,78)
@@ -1271,6 +1283,39 @@ local function card(titleText, description, callback, accentColor)
 end
 
 local toggleRefs = {}
+
+local function renderAllToggles()
+    for _, render in pairs(toggleRefs) do
+        pcall(render)
+    end
+end
+HubRuntime.RenderToggles = renderAllToggles
+
+local function resolveToggleConflicts(key)
+    if not S[key] then return end
+
+    if key == "AutoAgility" then
+        S.LockPosition = false
+        S.SmartRock = false
+        S.AutoMachine = false
+        S.StrengthRebirth = false
+        lockedCFrame = nil
+    elseif key == "SmartRock" then
+        S.AutoAgility = false
+        S.AutoMachine = false
+        S.LockPosition = false
+        lockedCFrame = nil
+    elseif key == "AutoMachine" then
+        S.AutoAgility = false
+        S.SmartRock = false
+        S.LockPosition = false
+        lockedCFrame = nil
+    elseif key == "LockPosition" then
+        S.AutoAgility = false
+        S.SmartRock = false
+    end
+end
+
 local function toggle(titleText, description, key)
     local b,t,d = card(titleText, description, nil, COLORS.Green)
 
@@ -1316,7 +1361,8 @@ local function toggle(titleText, description, key)
 
     b.MouseButton1Click:Connect(function()
         S[key] = not S[key]
-        render()
+        resolveToggleConflicts(key)
+        renderAllToggles()
     end)
 
     toggleRefs[key] = render
@@ -1388,7 +1434,7 @@ UIS.InputBegan:Connect(function(input, processed)
         if menuOpen then hideMenu() else showMenu() end
     elseif input.KeyCode == Enum.KeyCode.End then
         stopAllAutomations()
-        for _,render in pairs(toggleRefs) do render() end
+        renderAllToggles()
     end
 end)
 
@@ -1579,7 +1625,7 @@ local _, smartObjectiveTitle = card(
         titleLabel.Text = "Objetivo: "..S.SmartObjective
         if S.SmartFarm then
             applySmartObjective()
-            for _,render in pairs(toggleRefs) do render() end
+            renderAllToggles()
         end
     end,
     COLORS.Yellow
@@ -1594,7 +1640,7 @@ local smartFarmButton = toggle(
 smartFarmButton.MouseButton1Click:Connect(function()
     if S.SmartFarm then
         applySmartObjective()
-        for _,render in pairs(toggleRefs) do render() end
+        renderAllToggles()
     end
 end)
 
@@ -1745,7 +1791,7 @@ card(
         S.AutoPunch = true
         S.SmartRock = false
         S.Hatch = false
-        for _,render in pairs(toggleRefs) do render() end
+        renderAllToggles()
     end,
     COLORS.Green
 )
@@ -1762,7 +1808,7 @@ card(
         S.Train = false
         S.AutoPunch = true
         S.SmartRock = true
-        for _,render in pairs(toggleRefs) do render() end
+        renderAllToggles()
     end,
     COLORS.Green
 )
@@ -1780,7 +1826,7 @@ card(
         S.AutoPunch = false
         S.SmartRock = false
         S.Hatch = true
-        for _,render in pairs(toggleRefs) do render() end
+        renderAllToggles()
     end,
     COLORS.Yellow
 )
@@ -1795,7 +1841,7 @@ local goalAdds = {
     Durability = {10000,100000,1000000,10000000},
     Rebirths = {10,50,100,500},
 }
-local goalAddIndex = 1
+local goalAddIndex = 0
 
 local _, goalStatTitle = card(
     "Estatística da meta: Strength",
@@ -1923,9 +1969,10 @@ task.spawn(function()
         local machineCount = #scanMachines()
 
         diagTitle.Text = "Status: "..HubRuntime.Status
-        diagDesc.Text = "Remotes: "..remoteCount.."/7"
+        diagDesc.Text = "Remotes: "..remoteCount.."/8"
             .." • muscleEvent: "..(muscleOK and "OK" or "AUSENTE")
             .." • Máquinas: "..machineCount
+            .." • Respawns: "..HubRuntime.Respawns
             .." • Chamadas: "..HubRuntime.RemoteCalls
     end
 end)
@@ -1995,9 +2042,7 @@ card(
     "Desliga treino, rebirth, baús, cristais e Brawl de uma vez.",
     function()
         stopAllAutomations()
-        for _,render in pairs(toggleRefs) do
-            render()
-        end
+        renderAllToggles()
     end,
     COLORS.Red
 )
