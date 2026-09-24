@@ -1,3 +1,0 @@
--- 710Hub compatibility entry for the original repository layout.
--- The main 710Hub loader does not depend on this file.
-return loadstring(game:HttpGet("https://raw.githubusercontent.com/AhmadV99/Speed-Hub-X/main/Kaitun/Grow%20A%20Garden%202", true))()
