@@ -1485,7 +1485,9 @@ local function section(name, desc)
     d.Parent = holder
 end
 
-local function card(titleText, description, callback, accentColor)
+local availabilityRefs = {}
+
+local function card(titleText, description, callback, accentColor, availableFn)
     local accentColorFinal = accentColor or COLORS.Green
 
     local b = Instance.new("TextButton")
@@ -1540,6 +1542,21 @@ local function card(titleText, description, callback, accentColor)
     d.TextTruncate = Enum.TextTruncate.AtEnd
     d.Parent = b
 
+    local function isAvailable()
+        if not availableFn then return true end
+        local ok, result = pcall(availableFn)
+        return ok and result == true
+    end
+
+    local function renderAvailability()
+        b.Visible = isAvailable()
+    end
+
+    if availableFn then
+        availabilityRefs[#availabilityRefs+1] = renderAvailability
+        renderAvailability()
+    end
+
     b.MouseEnter:Connect(function()
         tween(b,.12,{BackgroundColor3=COLORS.Panel3})
         tween(stroke,.12,{Transparency=.12})
@@ -1557,10 +1574,15 @@ local function card(titleText, description, callback, accentColor)
         tween(b,.09,{Size=UDim2.new(1,-6,0,60)})
     end)
     b.MouseButton1Click:Connect(function()
+        if not isAvailable() then
+            setHubStatus(titleText.." indisponível nesta sessão")
+            renderAvailability()
+            return
+        end
         if callback then task.spawn(callback,b,t,d) end
     end)
 
-    return b,t,d,stroke
+    return b,t,d,stroke,renderAvailability
 end
 
 local toggleRefs = {}
@@ -1681,6 +1703,9 @@ end
 task.spawn(function()
     while SESSION.Alive and task.wait(2) do
         renderAllToggles()
+        for _, render in ipairs(availabilityRefs) do
+            pcall(render)
+        end
     end
 end)
 
@@ -1869,7 +1894,8 @@ local _, machineTitle = card(
         S.SelectedMachine = names[machineIndex]
         titleLabel.Text = "Máquina: "..S.SelectedMachine
     end,
-    COLORS.Yellow
+    COLORS.Yellow,
+    function() return #scanMachines() > 0 end
 )
 
 card(
@@ -1878,7 +1904,8 @@ card(
     function()
         useSelectedMachine(true)
     end,
-    COLORS.Green
+    COLORS.Green,
+    canMachineFarm
 )
 
 toggle(
@@ -1902,7 +1929,8 @@ card(
         local info = selectBestMachine()
         machineTitle.Text = "Máquina: "..(info and info.name or "nenhuma encontrada")
     end,
-    COLORS.Yellow
+    COLORS.Yellow,
+    canMachineFarm
 )
 
 toggle(
@@ -1921,7 +1949,8 @@ card(
         S.SelectedMachine = names[1]
         machineTitle.Text = "Máquina: "..(S.SelectedMachine or "nenhuma encontrada")
     end,
-    COLORS.Yellow
+    COLORS.Yellow,
+    function() return #scanMachines() > 0 end
 )
 
 task.spawn(function()
@@ -1945,7 +1974,8 @@ local _, treadmillTitle, treadmillDesc = card(
     "Esteira recomendada: calculando...",
     "O 710Hub troca automaticamente para uma esteira melhor quando sua Agility aumenta.",
     function() end,
-    COLORS.Green
+    COLORS.Green,
+    canAgilityFarm
 )
 
 task.spawn(function()
@@ -2009,7 +2039,8 @@ local _, apexTitle, apexDesc = card(
         descLabel.Text = "Compra solicitada. É necessário ter Gems e espaço no inventário."
         buyShopPet(apex)
     end,
-    COLORS.Yellow
+    COLORS.Yellow,
+    function() return canPetShop() and findShopPetByNamePart("apex") ~= nil end
 )
 
 task.spawn(function()
@@ -2045,7 +2076,8 @@ card(
         S.HatchCrystal = crystals[crystalIndex]
         titleLabel.Text = "Cristal selecionado: "..S.HatchCrystal
     end,
-    COLORS.Yellow
+    COLORS.Yellow,
+    canHatch
 )
 
 card(
@@ -2054,21 +2086,24 @@ card(
     function()
         safeInvoke(R.Crystal,"openCrystal",S.HatchCrystal)
     end,
-    COLORS.Yellow
+    COLORS.Yellow,
+    canHatch
 )
 
 card(
     "Equipar melhores pets",
     "Ordena seus pets e tenta equipar os mais fortes que você já possui.",
     equipBestOwned,
-    COLORS.Green
+    COLORS.Green,
+    canPetManager
 )
 
 card(
     "Evoluir pets prontos",
     "Procura grupos de pets repetidos e tenta evoluir quando houver quantidade suficiente.",
     evolveReadyOwned,
-    COLORS.Green
+    COLORS.Green,
+    function() refreshRemotes(); return R.EvolvePet ~= nil and LP:FindFirstChild("petsFolder") ~= nil end
 )
 
 toggle(
@@ -2109,7 +2144,8 @@ card(
         tpIndex = tpIndex % #tpNames + 1
         titleLabel.Text = "Destino: "..tpNames[tpIndex]
     end,
-    COLORS.Yellow
+    COLORS.Yellow,
+    function() return #tpNames > 0 end
 )
 
 card(
@@ -2123,62 +2159,79 @@ card(
             root.CFrame = part.CFrame + Vector3.new(0,4,0)
         end
     end,
-    COLORS.Green
+    COLORS.Green,
+    function() return #tpNames > 0 end
 )
 
 section("PERFIS RÁPIDOS", "Atalhos que combinam várias funções para objetivos diferentes.")
 
 card(
     "Perfil: Força",
-    "Ativa treino automático e soco animado; desliga farm de pets.",
+    "Ativa automaticamente o método de força disponível mais consistente nesta sessão.",
     function()
-        S.SmartFarm = false
-        S.AutoAgility = false
-        S.AutoBestMachine = false
-        S.AutoMachine = false
-        S.StrengthRebirth = false
-        S.Train = true
-        S.AutoPunch = true
-        S.SmartRock = false
-        S.Hatch = false
+        stopAllAutomations()
+        if canMachineFarm() then
+            S.AutoBestMachine = true
+            selectBestMachine()
+            S.AutoMachine = true
+        elseif canTrain() then
+            S.Train = true
+        end
         renderAllToggles()
+        setHubStatus("Perfil de Força ativado")
     end,
-    COLORS.Green
+    COLORS.Green,
+    function() return canMachineFarm() or canTrain() end
 )
 
 card(
     "Perfil: Durabilidade",
-    "Ativa o farm inteligente de pedras e soco animado.",
+    "Ativa soco + melhor pedra compatível com sua Durability atual.",
     function()
-        S.SmartFarm = false
-        S.AutoAgility = false
-        S.AutoBestMachine = false
-        S.AutoMachine = false
-        S.StrengthRebirth = false
-        S.Train = false
+        stopAllAutomations()
         S.AutoPunch = true
         S.SmartRock = true
         renderAllToggles()
+        setHubStatus("Perfil de Durabilidade ativado")
     end,
-    COLORS.Green
+    COLORS.Green,
+    function() return canRockFarm() and canPunch() end
 )
 
 card(
     "Perfil: Pets",
-    "Ativa abertura automática do cristal selecionado e desliga farms de combate.",
+    "Ativa Auto Hatch e, quando disponível, atualização automática dos melhores pets.",
     function()
-        S.SmartFarm = false
-        S.AutoAgility = false
-        S.AutoBestMachine = false
-        S.AutoMachine = false
-        S.StrengthRebirth = false
-        S.Train = false
-        S.AutoPunch = false
-        S.SmartRock = false
+        stopAllAutomations()
         S.Hatch = true
+        if canPetManager() then
+            S.AutoEquipAfterHatch = true
+        end
         renderAllToggles()
+        setHubStatus("Perfil de Pets ativado")
     end,
-    COLORS.Yellow
+    COLORS.Yellow,
+    canHatch
+)
+
+card(
+    "Perfil: Rebirths",
+    "Combina treino disponível com tentativas de rebirth e mantém o ciclo automaticamente.",
+    function()
+        stopAllAutomations()
+        if canMachineFarm() then
+            S.AutoBestMachine = true
+            selectBestMachine()
+            S.AutoMachine = true
+        else
+            S.Train = true
+        end
+        S.StrengthRebirth = true
+        renderAllToggles()
+        setHubStatus("Perfil de Rebirths ativado")
+    end,
+    COLORS.Yellow,
+    function() return canRebirth() and (canMachineFarm() or canTrain()) end
 )
 
 section("METAS", "Defina um objetivo e o hub para automaticamente quando alcançar o valor.")
