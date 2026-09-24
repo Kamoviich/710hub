@@ -2333,7 +2333,7 @@ local _, goalStatTitle = card(
     function(_,titleLabel)
         goalStatIndex = goalStatIndex % #goalStats + 1
         S.GoalStat = goalStats[goalStatIndex]
-        goalAddIndex = 1
+        goalAddIndex = 0
         S.GoalValue = nil
         titleLabel.Text = "Estatística da meta: "..S.GoalStat
     end,
