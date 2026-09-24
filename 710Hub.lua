@@ -32,6 +32,7 @@ local R = {
     EvolvePet = rEvents:FindFirstChild("petEvolveEvent"),
     Brawl = rEvents:FindFirstChild("brawlEvent"),
     Machine = rEvents:FindFirstChild("machineInteractRemote"),
+    PetShop = rEvents:FindFirstChild("cPetShopRemote"),
 }
 
 local S = {
@@ -547,6 +548,63 @@ local function activateTrainingTool()
     end
 
     return false
+end
+
+local function getPetShopFolder()
+    local shared = RS:FindFirstChild("shared")
+    local runtime = shared and shared:FindFirstChild("runtime")
+    return runtime and runtime:FindFirstChild("cPetShopFolder")
+end
+
+local function findShopPetByNamePart(part)
+    local folder = getPetShopFolder()
+    if not folder then return nil end
+
+    part = string.lower(part or "")
+    for _, item in ipairs(folder:GetChildren()) do
+        if item:GetAttribute("IsPowerUp") ~= true
+            and string.find(string.lower(item.Name), part, 1, true) then
+            return item
+        end
+    end
+
+    return nil
+end
+
+local function buyShopPet(item)
+    if not item then
+        setHubError("Pet não encontrado no catálogo atual")
+        return false
+    end
+
+    local remote = R.PetShop or rEvents:FindFirstChild("cPetShopRemote")
+    if not remote then
+        setHubError("cPetShopRemote não encontrado")
+        return false
+    end
+
+    local ok, result = pcall(function()
+        HubRuntime.RemoteCalls += 1
+        return remote:InvokeServer(item)
+    end)
+
+    if not ok then
+        setHubError(result)
+        return false
+    end
+
+    setHubStatus("Compra solicitada: "..item.Name)
+    return true
+end
+
+local function buyApexPet()
+    local apex = findShopPetByNamePart("apex")
+    if not apex then
+        setHubError("Apex não está disponível no catálogo deste servidor")
+        setHubStatus("Apex indisponível")
+        return false
+    end
+    return buyShopPet(apex)
 end
 
 local function allOwnedPets()
@@ -1492,7 +1550,39 @@ smartFarmButton.MouseButton1Click:Connect(function()
     end
 end)
 
-section("PETS E CRISTAIS", "Funções para abrir cristais e organizar os pets que você já possui.")
+section("PETS E CRISTAIS", "Funções para abrir cristais, comprar pets disponíveis e organizar sua coleção.")
+
+local _, apexTitle, apexDesc = card(
+    "Comprar pet Apex",
+    "Procura Apex no catálogo atual do Pet Shop e solicita uma compra usando o sistema normal da loja.",
+    function(_,titleLabel,descLabel)
+        local apex = findShopPetByNamePart("apex")
+        if not apex then
+            titleLabel.Text = "Apex indisponível neste servidor"
+            descLabel.Text = "Nenhum pet com 'Apex' foi encontrado em cPetShopFolder."
+            setHubStatus("Apex indisponível")
+            return
+        end
+
+        titleLabel.Text = "Comprar "..apex.Name
+        descLabel.Text = "Compra solicitada. É necessário ter Gems e espaço no inventário."
+        buyShopPet(apex)
+    end,
+    COLORS.Yellow
+)
+
+task.spawn(function()
+    while task.wait(2) do
+        local apex = findShopPetByNamePart("apex")
+        if apex then
+            apexTitle.Text = "Comprar "..apex.Name
+            apexDesc.Text = "Disponível no Pet Shop atual • requer Gems e espaço no inventário."
+        else
+            apexTitle.Text = "Comprar pet Apex"
+            apexDesc.Text = "Apex não foi encontrado no catálogo atual."
+        end
+    end
+end)
 
 toggle(
     "Abrir cristal automaticamente",
