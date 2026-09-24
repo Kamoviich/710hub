@@ -168,69 +168,265 @@ task.spawn(function()
     end
 end)
 
+local TweenService = game:GetService("TweenService")
+
+-- 710Hub UI • Jamaica theme ---------------------------------------------------
+local COLORS = {
+    Black = Color3.fromRGB(10, 12, 10),
+    Panel = Color3.fromRGB(18, 21, 18),
+    Panel2 = Color3.fromRGB(25, 29, 25),
+    Green = Color3.fromRGB(0, 155, 58),
+    GreenDark = Color3.fromRGB(0, 92, 35),
+    Yellow = Color3.fromRGB(254, 209, 0),
+    YellowSoft = Color3.fromRGB(255, 222, 64),
+    White = Color3.fromRGB(245, 247, 245),
+    Muted = Color3.fromRGB(155, 165, 155),
+    Off = Color3.fromRGB(80, 86, 80),
+}
+
 local gui = Instance.new("ScreenGui")
 gui.Name = "710Hub_MuscleLegends"
 gui.ResetOnSpawn = false
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 gui.Parent = game:GetService("CoreGui")
 
+local shadow = Instance.new("Frame", gui)
+shadow.Size = UDim2.fromOffset(466, 566)
+shadow.Position = UDim2.new(.5, -225, .5, -274)
+shadow.BackgroundColor3 = Color3.new(0,0,0)
+shadow.BackgroundTransparency = .45
+shadow.BorderSizePixel = 0
+local shadowCorner = Instance.new("UICorner", shadow)
+shadowCorner.CornerRadius = UDim.new(0, 16)
+
 local main = Instance.new("Frame", gui)
-main.Size = UDim2.fromOffset(430, 520)
-main.Position = UDim2.new(.5,-215,.5,-260)
-main.BackgroundColor3 = Color3.fromRGB(20,22,28)
+main.Size = UDim2.fromOffset(450, 550)
+main.Position = UDim2.new(.5, -225, .5, -275)
+main.BackgroundColor3 = COLORS.Black
 main.BorderSizePixel = 0
 main.Active = true
 main.Draggable = true
-Instance.new("UICorner",main).CornerRadius = UDim.new(0,10)
+local mainCorner = Instance.new("UICorner", main)
+mainCorner.CornerRadius = UDim.new(0, 15)
 
-local title = Instance.new("TextLabel",main)
-title.Size = UDim2.new(1,0,0,48)
+local mainStroke = Instance.new("UIStroke", main)
+mainStroke.Color = COLORS.Green
+mainStroke.Thickness = 2
+mainStroke.Transparency = .05
+
+local top = Instance.new("Frame", main)
+top.Size = UDim2.new(1, 0, 0, 64)
+top.BackgroundColor3 = COLORS.Panel
+top.BorderSizePixel = 0
+local topCorner = Instance.new("UICorner", top)
+topCorner.CornerRadius = UDim.new(0, 15)
+
+local topMask = Instance.new("Frame", top)
+topMask.Position = UDim2.new(0,0,1,-15)
+topMask.Size = UDim2.new(1,0,0,15)
+topMask.BackgroundColor3 = COLORS.Panel
+topMask.BorderSizePixel = 0
+
+local flagGreen = Instance.new("Frame", top)
+flagGreen.Size = UDim2.new(.34,0,0,4)
+flagGreen.Position = UDim2.new(0,0,1,-4)
+flagGreen.BackgroundColor3 = COLORS.Green
+flagGreen.BorderSizePixel = 0
+
+local flagYellow = Instance.new("Frame", top)
+flagYellow.Size = UDim2.new(.32,0,0,4)
+flagYellow.Position = UDim2.new(.34,0,1,-4)
+flagYellow.BackgroundColor3 = COLORS.Yellow
+flagYellow.BorderSizePixel = 0
+
+local flagGreen2 = Instance.new("Frame", top)
+flagGreen2.Size = UDim2.new(.34,0,0,4)
+flagGreen2.Position = UDim2.new(.66,0,1,-4)
+flagGreen2.BackgroundColor3 = COLORS.Green
+flagGreen2.BorderSizePixel = 0
+
+local logo = Instance.new("TextLabel", top)
+logo.Size = UDim2.fromOffset(52, 52)
+logo.Position = UDim2.fromOffset(10, 5)
+logo.BackgroundColor3 = COLORS.Green
+logo.Text = "710"
+logo.TextColor3 = COLORS.Yellow
+logo.Font = Enum.Font.GothamBlack
+logo.TextSize = 17
+logo.BorderSizePixel = 0
+local logoCorner = Instance.new("UICorner", logo)
+logoCorner.CornerRadius = UDim.new(0, 12)
+local logoStroke = Instance.new("UIStroke", logo)
+logoStroke.Color = COLORS.Yellow
+logoStroke.Thickness = 1.5
+
+local title = Instance.new("TextLabel", top)
+title.Position = UDim2.fromOffset(74, 8)
+title.Size = UDim2.new(1, -128, 0, 26)
 title.BackgroundTransparency = 1
-title.Text = "710Hub  •  Muscle Legends"
-title.TextColor3 = Color3.new(1,1,1)
+title.Text = "710Hub"
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.TextColor3 = COLORS.White
 title.Font = Enum.Font.GothamBold
-title.TextSize = 18
+title.TextSize = 20
 
-local scroll = Instance.new("ScrollingFrame",main)
-scroll.Position = UDim2.fromOffset(12,52)
-scroll.Size = UDim2.new(1,-24,1,-64)
+local subtitle = Instance.new("TextLabel", top)
+subtitle.Position = UDim2.fromOffset(74, 33)
+subtitle.Size = UDim2.new(1, -128, 0, 18)
+subtitle.BackgroundTransparency = 1
+subtitle.Text = "MUSCLE LEGENDS  •  JAMAICA EDITION"
+subtitle.TextXAlignment = Enum.TextXAlignment.Left
+subtitle.TextColor3 = COLORS.Yellow
+subtitle.Font = Enum.Font.GothamMedium
+subtitle.TextSize = 10
+
+local close = Instance.new("TextButton", top)
+close.Size = UDim2.fromOffset(34, 34)
+close.Position = UDim2.new(1, -44, 0, 14)
+close.BackgroundColor3 = COLORS.Panel2
+close.Text = "×"
+close.TextColor3 = COLORS.Yellow
+close.Font = Enum.Font.GothamBold
+close.TextSize = 22
+close.BorderSizePixel = 0
+local closeCorner = Instance.new("UICorner", close)
+closeCorner.CornerRadius = UDim.new(0, 9)
+close.MouseButton1Click:Connect(function()
+    gui:Destroy()
+end)
+
+local scroll = Instance.new("ScrollingFrame", main)
+scroll.Position = UDim2.fromOffset(12, 76)
+scroll.Size = UDim2.new(1, -24, 1, -88)
 scroll.BackgroundTransparency = 1
 scroll.BorderSizePixel = 0
-scroll.ScrollBarThickness = 4
+scroll.ScrollBarThickness = 3
+scroll.ScrollBarImageColor3 = COLORS.Yellow
 scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
 scroll.CanvasSize = UDim2.new()
-local layout = Instance.new("UIListLayout",scroll)
-layout.Padding = UDim.new(0,7)
 
-local function button(text, cb)
-    local b=Instance.new("TextButton",scroll)
-    b.Size=UDim2.new(1,-6,0,38)
-    b.BackgroundColor3=Color3.fromRGB(35,39,49)
-    b.TextColor3=Color3.new(1,1,1)
-    b.Font=Enum.Font.GothamMedium
-    b.TextSize=14
-    b.Text=text
-    Instance.new("UICorner",b).CornerRadius=UDim.new(0,7)
-    b.MouseButton1Click:Connect(function() task.spawn(cb,b) end)
-    return b
+local layout = Instance.new("UIListLayout", scroll)
+layout.Padding = UDim.new(0, 8)
+layout.SortOrder = Enum.SortOrder.LayoutOrder
+
+local function addCorner(obj, radius)
+    local c = Instance.new("UICorner", obj)
+    c.CornerRadius = UDim.new(0, radius or 9)
+    return c
 end
 
-local function toggle(label,key)
-    local b
-    b=button(label..": OFF",function()
-        S[key]=not S[key]
-        b.Text=label..(S[key] and ": ON" or ": OFF")
+local function addStroke(obj, color, thickness, transparency)
+    local s = Instance.new("UIStroke", obj)
+    s.Color = color
+    s.Thickness = thickness or 1
+    s.Transparency = transparency or 0
+    return s
+end
+
+local function section(text)
+    local holder = Instance.new("Frame", scroll)
+    holder.Size = UDim2.new(1, -6, 0, 30)
+    holder.BackgroundTransparency = 1
+
+    local accent = Instance.new("Frame", holder)
+    accent.Size = UDim2.fromOffset(4, 20)
+    accent.Position = UDim2.fromOffset(1, 5)
+    accent.BackgroundColor3 = COLORS.Green
+    accent.BorderSizePixel = 0
+    addCorner(accent, 3)
+
+    local label = Instance.new("TextLabel", holder)
+    label.Position = UDim2.fromOffset(14, 0)
+    label.Size = UDim2.new(1, -14, 1, 0)
+    label.BackgroundTransparency = 1
+    label.Text = text
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.TextColor3 = COLORS.Yellow
+    label.Font = Enum.Font.GothamBold
+    label.TextSize = 12
+end
+
+local function button(text, callback, accentColor)
+    local b = Instance.new("TextButton", scroll)
+    b.Size = UDim2.new(1, -6, 0, 42)
+    b.BackgroundColor3 = COLORS.Panel2
+    b.BorderSizePixel = 0
+    b.AutoButtonColor = false
+    b.Text = ""
+    addCorner(b, 10)
+    addStroke(b, Color3.fromRGB(47, 55, 47), 1, .15)
+
+    local accent = Instance.new("Frame", b)
+    accent.Size = UDim2.fromOffset(4, 24)
+    accent.Position = UDim2.fromOffset(8, 9)
+    accent.BackgroundColor3 = accentColor or COLORS.Green
+    accent.BorderSizePixel = 0
+    addCorner(accent, 3)
+
+    local label = Instance.new("TextLabel", b)
+    label.Position = UDim2.fromOffset(23, 0)
+    label.Size = UDim2.new(1, -34, 1, 0)
+    label.BackgroundTransparency = 1
+    label.Text = text
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.TextColor3 = COLORS.White
+    label.Font = Enum.Font.GothamMedium
+    label.TextSize = 13
+
+    b.MouseEnter:Connect(function()
+        TweenService:Create(b, TweenInfo.new(.12), {BackgroundColor3 = Color3.fromRGB(32, 38, 32)}):Play()
     end)
+    b.MouseLeave:Connect(function()
+        TweenService:Create(b, TweenInfo.new(.12), {BackgroundColor3 = COLORS.Panel2}):Play()
+    end)
+    b.MouseButton1Click:Connect(function()
+        task.spawn(callback, b, label)
+    end)
+
+    return b, label
 end
 
-local function section(t)
-    local l=Instance.new("TextLabel",scroll)
-    l.Size=UDim2.new(1,-6,0,28)
-    l.BackgroundTransparency=1
-    l.Text=t
-    l.TextXAlignment=Enum.TextXAlignment.Left
-    l.TextColor3=Color3.fromRGB(170,180,255)
-    l.Font=Enum.Font.GothamBold
-    l.TextSize=14
+local function toggle(labelText, key)
+    local b, label = button(labelText, function() end, COLORS.Green)
+
+    local pill = Instance.new("Frame", b)
+    pill.Size = UDim2.fromOffset(58, 24)
+    pill.Position = UDim2.new(1, -68, .5, -12)
+    pill.BackgroundColor3 = Color3.fromRGB(35, 39, 35)
+    pill.BorderSizePixel = 0
+    addCorner(pill, 12)
+
+    local dot = Instance.new("Frame", pill)
+    dot.Size = UDim2.fromOffset(18, 18)
+    dot.Position = UDim2.fromOffset(3, 3)
+    dot.BackgroundColor3 = COLORS.Off
+    dot.BorderSizePixel = 0
+    addCorner(dot, 9)
+
+    local status = Instance.new("TextLabel", pill)
+    status.Size = UDim2.new(1, -25, 1, 0)
+    status.Position = UDim2.fromOffset(23, 0)
+    status.BackgroundTransparency = 1
+    status.Text = "OFF"
+    status.TextColor3 = COLORS.Muted
+    status.Font = Enum.Font.GothamBold
+    status.TextSize = 9
+
+    label.Size = UDim2.new(1, -102, 1, 0)
+
+    b.MouseButton1Click:Connect(function()
+        S[key] = not S[key]
+        local on = S[key]
+        status.Text = on and "ON" or "OFF"
+        status.TextColor3 = on and COLORS.Black or COLORS.Muted
+        TweenService:Create(pill, TweenInfo.new(.16), {
+            BackgroundColor3 = on and COLORS.Yellow or Color3.fromRGB(35,39,35)
+        }):Play()
+        TweenService:Create(dot, TweenInfo.new(.16), {
+            Position = on and UDim2.fromOffset(37,3) or UDim2.fromOffset(3,3),
+            BackgroundColor3 = on and COLORS.Green or COLORS.Off
+        }):Play()
+    end)
 end
 
 section("FARM")
@@ -239,57 +435,65 @@ toggle("Auto Rebirth", "Rebirth")
 toggle("Auto Chests", "Chests")
 toggle("Auto Join Brawl", "Brawl")
 
-section("PETS / CRYSTALS")
+section("PETS & CRYSTALS")
 toggle("Auto Hatch", "Hatch")
 
-local crystals={"Blue Crystal","Green Crystal","Mythical Crystal","Frost Crystal","Inferno Crystal","Legends Crystal","Muscle Elite Crystal"}
-local crystalIndex=1
-button("Crystal: "..crystals[crystalIndex],function(b)
+local crystals = {"Blue Crystal","Green Crystal","Mythical Crystal","Frost Crystal","Inferno Crystal","Legends Crystal","Muscle Elite Crystal"}
+local crystalIndex = 1
+local _, crystalLabel = button("Crystal  •  "..crystals[crystalIndex], function(_, label)
     crystalIndex = crystalIndex % #crystals + 1
-    S.HatchCrystal=crystals[crystalIndex]
-    b.Text="Crystal: "..S.HatchCrystal
-end)
-button("Hatch x1",function()
-    safeInvoke(R.Crystal,"openCrystal",S.HatchCrystal)
-end)
-button("Equip Best Owned Pets",equipBestOwned)
-button("Evolve Ready Owned Pets",evolveReadyOwned)
+    S.HatchCrystal = crystals[crystalIndex]
+    label.Text = "Crystal  •  "..S.HatchCrystal
+end, COLORS.Yellow)
+
+button("Hatch x1", function()
+    safeInvoke(R.Crystal, "openCrystal", S.HatchCrystal)
+end, COLORS.Yellow)
+
+button("Equip Best Owned Pets", equipBestOwned, COLORS.Green)
+button("Evolve Ready Owned Pets", evolveReadyOwned, COLORS.Green)
 
 section("TELEPORTS")
-local tpNames={}
-local tpParts={}
-local area=workspace:FindFirstChild("areaTeleportParts")
+local tpNames = {}
+local tpParts = {}
+local area = workspace:FindFirstChild("areaTeleportParts")
 if area then
-    for _,obj in ipairs(area:GetDescendants()) do
+    for _, obj in ipairs(area:GetDescendants()) do
         if obj:IsA("BasePart") then
-            tpNames[#tpNames+1]=obj.Name
-            tpParts[obj.Name]=obj
+            tpNames[#tpNames+1] = obj.Name
+            tpParts[obj.Name] = obj
         end
     end
     table.sort(tpNames)
 end
-local tpIndex=1
-button("Teleport: "..(tpNames[1] or "none found"),function(b)
-    if #tpNames==0 then return end
-    tpIndex=tpIndex%#tpNames+1
-    b.Text="Teleport: "..tpNames[tpIndex]
-end)
-button("Go To Selected Teleport",function()
-    local p=tpParts[tpNames[tpIndex]]
-    local c=LP.Character
-    if p and c and c:FindFirstChild("HumanoidRootPart") then
-        c.HumanoidRootPart.CFrame=p.CFrame+Vector3.new(0,4,0)
+
+local tpIndex = 1
+button("Teleport  •  "..(tpNames[1] or "none found"), function(_, label)
+    if #tpNames == 0 then return end
+    tpIndex = tpIndex % #tpNames + 1
+    label.Text = "Teleport  •  "..tpNames[tpIndex]
+end, COLORS.Yellow)
+
+button("Go To Selected Teleport", function()
+    local p = tpParts[tpNames[tpIndex]]
+    local char = LP.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if p and root then
+        root.CFrame = p.CFrame + Vector3.new(0, 4, 0)
     end
-end)
+end, COLORS.Green)
 
 section("UTILITY")
-button("Stop All",function()
-    S.Train=false
-    S.Rebirth=false
-    S.Chests=false
-    S.Hatch=false
-    S.Brawl=false
-end)
-button("Close UI",function() gui:Destroy() end)
+button("Stop All Automations", function()
+    S.Train = false
+    S.Rebirth = false
+    S.Chests = false
+    S.Hatch = false
+    S.Brawl = false
+end, COLORS.Yellow)
 
-print("[710Hub] Muscle Legends loaded")
+button("Close 710Hub", function()
+    gui:Destroy()
+end, COLORS.Green)
+
+print("[710Hub] Muscle Legends loaded • Jamaica UI")
