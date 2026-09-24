@@ -32,7 +32,7 @@ local R = {
 
 local S = {
     Train=false, Rebirth=false, Chests=false, Hatch=false, Brawl=false,
-    AutoPunch=false, SmartRock=false,
+    AutoPunch=false, SmartRock=false, LockPosition=false,
     HatchCrystal="Blue Crystal", RepDelay=.065, HatchDelay=.45,
     RebirthTarget=nil,
 }
@@ -77,6 +77,41 @@ end
 local function currentRebirths()
     return numberStat("Rebirths")
 end
+
+local lockedCFrame = nil
+
+local function captureLockPosition()
+    local character = LP.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    if root then
+        lockedCFrame = root.CFrame
+        return true
+    end
+    return false
+end
+
+LP.CharacterAdded:Connect(function()
+    lockedCFrame = nil
+    S.LockPosition = false
+end)
+
+task.spawn(function()
+    while task.wait(.08) do
+        if S.LockPosition then
+            local character = LP.Character
+            local root = character and character:FindFirstChild("HumanoidRootPart")
+            if not lockedCFrame then
+                captureLockPosition()
+            end
+            if root and lockedCFrame then
+                pcall(function()
+                    root.CFrame = lockedCFrame
+                    root.AssemblyLinearVelocity = Vector3.zero
+                end)
+            end
+        end
+    end
+end)
 
 local function findPunchTool()
     local character = LP.Character
@@ -1048,6 +1083,31 @@ end)
 
 section("UTILIDADES", "Controles gerais do 710Hub.")
 
+local lockButton = toggle(
+    "Travar posição",
+    "Mantém seu personagem parado exatamente no ponto atual até você desligar.",
+    "LockPosition"
+)
+
+lockButton.MouseButton1Click:Connect(function()
+    if S.LockPosition then
+        captureLockPosition()
+    else
+        lockedCFrame = nil
+    end
+end)
+
+card(
+    "Atualizar posição travada",
+    "Salva sua posição atual como o novo ponto fixo quando o Travar posição estiver ligado.",
+    function()
+        if S.LockPosition then
+            captureLockPosition()
+        end
+    end,
+    COLORS.Yellow
+)
+
 card(
     "Parar todas as automações",
     "Desliga treino, rebirth, baús, cristais e Brawl de uma vez.",
@@ -1059,6 +1119,8 @@ card(
         S.Brawl = false
         S.AutoPunch = false
         S.SmartRock = false
+        S.LockPosition = false
+        lockedCFrame = nil
         for _,render in pairs(toggleRefs) do
             render()
         end
