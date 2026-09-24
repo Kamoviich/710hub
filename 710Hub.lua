@@ -19,7 +19,7 @@ end
 
 local SESSION = {
     Alive = true,
-    Version = "2026.09-stable.2",
+    Version = "2026.09-stable.3",
     Connections = {},
 }
 
@@ -41,6 +41,22 @@ local Lighting = game:GetService("Lighting")
 local LP = Players.LocalPlayer
 local rEvents = RS:WaitForChild("rEvents")
 local Backpack = LP:WaitForChild("Backpack")
+
+local function getBackpack()
+    local current = LP:FindFirstChildOfClass("Backpack")
+    if current then
+        Backpack = current
+        return current
+    end
+    local ok, found = pcall(function()
+        return LP:WaitForChild("Backpack", 5)
+    end)
+    if ok and found then
+        Backpack = found
+        return found
+    end
+    return Backpack
+end
 
 local function getMuscleEvent()
     return LP:FindFirstChild("muscleEvent")
@@ -244,7 +260,8 @@ local function findPunchTool()
     local character = LP.Character
     local equipped = character and character:FindFirstChild("Punch")
     if equipped and equipped:IsA("Tool") then return equipped end
-    local tool = Backpack:FindFirstChild("Punch")
+    local backpack = getBackpack()
+    local tool = backpack and backpack:FindFirstChild("Punch")
     if tool and tool:IsA("Tool") then return tool end
 end
 
@@ -432,27 +449,28 @@ end
 
 local function useSelectedMachine(moveCharacter)
     local info = S.AutoBestMachine and selectBestMachine() or getSelectedMachine()
-    if not info then return false end
+    if not info or not info.seat or not info.seat.Parent then return false end
+
+    refreshRemotes()
 
     local character = LP.Character
     local root = character and character:FindFirstChild("HumanoidRootPart")
+    if not root then return false end
 
-    if moveCharacter and root then
+    local distance = (root.Position - info.seat.Position).Magnitude
+    if moveCharacter or distance > 14 then
         pcall(function()
             root.CFrame = info.seat.CFrame * CFrame.new(0, 3, 0)
         end)
-        task.wait(.12)
+        task.wait(.15)
     end
 
-    if R.Machine then
-        safeInvoke(R.Machine, "useMachine", info.seat)
+    if not R.Machine or not getMuscleEvent() then
+        return false
     end
 
-    local event = getMuscleEvent()
-    if event then
-        safeFire(event, "rep", info.seat)
-    end
-
+    safeInvoke(R.Machine, "useMachine", info.seat)
+    safeFire(getMuscleEvent(), "rep", info.seat)
     return true
 end
 
@@ -582,7 +600,9 @@ local function findTrainingTool()
     end
 
     local fallback
-    for _, tool in ipairs(Backpack:GetChildren()) do
+    local backpack = getBackpack()
+    if not backpack then return equipped end
+    for _, tool in ipairs(backpack:GetChildren()) do
         if tool:IsA("Tool") and not hasKeyword(tool.Name, IGNORE_TOOL_KEYWORDS) then
             if hasKeyword(tool.Name, TRAINING_KEYWORDS) then
                 return tool
@@ -601,7 +621,8 @@ local function activateTrainingTool()
     local tool = findTrainingTool()
     if not tool then return false end
 
-    if tool.Parent == Backpack then
+    local backpack = getBackpack()
+    if backpack and tool.Parent == backpack then
         pcall(function()
             humanoid:EquipTool(tool)
         end)
@@ -640,7 +661,7 @@ local function findShopPetByNamePart(part)
 end
 
 local function buyShopPet(item)
-    if not item then
+    if not item or not item.Parent then
         setHubError("Pet não encontrado no catálogo atual")
         return false
     end
@@ -689,16 +710,37 @@ end
 
 local rarityRank = {Basic=1,Rare=2,Epic=3,Unique=4,Advanced=5}
 local function petPower(p)
-    local score = (rarityRank[p.rarity] or 0) * 1e12
-    local level = p.pet:FindFirstChild("level")
-    score += (level and tonumber(level.Value) or 1) * 1e6
-    for _, key in ipairs({"strength","agility","durability"}) do
-        local v = p.pet:FindFirstChild(key)
-        if v then score += tonumber(v.Value) or 0 end
-        local perks = p.pet:FindFirstChild("perksFolder")
-        local pv = perks and perks:FindFirstChild(key)
-        if pv then score += tonumber(pv.Value) or 0 end
+    local score = 0
+    local foundStat = false
+
+    local function addNumeric(container, key)
+        local value = container and container:FindFirstChild(key)
+        if value and tonumber(value.Value) then
+            score += tonumber(value.Value)
+            foundStat = true
+        end
     end
+
+    for _, key in ipairs({"strength","Strength","agility","Agility","durability","Durability"}) do
+        addNumeric(p.pet, key)
+    end
+
+    local perks = p.pet:FindFirstChild("perksFolder")
+    if perks then
+        for _, key in ipairs({"strength","Strength","agility","Agility","durability","Durability"}) do
+            addNumeric(perks, key)
+        end
+    end
+
+    local level = p.pet:FindFirstChild("level") or p.pet:FindFirstChild("Level")
+    if level and tonumber(level.Value) then
+        score += tonumber(level.Value) * 0.001
+    end
+
+    if not foundStat then
+        score += (rarityRank[p.rarity] or 0)
+    end
+
     return score
 end
 
@@ -797,9 +839,22 @@ task.spawn(function()
 end)
 
 task.spawn(function()
-    while SESSION.Alive and task.wait(.22) do
+    local failures = 0
+    while SESSION.Alive and task.wait(.28) do
         if S.AutoMachine then
-            useSelectedMachine(false)
+            if useSelectedMachine(false) then
+                failures = 0
+            else
+                failures += 1
+                if failures >= 6 then
+                    S.AutoMachine = false
+                    failures = 0
+                    setHubStatus("Treino em máquina desativado: recurso indisponível")
+                    if HubRuntime.RenderToggles then task.defer(HubRuntime.RenderToggles) end
+                end
+            end
+        else
+            failures = 0
         end
     end
 end)
@@ -861,6 +916,68 @@ task.spawn(function()
     end
 end)
 
+local function hasCharacter()
+    local character = LP.Character
+    return character
+        and character:FindFirstChild("HumanoidRootPart") ~= nil
+        and character:FindFirstChildOfClass("Humanoid") ~= nil
+end
+
+local function canTrain()
+    return getMuscleEvent() ~= nil or findTrainingTool() ~= nil
+end
+
+local function canRebirth()
+    refreshRemotes()
+    return R.Rebirth ~= nil
+end
+
+local function canPunch()
+    return getMuscleEvent() ~= nil and findPunchTool() ~= nil
+end
+
+local function canRockFarm()
+    return type(firetouchinterest) == "function"
+        and hasCharacter()
+        and bestAvailableRock() ~= nil
+end
+
+local function canMachineFarm()
+    refreshRemotes()
+    return R.Machine ~= nil
+        and getMuscleEvent() ~= nil
+        and #scanMachines() > 0
+end
+
+local function canAgilityFarm()
+    return hasCharacter() and LP:FindFirstChild("Agility") ~= nil
+end
+
+local function canChestFarm()
+    refreshRemotes()
+    return R.Chest ~= nil
+end
+
+local function canBrawl()
+    refreshRemotes()
+    return R.Brawl ~= nil
+end
+
+local function canHatch()
+    refreshRemotes()
+    return R.Crystal ~= nil
+end
+
+local function canPetManager()
+    refreshRemotes()
+    return R.EquipPet ~= nil and LP:FindFirstChild("petsFolder") ~= nil
+end
+
+local function canPetShop()
+    refreshRemotes()
+    return R.PetShop ~= nil and getPetShopFolder() ~= nil
+end
+
 local function applySmartObjective()
     if not S.SmartFarm then return end
 
@@ -873,20 +990,53 @@ local function applySmartObjective()
     S.StrengthRebirth = false
     S.AutoAgility = false
 
+    local ok = true
+
     if S.SmartObjective == "Força" then
-        S.AutoBestMachine = true
-        selectBestMachine()
-        S.AutoMachine = true
+        if canMachineFarm() then
+            S.AutoBestMachine = true
+            selectBestMachine()
+            S.AutoMachine = true
+        elseif canTrain() then
+            S.Train = true
+        else
+            ok = false
+        end
     elseif S.SmartObjective == "Durabilidade" then
-        S.AutoPunch = true
-        S.SmartRock = true
+        if canRockFarm() and canPunch() then
+            S.AutoPunch = true
+            S.SmartRock = true
+        else
+            ok = false
+        end
     elseif S.SmartObjective == "Agilidade" then
-        S.AutoAgility = true
+        if canAgilityFarm() then
+            S.AutoAgility = true
+        else
+            ok = false
+        end
     elseif S.SmartObjective == "Rebirths" then
-        S.AutoBestMachine = true
-        selectBestMachine()
-        S.AutoMachine = true
-        S.StrengthRebirth = true
+        if canRebirth() then
+            if canMachineFarm() then
+                S.AutoBestMachine = true
+                selectBestMachine()
+                S.AutoMachine = true
+            elseif canTrain() then
+                S.Train = true
+            else
+                ok = false
+            end
+            if ok then
+                S.StrengthRebirth = true
+            end
+        else
+            ok = false
+        end
+    end
+
+    if not ok then
+        S.SmartFarm = false
+        setHubStatus("Farm inteligente indisponível para este objetivo")
     end
 end
 
