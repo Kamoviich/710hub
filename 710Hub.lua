@@ -28,13 +28,15 @@ local R = {
     EquipPet = rEvents:FindFirstChild("equipPetEvent"),
     EvolvePet = rEvents:FindFirstChild("petEvolveEvent"),
     Brawl = rEvents:FindFirstChild("brawlEvent"),
+    Machine = rEvents:FindFirstChild("machineInteractRemote"),
 }
 
 local S = {
     Train=false, Rebirth=false, Chests=false, Hatch=false, Brawl=false,
     AutoPunch=false, SmartRock=false, LockPosition=false,
+    AutoMachine=false, StrengthRebirth=false,
     HatchCrystal="Blue Crystal", RepDelay=.065, HatchDelay=.45,
-    RebirthTarget=nil,
+    RebirthTarget=nil, SelectedMachine=nil,
 }
 
 local old = game:GetService("CoreGui"):FindFirstChild("710Hub_MuscleLegends")
@@ -199,6 +201,71 @@ local function farmBestRock()
 end
 
 local CHESTS = {"Golden Chest","Enchanted Chest","Magma Chest","Mythical Chest","Legends Chest","Jungle Chest"}
+
+local function scanMachines()
+    local folder = workspace:FindFirstChild("machinesFolder")
+    local list = {}
+    if not folder then return list end
+
+    for _, machine in ipairs(folder:GetChildren()) do
+        local seat = machine:FindFirstChild("interactSeat")
+        if seat and seat:IsA("BasePart") then
+            list[#list+1] = {
+                name = machine.Name,
+                machine = machine,
+                seat = seat,
+            }
+        end
+    end
+
+    table.sort(list, function(a,b)
+        return string.lower(a.name) < string.lower(b.name)
+    end)
+
+    return list
+end
+
+local function getSelectedMachine()
+    local machines = scanMachines()
+    if #machines == 0 then return nil end
+
+    if S.SelectedMachine then
+        for _, info in ipairs(machines) do
+            if info.name == S.SelectedMachine then
+                return info
+            end
+        end
+    end
+
+    S.SelectedMachine = machines[1].name
+    return machines[1]
+end
+
+local function useSelectedMachine(moveCharacter)
+    local info = getSelectedMachine()
+    if not info then return false end
+
+    local character = LP.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+
+    if moveCharacter and root then
+        pcall(function()
+            root.CFrame = info.seat.CFrame * CFrame.new(0, 3, 0)
+        end)
+        task.wait(.12)
+    end
+
+    if R.Machine then
+        safeInvoke(R.Machine, "useMachine", info.seat)
+    end
+
+    local event = getMuscleEvent()
+    if event then
+        safeFire(event, "rep", info.seat)
+    end
+
+    return true
+end
 
 -- Uses the actual equipped training tool whenever possible so the character
 -- plays the normal lifting/punching animation instead of only changing stats.
@@ -377,6 +444,28 @@ task.spawn(function()
     while task.wait(.18) do
         if S.SmartRock then
             farmBestRock()
+        end
+    end
+end)
+
+task.spawn(function()
+    while task.wait(.22) do
+        if S.AutoMachine then
+            useSelectedMachine(false)
+        end
+    end
+end)
+
+task.spawn(function()
+    while task.wait(.25) do
+        if S.StrengthRebirth then
+            if not S.AutoMachine then
+                local animated = activateTrainingTool()
+                if not animated then
+                    safeFire(getMuscleEvent(), "rep")
+                end
+            end
+            safeInvoke(R.Rebirth, "rebirthRequest")
         end
     end
 end)
@@ -921,6 +1010,73 @@ toggle(
     "Brawl"
 )
 
+section("MÁQUINAS", "Treino usando as máquinas detectadas diretamente no mapa atual.")
+
+local machineIndex = 1
+local function machineNames()
+    local infos = scanMachines()
+    local names = {}
+    for _,info in ipairs(infos) do
+        names[#names+1] = info.name
+    end
+    return names
+end
+
+local namesAtLoad = machineNames()
+if #namesAtLoad > 0 then
+    S.SelectedMachine = namesAtLoad[1]
+end
+
+local _, machineTitle = card(
+    "Máquina: "..(S.SelectedMachine or "nenhuma encontrada"),
+    "Clique para alternar entre Bench, Squat, Press, Throw e outras máquinas detectadas.",
+    function(_,titleLabel)
+        local names = machineNames()
+        if #names == 0 then
+            titleLabel.Text = "Máquina: nenhuma encontrada"
+            S.SelectedMachine = nil
+            return
+        end
+        machineIndex = machineIndex % #names + 1
+        S.SelectedMachine = names[machineIndex]
+        titleLabel.Text = "Máquina: "..S.SelectedMachine
+    end,
+    COLORS.Yellow
+)
+
+card(
+    "Ir até a máquina selecionada",
+    "Teleporta seu personagem para perto do assento da máquina escolhida.",
+    function()
+        useSelectedMachine(true)
+    end,
+    COLORS.Green
+)
+
+toggle(
+    "Treino automático na máquina",
+    "Usa repetidamente a máquina selecionada e envia o treino ligado ao interactSeat dela.",
+    "AutoMachine"
+)
+
+toggle(
+    "Ciclo Força + Rebirth",
+    "Mantém o treino ativo e tenta rebirth continuamente para acelerar o ciclo de evolução.",
+    "StrengthRebirth"
+)
+
+card(
+    "Atualizar lista de máquinas",
+    "Reescaneia o machinesFolder caso o servidor tenha carregado novas máquinas.",
+    function(_,titleLabel)
+        local names = machineNames()
+        machineIndex = 1
+        S.SelectedMachine = names[1]
+        machineTitle.Text = "Máquina: "..(S.SelectedMachine or "nenhuma encontrada")
+    end,
+    COLORS.Yellow
+)
+
 section("PETS E CRISTAIS", "Funções para abrir cristais e organizar os pets que você já possui.")
 
 toggle(
@@ -1119,6 +1275,8 @@ card(
         S.Brawl = false
         S.AutoPunch = false
         S.SmartRock = false
+        S.AutoMachine = false
+        S.StrengthRebirth = false
         S.LockPosition = false
         lockedCFrame = nil
         for _,render in pairs(toggleRefs) do
