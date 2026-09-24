@@ -251,334 +251,542 @@ task.spawn(function()
 end)
 
 local TweenService = game:GetService("TweenService")
+local UIS = game:GetService("UserInputService")
 
--- 710Hub UI • Jamaica theme ---------------------------------------------------
+-- 710Hub UI • Jamaica Green ---------------------------------------------------
 local COLORS = {
-    Black = Color3.fromRGB(10, 12, 10),
-    Panel = Color3.fromRGB(18, 21, 18),
-    Panel2 = Color3.fromRGB(25, 29, 25),
+    Black = Color3.fromRGB(7, 9, 7),
+    Black2 = Color3.fromRGB(12, 15, 12),
+    Panel = Color3.fromRGB(18, 23, 18),
+    Panel2 = Color3.fromRGB(25, 31, 25),
+    Panel3 = Color3.fromRGB(31, 38, 31),
     Green = Color3.fromRGB(0, 155, 58),
-    GreenDark = Color3.fromRGB(0, 92, 35),
+    GreenBright = Color3.fromRGB(35, 205, 90),
+    GreenDark = Color3.fromRGB(0, 82, 31),
     Yellow = Color3.fromRGB(254, 209, 0),
-    YellowSoft = Color3.fromRGB(255, 222, 64),
-    White = Color3.fromRGB(245, 247, 245),
-    Muted = Color3.fromRGB(155, 165, 155),
-    Off = Color3.fromRGB(80, 86, 80),
+    YellowSoft = Color3.fromRGB(255, 225, 85),
+    White = Color3.fromRGB(245, 248, 245),
+    Muted = Color3.fromRGB(150, 164, 150),
+    Off = Color3.fromRGB(74, 82, 74),
+    Red = Color3.fromRGB(190, 32, 42),
 }
+
+local function addCorner(obj, radius)
+    local x = Instance.new("UICorner")
+    x.CornerRadius = UDim.new(0, radius or 10)
+    x.Parent = obj
+    return x
+end
+
+local function addStroke(obj, color, thickness, transparency)
+    local x = Instance.new("UIStroke")
+    x.Color = color
+    x.Thickness = thickness or 1
+    x.Transparency = transparency or 0
+    x.Parent = obj
+    return x
+end
+
+local function tween(obj, time, goal)
+    TweenService:Create(
+        obj,
+        TweenInfo.new(time or .15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+        goal
+    ):Play()
+end
+
+local guiParent = game:GetService("CoreGui")
+pcall(function()
+    if gethui then
+        guiParent = gethui()
+    end
+end)
+
+local oldGui = guiParent:FindFirstChild("710Hub_MuscleLegends")
+if oldGui then oldGui:Destroy() end
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "710Hub_MuscleLegends"
 gui.ResetOnSpawn = false
 gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-gui.Parent = game:GetService("CoreGui")
+gui.IgnoreGuiInset = false
+gui.Parent = guiParent
 
-local shadow = Instance.new("Frame", gui)
-shadow.Size = UDim2.fromOffset(466, 566)
-shadow.Position = UDim2.new(.5, -225, .5, -274)
+-- sombra
+local shadow = Instance.new("Frame")
+shadow.Name = "Shadow"
+shadow.Size = UDim2.fromOffset(486, 596)
+shadow.Position = UDim2.new(.5, -243, .5, -298)
 shadow.BackgroundColor3 = Color3.new(0,0,0)
-shadow.BackgroundTransparency = .45
+shadow.BackgroundTransparency = .48
 shadow.BorderSizePixel = 0
-local shadowCorner = Instance.new("UICorner", shadow)
-shadowCorner.CornerRadius = UDim.new(0, 16)
+shadow.Parent = gui
+addCorner(shadow, 19)
 
-local main = Instance.new("Frame", gui)
-main.Size = UDim2.fromOffset(450, 550)
-main.Position = UDim2.new(.5, -225, .5, -275)
+-- painel
+local main = Instance.new("Frame")
+main.Name = "Main"
+main.Size = UDim2.fromOffset(470, 580)
+main.Position = UDim2.new(.5, -235, .5, -290)
 main.BackgroundColor3 = COLORS.Black
 main.BorderSizePixel = 0
 main.Active = true
 main.Draggable = true
-local mainCorner = Instance.new("UICorner", main)
-mainCorner.CornerRadius = UDim.new(0, 15)
+main.Parent = gui
+addCorner(main, 17)
+addStroke(main, COLORS.Green, 2, .02)
 
-local mainStroke = Instance.new("UIStroke", main)
-mainStroke.Color = COLORS.Green
-mainStroke.Thickness = 2
-mainStroke.Transparency = .05
+-- faixa superior
+local header = Instance.new("Frame")
+header.Size = UDim2.new(1,0,0,78)
+header.BackgroundColor3 = COLORS.Panel
+header.BorderSizePixel = 0
+header.Parent = main
+addCorner(header,17)
 
-local top = Instance.new("Frame", main)
-top.Size = UDim2.new(1, 0, 0, 64)
-top.BackgroundColor3 = COLORS.Panel
-top.BorderSizePixel = 0
-local topCorner = Instance.new("UICorner", top)
-topCorner.CornerRadius = UDim.new(0, 15)
+local headerFix = Instance.new("Frame")
+headerFix.Size = UDim2.new(1,0,0,18)
+headerFix.Position = UDim2.new(0,0,1,-18)
+headerFix.BackgroundColor3 = COLORS.Panel
+headerFix.BorderSizePixel = 0
+headerFix.Parent = header
 
-local topMask = Instance.new("Frame", top)
-topMask.Position = UDim2.new(0,0,1,-15)
-topMask.Size = UDim2.new(1,0,0,15)
-topMask.BackgroundColor3 = COLORS.Panel
-topMask.BorderSizePixel = 0
+-- faixa Jamaica
+local g1 = Instance.new("Frame", header)
+g1.Size = UDim2.new(.34,0,0,5)
+g1.Position = UDim2.new(0,0,1,-5)
+g1.BackgroundColor3 = COLORS.Green
+g1.BorderSizePixel = 0
 
-local flagGreen = Instance.new("Frame", top)
-flagGreen.Size = UDim2.new(.34,0,0,4)
-flagGreen.Position = UDim2.new(0,0,1,-4)
-flagGreen.BackgroundColor3 = COLORS.Green
-flagGreen.BorderSizePixel = 0
+local y1 = Instance.new("Frame", header)
+y1.Size = UDim2.new(.32,0,0,5)
+y1.Position = UDim2.new(.34,0,1,-5)
+y1.BackgroundColor3 = COLORS.Yellow
+y1.BorderSizePixel = 0
 
-local flagYellow = Instance.new("Frame", top)
-flagYellow.Size = UDim2.new(.32,0,0,4)
-flagYellow.Position = UDim2.new(.34,0,1,-4)
-flagYellow.BackgroundColor3 = COLORS.Yellow
-flagYellow.BorderSizePixel = 0
+local g2 = Instance.new("Frame", header)
+g2.Size = UDim2.new(.34,0,0,5)
+g2.Position = UDim2.new(.66,0,1,-5)
+g2.BackgroundColor3 = COLORS.Green
+g2.BorderSizePixel = 0
 
-local flagGreen2 = Instance.new("Frame", top)
-flagGreen2.Size = UDim2.new(.34,0,0,4)
-flagGreen2.Position = UDim2.new(.66,0,1,-4)
-flagGreen2.BackgroundColor3 = COLORS.Green
-flagGreen2.BorderSizePixel = 0
-
-local logo = Instance.new("TextLabel", top)
-logo.Size = UDim2.fromOffset(52, 52)
-logo.Position = UDim2.fromOffset(10, 5)
-logo.BackgroundColor3 = COLORS.Green
+-- logo
+local logo = Instance.new("TextLabel")
+logo.Size = UDim2.fromOffset(58,58)
+logo.Position = UDim2.fromOffset(10,8)
+logo.BackgroundColor3 = COLORS.GreenDark
 logo.Text = "710"
 logo.TextColor3 = COLORS.Yellow
 logo.Font = Enum.Font.GothamBlack
-logo.TextSize = 17
+logo.TextSize = 20
 logo.BorderSizePixel = 0
-local logoCorner = Instance.new("UICorner", logo)
-logoCorner.CornerRadius = UDim.new(0, 12)
-local logoStroke = Instance.new("UIStroke", logo)
-logoStroke.Color = COLORS.Yellow
-logoStroke.Thickness = 1.5
+logo.Parent = header
+addCorner(logo,15)
+addStroke(logo,COLORS.Yellow,2,.05)
 
-local title = Instance.new("TextLabel", top)
-title.Position = UDim2.fromOffset(74, 8)
-title.Size = UDim2.new(1, -128, 0, 26)
+-- detalhes botânicos / folhas estilizadas
+local leafLeft = Instance.new("TextLabel")
+leafLeft.Position = UDim2.new(1,-154,0,4)
+leafLeft.Size = UDim2.fromOffset(52,30)
+leafLeft.BackgroundTransparency = 1
+leafLeft.Text = "🌿"
+leafLeft.TextColor3 = COLORS.GreenBright
+leafLeft.TextTransparency = .1
+leafLeft.Font = Enum.Font.GothamBold
+leafLeft.TextSize = 24
+leafLeft.Rotation = -18
+leafLeft.Parent = header
+
+local leafRight = leafLeft:Clone()
+leafRight.Position = UDim2.new(1,-115,0,34)
+leafRight.Rotation = 18
+leafRight.TextTransparency = .22
+leafRight.Parent = header
+
+local leafMark = Instance.new("TextLabel")
+leafMark.Size = UDim2.fromOffset(36,36)
+leafMark.Position = UDim2.new(1,-92,0,18)
+leafMark.BackgroundColor3 = COLORS.Black2
+leafMark.Text = "🌿"
+leafMark.TextSize = 19
+leafMark.BorderSizePixel = 0
+leafMark.Parent = header
+addCorner(leafMark,10)
+addStroke(leafMark,COLORS.Green,1,.25)
+
+local title = Instance.new("TextLabel")
+title.Position = UDim2.fromOffset(82,10)
+title.Size = UDim2.new(1,-210,0,28)
 title.BackgroundTransparency = 1
 title.Text = "710Hub"
-title.TextXAlignment = Enum.TextXAlignment.Left
 title.TextColor3 = COLORS.White
-title.Font = Enum.Font.GothamBold
-title.TextSize = 20
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.Font = Enum.Font.GothamBlack
+title.TextSize = 22
+title.Parent = header
 
-local subtitle = Instance.new("TextLabel", top)
-subtitle.Position = UDim2.fromOffset(74, 33)
-subtitle.Size = UDim2.new(1, -128, 0, 18)
+local subtitle = Instance.new("TextLabel")
+subtitle.Position = UDim2.fromOffset(82,38)
+subtitle.Size = UDim2.new(1,-210,0,20)
 subtitle.BackgroundTransparency = 1
-subtitle.Text = "MUSCLE LEGENDS  •  JAMAICA EDITION"
-subtitle.TextXAlignment = Enum.TextXAlignment.Left
+subtitle.Text = "MUSCLE LEGENDS • JAMAICA EDITION"
 subtitle.TextColor3 = COLORS.Yellow
+subtitle.TextXAlignment = Enum.TextXAlignment.Left
 subtitle.Font = Enum.Font.GothamMedium
 subtitle.TextSize = 10
+subtitle.Parent = header
 
-local hideMenu
-local showMenu
+local version = Instance.new("TextLabel")
+version.Position = UDim2.fromOffset(82,55)
+version.Size = UDim2.new(1,-210,0,14)
+version.BackgroundTransparency = 1
+version.Text = "Farm • Pets • Teleportes • Utilidades"
+version.TextColor3 = COLORS.Muted
+version.TextXAlignment = Enum.TextXAlignment.Left
+version.Font = Enum.Font.Gotham
+version.TextSize = 9
+version.Parent = header
 
-local close = Instance.new("TextButton", top)
-close.Size = UDim2.fromOffset(34, 34)
-close.Position = UDim2.new(1, -44, 0, 14)
-close.BackgroundColor3 = COLORS.Panel2
-close.Text = "×"
-close.TextColor3 = COLORS.Yellow
-close.Font = Enum.Font.GothamBold
-close.TextSize = 22
-close.BorderSizePixel = 0
-local closeCorner = Instance.new("UICorner", close)
-closeCorner.CornerRadius = UDim.new(0, 9)
-close.MouseButton1Click:Connect(function()
-    if hideMenu then
-        hideMenu()
-    end
-end)
+local minimize = Instance.new("TextButton")
+minimize.Size = UDim2.fromOffset(34,34)
+minimize.Position = UDim2.new(1,-44,0,20)
+minimize.BackgroundColor3 = COLORS.Panel2
+minimize.Text = "—"
+minimize.TextColor3 = COLORS.Yellow
+minimize.Font = Enum.Font.GothamBold
+minimize.TextSize = 22
+minimize.BorderSizePixel = 0
+minimize.Parent = header
+addCorner(minimize,10)
 
-local scroll = Instance.new("ScrollingFrame", main)
-scroll.Position = UDim2.fromOffset(12, 76)
-scroll.Size = UDim2.new(1, -24, 1, -88)
+-- padrão de folhas no fundo
+for i=1,7 do
+    local leaf = Instance.new("TextLabel")
+    leaf.BackgroundTransparency = 1
+    leaf.Text = "🌿"
+    leaf.TextColor3 = COLORS.Green
+    leaf.TextTransparency = .84
+    leaf.Font = Enum.Font.GothamBold
+    leaf.TextSize = 28 + (i%3)*4
+    leaf.Rotation = -28 + i*9
+    leaf.Position = UDim2.new((i%2==0) and .82 or .02, 0, 0, 78 + i*62)
+    leaf.Size = UDim2.fromOffset(48,48)
+    leaf.ZIndex = 0
+    leaf.Parent = main
+end
+
+local scroll = Instance.new("ScrollingFrame")
+scroll.Name = "Conteudo"
+scroll.Position = UDim2.fromOffset(13,91)
+scroll.Size = UDim2.new(1,-26,1,-104)
 scroll.BackgroundTransparency = 1
 scroll.BorderSizePixel = 0
 scroll.ScrollBarThickness = 3
 scroll.ScrollBarImageColor3 = COLORS.Yellow
 scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
 scroll.CanvasSize = UDim2.new()
+scroll.Parent = main
 
-local layout = Instance.new("UIListLayout", scroll)
-layout.Padding = UDim.new(0, 8)
-layout.SortOrder = Enum.SortOrder.LayoutOrder
+local list = Instance.new("UIListLayout")
+list.Padding = UDim.new(0,9)
+list.SortOrder = Enum.SortOrder.LayoutOrder
+list.Parent = scroll
 
-local function addCorner(obj, radius)
-    local c = Instance.new("UICorner", obj)
-    c.CornerRadius = UDim.new(0, radius or 9)
-    return c
+local function section(name, desc)
+    local holder = Instance.new("Frame")
+    holder.Size = UDim2.new(1,-6,0,46)
+    holder.BackgroundColor3 = COLORS.Black2
+    holder.BorderSizePixel = 0
+    holder.Parent = scroll
+    addCorner(holder,11)
+    addStroke(holder,Color3.fromRGB(35,48,35),1,.28)
+
+    local bar = Instance.new("Frame")
+    bar.Size = UDim2.fromOffset(5,28)
+    bar.Position = UDim2.fromOffset(8,9)
+    bar.BackgroundColor3 = COLORS.Green
+    bar.BorderSizePixel = 0
+    bar.Parent = holder
+    addCorner(bar,3)
+
+    local t = Instance.new("TextLabel")
+    t.Position = UDim2.fromOffset(22,5)
+    t.Size = UDim2.new(1,-28,0,20)
+    t.BackgroundTransparency = 1
+    t.Text = name
+    t.TextColor3 = COLORS.Yellow
+    t.TextXAlignment = Enum.TextXAlignment.Left
+    t.Font = Enum.Font.GothamBold
+    t.TextSize = 12
+    t.Parent = holder
+
+    local d = Instance.new("TextLabel")
+    d.Position = UDim2.fromOffset(22,24)
+    d.Size = UDim2.new(1,-28,0,16)
+    d.BackgroundTransparency = 1
+    d.Text = desc or ""
+    d.TextColor3 = COLORS.Muted
+    d.TextXAlignment = Enum.TextXAlignment.Left
+    d.Font = Enum.Font.Gotham
+    d.TextSize = 9
+    d.TextTruncate = Enum.TextTruncate.AtEnd
+    d.Parent = holder
 end
 
-local function addStroke(obj, color, thickness, transparency)
-    local s = Instance.new("UIStroke", obj)
-    s.Color = color
-    s.Thickness = thickness or 1
-    s.Transparency = transparency or 0
-    return s
-end
-
-local miniButton = Instance.new("TextButton", gui)
-miniButton.Name = "710Hub_MiniButton"
-miniButton.Size = UDim2.fromOffset(60, 60)
-miniButton.Position = UDim2.new(0, 18, .5, -30)
-miniButton.BackgroundColor3 = COLORS.Green
-miniButton.BorderSizePixel = 0
-miniButton.Text = "710"
-miniButton.TextColor3 = COLORS.Yellow
-miniButton.Font = Enum.Font.GothamBlack
-miniButton.TextSize = 18
-miniButton.Visible = false
-miniButton.Active = true
-miniButton.Draggable = true
-miniButton.AutoButtonColor = false
-addCorner(miniButton, 15)
-addStroke(miniButton, COLORS.Yellow, 2, 0)
-
-hideMenu = function()
-    main.Visible = false
-    shadow.Visible = false
-    miniButton.Visible = true
-end
-
-showMenu = function()
-    main.Visible = true
-    shadow.Visible = true
-    miniButton.Visible = false
-end
-
-miniButton.MouseButton1Click:Connect(function()
-    showMenu()
-end)
-
-local function section(text)
-    local holder = Instance.new("Frame", scroll)
-    holder.Size = UDim2.new(1, -6, 0, 30)
-    holder.BackgroundTransparency = 1
-
-    local accent = Instance.new("Frame", holder)
-    accent.Size = UDim2.fromOffset(4, 20)
-    accent.Position = UDim2.fromOffset(1, 5)
-    accent.BackgroundColor3 = COLORS.Green
-    accent.BorderSizePixel = 0
-    addCorner(accent, 3)
-
-    local label = Instance.new("TextLabel", holder)
-    label.Position = UDim2.fromOffset(14, 0)
-    label.Size = UDim2.new(1, -14, 1, 0)
-    label.BackgroundTransparency = 1
-    label.Text = text
-    label.TextXAlignment = Enum.TextXAlignment.Left
-    label.TextColor3 = COLORS.Yellow
-    label.Font = Enum.Font.GothamBold
-    label.TextSize = 12
-end
-
-local function button(text, callback, accentColor)
-    local b = Instance.new("TextButton", scroll)
-    b.Size = UDim2.new(1, -6, 0, 42)
+local function card(titleText, description, callback, accentColor)
+    local b = Instance.new("TextButton")
+    b.Size = UDim2.new(1,-6,0,58)
     b.BackgroundColor3 = COLORS.Panel2
     b.BorderSizePixel = 0
     b.AutoButtonColor = false
     b.Text = ""
-    addCorner(b, 10)
-    addStroke(b, Color3.fromRGB(47, 55, 47), 1, .15)
+    b.Parent = scroll
+    addCorner(b,12)
+    addStroke(b,Color3.fromRGB(47,58,47),1,.18)
 
-    local accent = Instance.new("Frame", b)
-    accent.Size = UDim2.fromOffset(4, 24)
-    accent.Position = UDim2.fromOffset(8, 9)
+    local accent = Instance.new("Frame")
+    accent.Size = UDim2.fromOffset(4,36)
+    accent.Position = UDim2.fromOffset(8,11)
     accent.BackgroundColor3 = accentColor or COLORS.Green
     accent.BorderSizePixel = 0
-    addCorner(accent, 3)
+    accent.Parent = b
+    addCorner(accent,3)
 
-    local label = Instance.new("TextLabel", b)
-    label.Position = UDim2.fromOffset(23, 0)
-    label.Size = UDim2.new(1, -34, 1, 0)
-    label.BackgroundTransparency = 1
-    label.Text = text
-    label.TextXAlignment = Enum.TextXAlignment.Left
-    label.TextColor3 = COLORS.White
-    label.Font = Enum.Font.GothamMedium
-    label.TextSize = 13
+    local t = Instance.new("TextLabel")
+    t.Position = UDim2.fromOffset(23,8)
+    t.Size = UDim2.new(1,-34,0,20)
+    t.BackgroundTransparency = 1
+    t.Text = titleText
+    t.TextColor3 = COLORS.White
+    t.TextXAlignment = Enum.TextXAlignment.Left
+    t.Font = Enum.Font.GothamMedium
+    t.TextSize = 13
+    t.Parent = b
+
+    local d = Instance.new("TextLabel")
+    d.Position = UDim2.fromOffset(23,29)
+    d.Size = UDim2.new(1,-34,0,18)
+    d.BackgroundTransparency = 1
+    d.Text = description or ""
+    d.TextColor3 = COLORS.Muted
+    d.TextXAlignment = Enum.TextXAlignment.Left
+    d.Font = Enum.Font.Gotham
+    d.TextSize = 9
+    d.TextTruncate = Enum.TextTruncate.AtEnd
+    d.Parent = b
 
     b.MouseEnter:Connect(function()
-        TweenService:Create(b, TweenInfo.new(.12), {BackgroundColor3 = Color3.fromRGB(32, 38, 32)}):Play()
+        tween(b,.12,{BackgroundColor3=COLORS.Panel3})
     end)
     b.MouseLeave:Connect(function()
-        TweenService:Create(b, TweenInfo.new(.12), {BackgroundColor3 = COLORS.Panel2}):Play()
+        tween(b,.12,{BackgroundColor3=COLORS.Panel2})
     end)
     b.MouseButton1Click:Connect(function()
-        task.spawn(callback, b, label)
+        if callback then task.spawn(callback,b,t,d) end
     end)
 
-    return b, label
+    return b,t,d
 end
 
-local function toggle(labelText, key)
-    local b, label = button(labelText, function() end, COLORS.Green)
+local toggleRefs = {}
+local function toggle(titleText, description, key)
+    local b,t,d = card(titleText, description, nil, COLORS.Green)
 
-    local pill = Instance.new("Frame", b)
-    pill.Size = UDim2.fromOffset(58, 24)
-    pill.Position = UDim2.new(1, -68, .5, -12)
-    pill.BackgroundColor3 = Color3.fromRGB(35, 39, 35)
+    local pill = Instance.new("Frame")
+    pill.Size = UDim2.fromOffset(62,26)
+    pill.Position = UDim2.new(1,-73,.5,-13)
+    pill.BackgroundColor3 = Color3.fromRGB(38,44,38)
     pill.BorderSizePixel = 0
-    addCorner(pill, 12)
+    pill.Parent = b
+    addCorner(pill,13)
 
-    local dot = Instance.new("Frame", pill)
-    dot.Size = UDim2.fromOffset(18, 18)
-    dot.Position = UDim2.fromOffset(3, 3)
+    local dot = Instance.new("Frame")
+    dot.Size = UDim2.fromOffset(20,20)
+    dot.Position = UDim2.fromOffset(3,3)
     dot.BackgroundColor3 = COLORS.Off
     dot.BorderSizePixel = 0
-    addCorner(dot, 9)
+    dot.Parent = pill
+    addCorner(dot,10)
 
-    local status = Instance.new("TextLabel", pill)
-    status.Size = UDim2.new(1, -25, 1, 0)
-    status.Position = UDim2.fromOffset(23, 0)
-    status.BackgroundTransparency = 1
-    status.Text = "OFF"
-    status.TextColor3 = COLORS.Muted
-    status.Font = Enum.Font.GothamBold
-    status.TextSize = 9
+    local state = Instance.new("TextLabel")
+    state.Size = UDim2.new(1,-26,1,0)
+    state.Position = UDim2.fromOffset(25,0)
+    state.BackgroundTransparency = 1
+    state.Text = "OFF"
+    state.TextColor3 = COLORS.Muted
+    state.Font = Enum.Font.GothamBold
+    state.TextSize = 9
+    state.Parent = pill
 
-    label.Size = UDim2.new(1, -102, 1, 0)
+    t.Size = UDim2.new(1,-112,0,20)
+    d.Size = UDim2.new(1,-112,0,18)
+
+    local function render()
+        local on = S[key]
+        state.Text = on and "ON" or "OFF"
+        state.TextColor3 = on and COLORS.Black or COLORS.Muted
+        tween(pill,.15,{BackgroundColor3=on and COLORS.Yellow or Color3.fromRGB(38,44,38)})
+        tween(dot,.15,{
+            Position=on and UDim2.fromOffset(39,3) or UDim2.fromOffset(3,3),
+            BackgroundColor3=on and COLORS.Green or COLORS.Off
+        })
+    end
 
     b.MouseButton1Click:Connect(function()
         S[key] = not S[key]
-        local on = S[key]
-        status.Text = on and "ON" or "OFF"
-        status.TextColor3 = on and COLORS.Black or COLORS.Muted
-        TweenService:Create(pill, TweenInfo.new(.16), {
-            BackgroundColor3 = on and COLORS.Yellow or Color3.fromRGB(35,39,35)
-        }):Play()
-        TweenService:Create(dot, TweenInfo.new(.16), {
-            Position = on and UDim2.fromOffset(37,3) or UDim2.fromOffset(3,3),
-            BackgroundColor3 = on and COLORS.Green or COLORS.Off
-        }):Play()
+        render()
     end)
+
+    toggleRefs[key] = render
+    return b
 end
 
-section("FARM")
-toggle("Auto Train", "Train")
-toggle("Auto Rebirth", "Rebirth")
-toggle("Auto Chests", "Chests")
-toggle("Auto Join Brawl", "Brawl")
+-- ícone permanente / reabrir
+local mini = Instance.new("TextButton")
+mini.Name = "710Hub_Mini"
+mini.Size = UDim2.fromOffset(66,66)
+mini.Position = UDim2.new(0,20,.5,-33)
+mini.BackgroundColor3 = COLORS.GreenDark
+mini.BorderSizePixel = 0
+mini.Text = ""
+mini.Visible = false
+mini.Active = true
+mini.Draggable = true
+mini.Parent = gui
+addCorner(mini,18)
+addStroke(mini,COLORS.Yellow,2,.02)
 
-section("PETS & CRYSTALS")
-toggle("Auto Hatch", "Hatch")
+local miniLogo = Instance.new("TextLabel")
+miniLogo.Size = UDim2.new(1,0,.62,0)
+miniLogo.BackgroundTransparency = 1
+miniLogo.Text = "710"
+miniLogo.TextColor3 = COLORS.Yellow
+miniLogo.Font = Enum.Font.GothamBlack
+miniLogo.TextSize = 19
+miniLogo.Parent = mini
 
-local crystals = {"Blue Crystal","Green Crystal","Mythical Crystal","Frost Crystal","Inferno Crystal","Legends Crystal","Muscle Elite Crystal"}
+local miniLeaf = Instance.new("TextLabel")
+miniLeaf.Size = UDim2.new(1,0,.38,0)
+miniLeaf.Position = UDim2.new(0,0,.58,0)
+miniLeaf.BackgroundTransparency = 1
+miniLeaf.Text = "🌿"
+miniLeaf.TextColor3 = COLORS.GreenBright
+miniLeaf.Font = Enum.Font.GothamBold
+miniLeaf.TextSize = 17
+miniLeaf.Parent = mini
+
+local menuOpen = true
+local function hideMenu()
+    if not menuOpen then return end
+    menuOpen = false
+    tween(main,.13,{Size=UDim2.fromOffset(440,540),BackgroundTransparency=.05})
+    task.wait(.13)
+    main.Visible = false
+    shadow.Visible = false
+    mini.Visible = true
+end
+
+local function showMenu()
+    if menuOpen then return end
+    menuOpen = true
+    mini.Visible = false
+    main.Visible = true
+    shadow.Visible = true
+    main.Size = UDim2.fromOffset(440,540)
+    tween(main,.18,{Size=UDim2.fromOffset(470,580),BackgroundTransparency=0})
+end
+
+minimize.MouseButton1Click:Connect(hideMenu)
+mini.MouseButton1Click:Connect(showMenu)
+
+UIS.InputBegan:Connect(function(input, processed)
+    if processed then return end
+    if input.KeyCode == Enum.KeyCode.RightShift then
+        if menuOpen then hideMenu() else showMenu() end
+    end
+end)
+
+-- conteúdo em português --------------------------------------------------------
+section("FARM", "Automatizações principais para evoluir sua conta.")
+
+toggle(
+    "Treino automático",
+    "Equipa uma ferramenta de treino e ativa repetidamente para ganhar força.",
+    "Train"
+)
+
+toggle(
+    "Rebirth automático",
+    "Tenta fazer rebirth automaticamente quando o jogo permitir.",
+    "Rebirth"
+)
+
+toggle(
+    "Coletar baús automaticamente",
+    "Tenta resgatar os baús conhecidos do mapa em intervalos regulares.",
+    "Chests"
+)
+
+toggle(
+    "Entrar no Brawl automaticamente",
+    "Tenta entrar no evento Brawl sempre que ele estiver disponível.",
+    "Brawl"
+)
+
+section("PETS E CRISTAIS", "Funções para abrir cristais e organizar os pets que você já possui.")
+
+toggle(
+    "Abrir cristal automaticamente",
+    "Abre repetidamente o cristal selecionado abaixo.",
+    "Hatch"
+)
+
+local crystals = {
+    "Blue Crystal","Green Crystal","Mythical Crystal","Frost Crystal",
+    "Inferno Crystal","Legends Crystal","Muscle Elite Crystal","Galaxy Oracle Crystal","Jungle Crystal"
+}
 local crystalIndex = 1
-local _, crystalLabel = button("Crystal  •  "..crystals[crystalIndex], function(_, label)
-    crystalIndex = crystalIndex % #crystals + 1
-    S.HatchCrystal = crystals[crystalIndex]
-    label.Text = "Crystal  •  "..S.HatchCrystal
-end, COLORS.Yellow)
+card(
+    "Cristal selecionado: "..crystals[crystalIndex],
+    "Clique para alternar entre os cristais disponíveis.",
+    function(_,titleLabel)
+        crystalIndex = crystalIndex % #crystals + 1
+        S.HatchCrystal = crystals[crystalIndex]
+        titleLabel.Text = "Cristal selecionado: "..S.HatchCrystal
+    end,
+    COLORS.Yellow
+)
 
-button("Hatch x1", function()
-    safeInvoke(R.Crystal, "openCrystal", S.HatchCrystal)
-end, COLORS.Yellow)
+card(
+    "Abrir 1 cristal",
+    "Abre uma vez o cristal atualmente selecionado.",
+    function()
+        safeInvoke(R.Crystal,"openCrystal",S.HatchCrystal)
+    end,
+    COLORS.Yellow
+)
 
-button("Equip Best Owned Pets", equipBestOwned, COLORS.Green)
-button("Evolve Ready Owned Pets", evolveReadyOwned, COLORS.Green)
+card(
+    "Equipar melhores pets",
+    "Ordena seus pets e tenta equipar os mais fortes que você já possui.",
+    equipBestOwned,
+    COLORS.Green
+)
 
-section("TELEPORTS")
+card(
+    "Evoluir pets prontos",
+    "Procura grupos de pets repetidos e tenta evoluir quando houver quantidade suficiente.",
+    evolveReadyOwned,
+    COLORS.Green
+)
+
+section("TELEPORTES", "Navegação rápida usando os pontos de teleporte encontrados no mapa.")
+
 local tpNames = {}
 local tpParts = {}
 local area = workspace:FindFirstChild("areaTeleportParts")
 if area then
-    for _, obj in ipairs(area:GetDescendants()) do
+    for _,obj in ipairs(area:GetDescendants()) do
         if obj:IsA("BasePart") then
             tpNames[#tpNames+1] = obj.Name
             tpParts[obj.Name] = obj
@@ -588,32 +796,63 @@ if area then
 end
 
 local tpIndex = 1
-button("Teleport  •  "..(tpNames[1] or "none found"), function(_, label)
-    if #tpNames == 0 then return end
-    tpIndex = tpIndex % #tpNames + 1
-    label.Text = "Teleport  •  "..tpNames[tpIndex]
-end, COLORS.Yellow)
+card(
+    "Destino: "..(tpNames[1] or "nenhum encontrado"),
+    "Clique para trocar o destino do teleporte.",
+    function(_,titleLabel)
+        if #tpNames == 0 then return end
+        tpIndex = tpIndex % #tpNames + 1
+        titleLabel.Text = "Destino: "..tpNames[tpIndex]
+    end,
+    COLORS.Yellow
+)
 
-button("Go To Selected Teleport", function()
-    local p = tpParts[tpNames[tpIndex]]
-    local char = LP.Character
-    local root = char and char:FindFirstChild("HumanoidRootPart")
-    if p and root then
-        root.CFrame = p.CFrame + Vector3.new(0, 4, 0)
-    end
-end, COLORS.Green)
+card(
+    "Ir para o destino",
+    "Move seu personagem até o ponto selecionado acima.",
+    function()
+        local part = tpParts[tpNames[tpIndex]]
+        local character = LP.Character
+        local root = character and character:FindFirstChild("HumanoidRootPart")
+        if part and root then
+            root.CFrame = part.CFrame + Vector3.new(0,4,0)
+        end
+    end,
+    COLORS.Green
+)
 
-section("UTILITY")
-button("Stop All Automations", function()
-    S.Train = false
-    S.Rebirth = false
-    S.Chests = false
-    S.Hatch = false
-    S.Brawl = false
-end, COLORS.Yellow)
+section("UTILIDADES", "Controles gerais do 710Hub.")
 
-button("Minimize 710Hub", function()
-    hideMenu()
-end, COLORS.Green)
+card(
+    "Parar todas as automações",
+    "Desliga treino, rebirth, baús, cristais e Brawl de uma vez.",
+    function()
+        S.Train = false
+        S.Rebirth = false
+        S.Chests = false
+        S.Hatch = false
+        S.Brawl = false
+        for _,render in pairs(toggleRefs) do
+            render()
+        end
+    end,
+    COLORS.Red
+)
 
-print("[710Hub] Muscle Legends loaded • Jamaica UI")
+card(
+    "Minimizar 710Hub",
+    "Esconde o painel e mantém o ícone 710 na tela para reabrir.",
+    hideMenu,
+    COLORS.Yellow
+)
+
+local footer = Instance.new("TextLabel")
+footer.Size = UDim2.new(1,-6,0,36)
+footer.BackgroundTransparency = 1
+footer.Text = "RightShift abre/fecha • O ícone 710 permanece na tela"
+footer.TextColor3 = COLORS.Muted
+footer.Font = Enum.Font.Gotham
+footer.TextSize = 9
+footer.Parent = scroll
+
+print("[710Hub] Muscle Legends carregado • Jamaica Edition")
