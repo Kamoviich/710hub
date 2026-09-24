@@ -13,7 +13,13 @@ local RS = game:GetService("ReplicatedStorage")
 local VU = game:GetService("VirtualUser")
 local LP = Players.LocalPlayer
 local rEvents = RS:WaitForChild("rEvents")
-local muscleEvent = LP:WaitForChild("muscleEvent")
+local Backpack = LP:WaitForChild("Backpack")
+
+local function getMuscleEvent()
+    return LP:FindFirstChild("muscleEvent")
+        or (LP.Character and LP.Character:FindFirstChild("muscleEvent"))
+        or rEvents:FindFirstChild("muscleEvent")
+end
 
 local R = {
     Rebirth = rEvents:FindFirstChild("rebirthRemote"),
@@ -58,6 +64,74 @@ local function safeFire(remote, ...)
 end
 
 local CHESTS = {"Golden Chest","Enchanted Chest","Magma Chest","Mythical Chest","Legends Chest","Jungle Chest"}
+
+-- Uses the actual equipped training tool whenever possible so the character
+-- plays the normal lifting/punching animation instead of only changing stats.
+local TRAINING_KEYWORDS = {
+    "weight","dumbbell","barbell","bench","push","lift","muscle","handstand","situp","fist"
+}
+local IGNORE_TOOL_KEYWORDS = {
+    "protein","shake","energy","boost","chocolate","food","drink"
+}
+
+local function hasKeyword(name, words)
+    name = string.lower(name)
+    for _, word in ipairs(words) do
+        if string.find(name, word, 1, true) then
+            return true
+        end
+    end
+    return false
+end
+
+local function currentTool()
+    local character = LP.Character
+    if not character then return nil end
+    return character:FindFirstChildOfClass("Tool")
+end
+
+local function findTrainingTool()
+    local equipped = currentTool()
+    if equipped and not hasKeyword(equipped.Name, IGNORE_TOOL_KEYWORDS) then
+        return equipped
+    end
+
+    local fallback
+    for _, tool in ipairs(Backpack:GetChildren()) do
+        if tool:IsA("Tool") and not hasKeyword(tool.Name, IGNORE_TOOL_KEYWORDS) then
+            if hasKeyword(tool.Name, TRAINING_KEYWORDS) then
+                return tool
+            end
+            fallback = fallback or tool
+        end
+    end
+    return fallback
+end
+
+local function activateTrainingTool()
+    local character = LP.Character
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return false end
+
+    local tool = findTrainingTool()
+    if not tool then return false end
+
+    if tool.Parent == Backpack then
+        pcall(function()
+            humanoid:EquipTool(tool)
+        end)
+        task.wait(.05)
+    end
+
+    if tool.Parent == character then
+        local ok = pcall(function()
+            tool:Activate()
+        end)
+        return ok
+    end
+
+    return false
+end
 
 local function allOwnedPets()
     local out = {}
@@ -131,8 +205,16 @@ local function evolveReadyOwned()
 end
 
 task.spawn(function()
-    while task.wait(S.RepDelay) do
-        if S.Train then safeFire(muscleEvent, "rep") end
+    while task.wait(math.max(S.RepDelay, 0.12)) do
+        if S.Train then
+            -- Prefer the game's normal Tool activation: this keeps the
+            -- character animation visible and lets the tool's own LocalScript
+            -- handle the training event. Fallback only if no usable tool exists.
+            local animated = activateTrainingTool()
+            if not animated then
+                safeFire(getMuscleEvent(), "rep")
+            end
+        end
     end
 end)
 
@@ -280,6 +362,9 @@ subtitle.TextColor3 = COLORS.Yellow
 subtitle.Font = Enum.Font.GothamMedium
 subtitle.TextSize = 10
 
+local hideMenu
+local showMenu
+
 local close = Instance.new("TextButton", top)
 close.Size = UDim2.fromOffset(34, 34)
 close.Position = UDim2.new(1, -44, 0, 14)
@@ -292,7 +377,9 @@ close.BorderSizePixel = 0
 local closeCorner = Instance.new("UICorner", close)
 closeCorner.CornerRadius = UDim.new(0, 9)
 close.MouseButton1Click:Connect(function()
-    gui:Destroy()
+    if hideMenu then
+        hideMenu()
+    end
 end)
 
 local scroll = Instance.new("ScrollingFrame", main)
@@ -322,6 +409,39 @@ local function addStroke(obj, color, thickness, transparency)
     s.Transparency = transparency or 0
     return s
 end
+
+local miniButton = Instance.new("TextButton", gui)
+miniButton.Name = "710Hub_MiniButton"
+miniButton.Size = UDim2.fromOffset(60, 60)
+miniButton.Position = UDim2.new(0, 18, .5, -30)
+miniButton.BackgroundColor3 = COLORS.Green
+miniButton.BorderSizePixel = 0
+miniButton.Text = "710"
+miniButton.TextColor3 = COLORS.Yellow
+miniButton.Font = Enum.Font.GothamBlack
+miniButton.TextSize = 18
+miniButton.Visible = false
+miniButton.Active = true
+miniButton.Draggable = true
+miniButton.AutoButtonColor = false
+addCorner(miniButton, 15)
+addStroke(miniButton, COLORS.Yellow, 2, 0)
+
+hideMenu = function()
+    main.Visible = false
+    shadow.Visible = false
+    miniButton.Visible = true
+end
+
+showMenu = function()
+    main.Visible = true
+    shadow.Visible = true
+    miniButton.Visible = false
+end
+
+miniButton.MouseButton1Click:Connect(function()
+    showMenu()
+end)
 
 local function section(text)
     local holder = Instance.new("Frame", scroll)
@@ -492,8 +612,8 @@ button("Stop All Automations", function()
     S.Brawl = false
 end, COLORS.Yellow)
 
-button("Close 710Hub", function()
-    gui:Destroy()
+button("Minimize 710Hub", function()
+    hideMenu()
 end, COLORS.Green)
 
 print("[710Hub] Muscle Legends loaded • Jamaica UI")
