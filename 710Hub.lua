@@ -19,7 +19,7 @@ end
 
 local SESSION = {
     Alive = true,
-    Version = "2026.09-stable.4",
+    Version = "2026.09-stable.5",
     Connections = {},
 }
 
@@ -642,74 +642,103 @@ local function activateTrainingTool()
 end
 
 
-local function turboStrengthTick()
+local function equipStrengthTool()
     local character = LP.Character
     local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-    local root = character and character:FindFirstChild("HumanoidRootPart")
-    if not character or not humanoid or not root then return false end
+    local backpack = getBackpack()
+    if not humanoid or not backpack then return nil end
 
-    refreshRemotes()
-    local event = getMuscleEvent()
-    local used = false
-    local machineReady = R.Machine ~= nil and event ~= nil and #scanMachines() > 0
+    local preferred = {
+        "Weight",
+        "Pushups",
+        "Situps",
+        "Handstands",
+    }
 
-    -- Prioriza uma máquina real carregada no servidor, pois o jogo associa o
-    -- treino ao interactSeat. Se não houver máquina, usa a ferramenta normal.
-    if machineReady then
-        S.AutoBestMachine = true
-        local info = selectBestMachine()
-        if info and info.seat and info.seat.Parent then
-            if (root.Position - info.seat.Position).Magnitude > 14 then
+    for _, name in ipairs(preferred) do
+        local tool = character:FindFirstChild(name) or backpack:FindFirstChild(name)
+        if tool and tool:IsA("Tool") then
+            if tool.Parent == backpack then
                 pcall(function()
-                    root.CFrame = info.seat.CFrame * CFrame.new(0,3,0)
+                    humanoid:EquipTool(tool)
                 end)
-                task.wait(.12)
+                task.wait(.03)
             end
-
-            refreshRemotes()
-            if R.Machine then
-                safeInvoke(R.Machine, "useMachine", info.seat)
-            end
-
-            if event then
-                -- Pequena rajada usando a mesma ação de treino já aceita pela
-                -- máquina. Mantemos um teto baixo para não criar spam infinito.
-                safeFire(event, "rep", info.seat)
-                task.wait(.035)
-                safeFire(event, "rep", info.seat)
-                used = true
-            end
+            return tool
         end
     end
 
-    if not used then
-        local activated = activateTrainingTool()
-        if event then
-            safeFire(event, "rep")
-            task.wait(.04)
-            safeFire(event, "rep")
-            used = true
-        elseif activated then
-            used = true
-        end
+    local tool = findTrainingTool()
+    if tool and tool.Parent == backpack then
+        pcall(function()
+            humanoid:EquipTool(tool)
+        end)
+        task.wait(.03)
+    end
+    return tool
+end
+
+local function fastStrengthBurst()
+    local character = LP.Character
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    if not character or not humanoid or humanoid.Health <= 0 then
+        return false
     end
 
-    return used
+    local event = getMuscleEvent()
+    if not event then return false end
+
+    local tool = equipStrengthTool()
+    if tool and tool.Parent == character then
+        pcall(function()
+            tool:Activate()
+        end)
+    end
+
+    -- Muscle Legends aceita "rep" como a ação de treino. Em vez de depender
+    -- de uma máquina específica, enviamos uma rajada curta e limitada.
+    for _ = 1, 8 do
+        if not SESSION.Alive or not S.TurboStrength then break end
+        safeFire(event, "rep")
+    end
+
+    return true
 end
 
 task.spawn(function()
     local failures = 0
-    while SESSION.Alive and task.wait(.20) do
+    local windowStart = os.clock()
+    local windowStrength = numberStat("Strength")
+    local noGainWindows = 0
+
+    while SESSION.Alive and task.wait(.08) do
         if S.TurboStrength then
-            if turboStrengthTick() then
+            if fastStrengthBurst() then
                 failures = 0
-                setHubStatus("Força Turbo ativa")
             else
                 failures += 1
-                if failures >= 10 then
+            end
+
+            if os.clock() - windowStart >= 2.5 then
+                local now = numberStat("Strength")
+                local gained = math.max(0, now - windowStrength)
+
+                if gained > 0 then
+                    noGainWindows = 0
+                    setHubStatus("Força Rápida • +"..math.floor(gained).." em 2.5s")
+                else
+                    noGainWindows += 1
+                    setHubStatus("Força Rápida • aguardando ganho...")
+                end
+
+                windowStrength = now
+                windowStart = os.clock()
+
+                if noGainWindows >= 2 or failures >= 10 then
                     S.TurboStrength = false
+                    noGainWindows = 0
                     failures = 0
-                    setHubStatus("Força Turbo desligada: treino indisponível")
+                    setHubStatus("Força Rápida desligada: nenhum ganho detectado")
                     if HubRuntime.RenderToggles then
                         task.defer(HubRuntime.RenderToggles)
                     end
@@ -717,6 +746,9 @@ task.spawn(function()
             end
         else
             failures = 0
+            noGainWindows = 0
+            windowStart = os.clock()
+            windowStrength = numberStat("Strength")
         end
     end
 end)
@@ -1983,10 +2015,10 @@ toggle(
 )
 
 toggle(
-    "Força Turbo",
-    "Combina a melhor máquina disponível com pequenas rajadas de treino; se não houver máquina, usa sua ferramenta de treino.",
+    "Força Rápida",
+    "Equipa Weight/Pushups/Situps/Handstands e envia rajadas curtas de treino; desliga sozinho se a Strength não subir.",
     "TurboStrength",
-    function() return canMachineFarm() or canTrain() end
+    canTrain
 )
 
 toggle(
@@ -2354,7 +2386,7 @@ card(
             S.TurboStrength = true
         end
         renderAllToggles()
-        setHubStatus("Perfil de Força ativado • Turbo")
+        setHubStatus("Perfil de Força ativado • Força Rápida")
     end,
     COLORS.Green,
     function() return canMachineFarm() or canTrain() end
