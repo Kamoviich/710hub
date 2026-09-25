@@ -19,7 +19,7 @@ end
 
 local SESSION = {
     Alive = true,
-    Version = "2026.09-stable.5",
+    Version = "2026.09-stable.6",
     Connections = {},
 }
 
@@ -90,7 +90,7 @@ local S = {
     Train=false, Rebirth=false, Chests=false, Hatch=false, Brawl=false,
     AutoPunch=false, SmartRock=false, LockPosition=false,
     AutoMachine=false, AutoBestMachine=false, StrengthRebirth=false,
-    TurboStrength=false,
+    TurboStrength=false, AutoBoss=false,
     AutoAgility=false, SmartFarm=false,
     AutoEquipAfterHatch=false, AutoEvolveAfterHatch=false,
     PerformanceMode=false, GoalEnabled=false,
@@ -106,6 +106,9 @@ local HubRuntime = {
     StartedAt = os.clock(),
     Respawns = 0,
     RemoteRefreshes = 1,
+    BossActive = false,
+    BossTarget = "Aguardando spawn",
+    BossReturnCFrame = nil,
 }
 
 local function setHubStatus(text)
@@ -203,6 +206,9 @@ trackConnection(LP.CharacterAdded:Connect(function(character)
     S.LockPosition = false
     agilityOriginalWalkSpeed = nil
     agilityLastTeleport = 0
+    HubRuntime.BossActive = false
+    HubRuntime.BossTarget = "Aguardando spawn"
+    HubRuntime.BossReturnCFrame = nil
     setHubStatus("Respawn detectado • retomando automações")
 
     task.spawn(function()
@@ -217,7 +223,7 @@ end))
 
 task.spawn(function()
     while SESSION.Alive and task.wait(.08) do
-        if S.LockPosition then
+        if S.LockPosition and not HubRuntime.BossActive then
             local character = LP.Character
             local root = character and character:FindFirstChild("HumanoidRootPart")
             if not lockedCFrame then
@@ -245,6 +251,7 @@ local function stopAllAutomations()
     S.AutoBestMachine = false
     S.StrengthRebirth = false
     S.TurboStrength = false
+    S.AutoBoss = false
     S.AutoAgility = false
     S.SmartFarm = false
     S.AutoEquipAfterHatch = false
@@ -288,6 +295,186 @@ local function doAnimatedPunch()
     pcall(function() tool:Activate() end)
     return true
 end
+
+local function bossRoot(model)
+    if not model then return nil end
+    return model:FindFirstChild("HumanoidRootPart")
+        or model:FindFirstChild("UpperTorso")
+        or model:FindFirstChild("Torso")
+        or model:FindFirstChild("Head")
+end
+
+local function bossHumanoid(model)
+    return model and model:FindFirstChildOfClass("Humanoid")
+end
+
+local function modelHasBossMarker(model)
+    if not model or not model:IsA("Model") then return false end
+    if model == LP.Character or Players:GetPlayerFromCharacter(model) then return false end
+
+    local humanoid = bossHumanoid(model)
+    local root = bossRoot(model)
+    if not humanoid or humanoid.Health <= 0 or not root then return false end
+
+    local lowerName = string.lower(model.Name)
+    if string.find(lowerName, "boss", 1, true) then return true end
+
+    if model:GetAttribute("Boss") == true
+        or model:GetAttribute("IsBoss") == true
+        or model:GetAttribute("isBoss") == true then
+        return true
+    end
+
+    local parent = model.Parent
+    while parent and parent ~= workspace do
+        if string.find(string.lower(parent.Name), "boss", 1, true) then
+            return true
+        end
+        parent = parent.Parent
+    end
+
+    -- Alguns NPCs novos exibem "Boss" apenas no BillboardGui, sem colocar
+    -- a palavra no nome do Model.
+    for _, obj in ipairs(model:GetDescendants()) do
+        if (obj:IsA("TextLabel") or obj:IsA("TextButton")) and type(obj.Text) == "string" then
+            if string.find(string.lower(obj.Text), "boss", 1, true) then
+                return true
+            end
+        end
+    end
+
+    return false
+end
+
+local function findAliveBoss()
+    local candidates = {}
+
+    -- Primeiro prioriza pastas explicitamente ligadas a bosses.
+    for _, container in ipairs(workspace:GetChildren()) do
+        if (container:IsA("Folder") or container:IsA("Model"))
+            and string.find(string.lower(container.Name), "boss", 1, true) then
+            for _, item in ipairs(container:GetDescendants()) do
+                if item:IsA("Model") and modelHasBossMarker(item) then
+                    candidates[#candidates+1] = item
+                end
+            end
+            if container:IsA("Model") and modelHasBossMarker(container) then
+                candidates[#candidates+1] = container
+            end
+        end
+    end
+
+    -- Fallback para updates novos em que o boss fica dentro de Battle Island
+    -- ou outra pasta sem "boss" no nome.
+    if #candidates == 0 then
+        for _, item in ipairs(workspace:GetDescendants()) do
+            if item:IsA("Model") and modelHasBossMarker(item) then
+                candidates[#candidates+1] = item
+            end
+        end
+    end
+
+    if #candidates == 0 then return nil end
+
+    local character = LP.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    if not root then return candidates[1] end
+
+    table.sort(candidates, function(a,b)
+        local ar, br = bossRoot(a), bossRoot(b)
+        if not ar then return false end
+        if not br then return true end
+        return (ar.Position-root.Position).Magnitude < (br.Position-root.Position).Magnitude
+    end)
+
+    return candidates[1]
+end
+
+local function beginBossFight(target)
+    local character = LP.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    if not root or not target then return false end
+
+    if not HubRuntime.BossActive then
+        HubRuntime.BossReturnCFrame = root.CFrame
+    end
+
+    HubRuntime.BossActive = true
+    HubRuntime.BossTarget = target.Name
+    return true
+end
+
+local function finishBossFight(returnToStart)
+    local wasActive = HubRuntime.BossActive
+    HubRuntime.BossActive = false
+    HubRuntime.BossTarget = "Aguardando spawn"
+
+    if wasActive and returnToStart and HubRuntime.BossReturnCFrame then
+        local character = LP.Character
+        local root = character and character:FindFirstChild("HumanoidRootPart")
+        if root then
+            pcall(function()
+                root.CFrame = HubRuntime.BossReturnCFrame
+                root.AssemblyLinearVelocity = Vector3.zero
+            end)
+        end
+    end
+
+    HubRuntime.BossReturnCFrame = nil
+end
+
+task.spawn(function()
+    local currentBoss = nil
+
+    while SESSION.Alive and task.wait(.12) do
+        if not S.AutoBoss then
+            if HubRuntime.BossActive then
+                finishBossFight(true)
+            end
+            currentBoss = nil
+        else
+            local humanoid = bossHumanoid(currentBoss)
+            local root = bossRoot(currentBoss)
+
+            if not currentBoss or not currentBoss.Parent or not humanoid or humanoid.Health <= 0 or not root then
+                if HubRuntime.BossActive and currentBoss then
+                    finishBossFight(true)
+                    setHubStatus("Boss finalizado • aguardando próximo spawn")
+                end
+
+                currentBoss = findAliveBoss()
+                if currentBoss then
+                    beginBossFight(currentBoss)
+                    setHubStatus("Auto Boss • "..currentBoss.Name)
+                else
+                    HubRuntime.BossTarget = "Aguardando spawn"
+                end
+            end
+
+            if currentBoss and currentBoss.Parent then
+                local bossHum = bossHumanoid(currentBoss)
+                local bossPart = bossRoot(currentBoss)
+                local character = LP.Character
+                local myRoot = character and character:FindFirstChild("HumanoidRootPart")
+                local myHum = character and character:FindFirstChildOfClass("Humanoid")
+
+                if bossHum and bossHum.Health > 0 and bossPart and myRoot and myHum and myHum.Health > 0 then
+                    beginBossFight(currentBoss)
+
+                    pcall(function()
+                        local attackPosition = bossPart.Position
+                            - bossPart.CFrame.LookVector * 5
+                            + Vector3.new(0, 2.5, 0)
+                        myRoot.CFrame = CFrame.lookAt(attackPosition, bossPart.Position)
+                        myRoot.AssemblyLinearVelocity = Vector3.zero
+                    end)
+
+                    doAnimatedPunch()
+                end
+            end
+        end
+    end
+end)
 
 local function bestAvailableRock()
     local machines = workspace:FindFirstChild("machinesFolder")
@@ -530,7 +717,7 @@ end
 
 task.spawn(function()
     while SESSION.Alive and task.wait(.05) do
-        if S.AutoAgility then
+        if S.AutoAgility and not HubRuntime.BossActive then
             if S.LockPosition then
                 S.LockPosition = false
                 lockedCFrame = nil
@@ -712,7 +899,7 @@ task.spawn(function()
     local noGainWindows = 0
 
     while SESSION.Alive and task.wait(.08) do
-        if S.TurboStrength then
+        if S.TurboStrength and not HubRuntime.BossActive then
             if fastStrengthBurst() then
                 failures = 0
             else
@@ -904,7 +1091,7 @@ end
 
 task.spawn(function()
     while SESSION.Alive and task.wait(math.max(S.RepDelay, 0.12)) do
-        if S.Train then
+        if S.Train and not HubRuntime.BossActive then
             -- Prefer the game's normal Tool activation: this keeps the
             -- character animation visible and lets the tool's own LocalScript
             -- handle the training event. Fallback only if no usable tool exists.
@@ -918,7 +1105,7 @@ end)
 
 task.spawn(function()
     while SESSION.Alive and task.wait(.18) do
-        if S.Rebirth then
+        if S.Rebirth and not HubRuntime.BossActive then
             if S.RebirthTarget and currentRebirths() >= S.RebirthTarget then
                 S.Rebirth = false
             else
@@ -938,7 +1125,7 @@ end)
 
 task.spawn(function()
     while SESSION.Alive and task.wait(.18) do
-        if S.SmartRock then
+        if S.SmartRock and not HubRuntime.BossActive then
             farmBestRock()
         end
     end
@@ -955,7 +1142,7 @@ end)
 task.spawn(function()
     local failures = 0
     while SESSION.Alive and task.wait(.28) do
-        if S.AutoMachine then
+        if S.AutoMachine and not HubRuntime.BossActive then
             if useSelectedMachine(false) then
                 failures = 0
             else
@@ -975,7 +1162,7 @@ end)
 
 task.spawn(function()
     while SESSION.Alive and task.wait(.25) do
-        if S.StrengthRebirth then
+        if S.StrengthRebirth and not HubRuntime.BossActive then
             if not S.AutoMachine then
                 local animated = activateTrainingTool()
                 if not animated then
@@ -1050,6 +1237,10 @@ local function canPunch()
     return getMuscleEvent() ~= nil and findPunchTool() ~= nil
 end
 
+local function canAutoBoss()
+    return hasCharacter() and canPunch()
+end
+
 local function canRockFarm()
     return type(firetouchinterest) == "function"
         and hasCharacter()
@@ -1120,6 +1311,7 @@ local function runSelfTest()
     check("Treino disponível", canTrain)
     check("Rebirth disponível", canRebirth)
     check("Punch disponível", canPunch)
+    check("Auto Boss disponível", canAutoBoss)
     check("Farm de pedra disponível", canRockFarm)
     check("Máquinas disponíveis", canMachineFarm)
     check("Agilidade disponível", canAgilityFarm)
@@ -2073,6 +2265,61 @@ toggle(
     "Tenta entrar no evento Brawl sempre que ele estiver disponível.",
     "Brawl",
     canBrawl
+)
+
+section("BOSSES", "Espera um boss aparecer, vai até ele automaticamente, ataca e depois retorna ao ponto anterior.")
+
+toggle(
+    "Auto Boss ao spawnar",
+    "Fica aguardando qualquer boss detectado no mapa; quando ele aparece, equipa Punch e ataca até o Humanoid acabar.",
+    "AutoBoss",
+    canAutoBoss
+)
+
+local _, bossStatusTitle, bossStatusDesc = card(
+    "Boss: aguardando spawn",
+    "O scanner procura bosses por nome, pasta, atributos e indicadores visuais.",
+    function() end,
+    COLORS.Red
+)
+
+task.spawn(function()
+    while SESSION.Alive and task.wait(.5) do
+        if HubRuntime.BossActive then
+            local boss = findAliveBoss()
+            local hum = boss and bossHumanoid(boss)
+            bossStatusTitle.Text = "Boss: "..HubRuntime.BossTarget
+            bossStatusDesc.Text = hum
+                and ("Vida atual: "..math.floor(hum.Health).." / "..math.floor(hum.MaxHealth))
+                or "Atacando boss detectado..."
+        elseif S.AutoBoss then
+            bossStatusTitle.Text = "Boss: aguardando spawn"
+            bossStatusDesc.Text = "Auto Boss está ligado e continuará esperando o próximo boss."
+        else
+            bossStatusTitle.Text = "Boss: Auto Boss desligado"
+            bossStatusDesc.Text = "Ative a opção acima para começar a monitorar os spawns."
+        end
+    end
+end)
+
+card(
+    "Procurar boss agora",
+    "Faz uma varredura imediata e mostra o boss vivo encontrado no mapa.",
+    function(_, titleLabel, descLabel)
+        local boss = findAliveBoss()
+        if boss then
+            local hum = bossHumanoid(boss)
+            titleLabel.Text = "Encontrado: "..boss.Name
+            descLabel.Text = hum
+                and ("Vida: "..math.floor(hum.Health).." / "..math.floor(hum.MaxHealth))
+                or "Boss detectado."
+        else
+            titleLabel.Text = "Nenhum boss vivo agora"
+            descLabel.Text = "O Auto Boss continuará esperando o próximo spawn."
+        end
+    end,
+    COLORS.Yellow,
+    canAutoBoss
 )
 
 section("MÁQUINAS", "Treino usando as máquinas detectadas diretamente no mapa atual.")
