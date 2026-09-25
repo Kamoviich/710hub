@@ -90,6 +90,7 @@ local S = {
     Train=false, Rebirth=false, Chests=false, Hatch=false, Brawl=false,
     AutoPunch=false, SmartRock=false, LockPosition=false,
     AutoMachine=false, AutoBestMachine=false, StrengthRebirth=false,
+    TurboStrength=false,
     AutoAgility=false, SmartFarm=false,
     AutoEquipAfterHatch=false, AutoEvolveAfterHatch=false,
     PerformanceMode=false, GoalEnabled=false,
@@ -243,6 +244,7 @@ local function stopAllAutomations()
     S.AutoMachine = false
     S.AutoBestMachine = false
     S.StrengthRebirth = false
+    S.TurboStrength = false
     S.AutoAgility = false
     S.SmartFarm = false
     S.AutoEquipAfterHatch = false
@@ -638,6 +640,83 @@ local function activateTrainingTool()
 
     return false
 end
+
+
+local function turboStrengthTick()
+    if not hasCharacter() then return false end
+
+    local event = getMuscleEvent()
+    local used = false
+
+    -- Prioriza uma máquina real carregada no servidor, pois o jogo associa o
+    -- treino ao interactSeat. Se não houver máquina, usa a ferramenta normal.
+    if canMachineFarm() then
+        S.AutoBestMachine = true
+        local info = selectBestMachine()
+        if info and info.seat and info.seat.Parent then
+            local character = LP.Character
+            local root = character and character:FindFirstChild("HumanoidRootPart")
+            if root and (root.Position - info.seat.Position).Magnitude > 14 then
+                pcall(function()
+                    root.CFrame = info.seat.CFrame * CFrame.new(0,3,0)
+                end)
+                task.wait(.12)
+            end
+
+            refreshRemotes()
+            if R.Machine then
+                safeInvoke(R.Machine, "useMachine", info.seat)
+            end
+
+            if event then
+                -- Pequena rajada usando a mesma ação de treino já aceita pela
+                -- máquina. Mantemos um teto baixo para não criar spam infinito.
+                safeFire(event, "rep", info.seat)
+                task.wait(.035)
+                safeFire(event, "rep", info.seat)
+                used = true
+            end
+        end
+    end
+
+    if not used then
+        local activated = activateTrainingTool()
+        if event then
+            safeFire(event, "rep")
+            task.wait(.04)
+            safeFire(event, "rep")
+            used = true
+        elseif activated then
+            used = true
+        end
+    end
+
+    return used
+end
+
+task.spawn(function()
+    local failures = 0
+    while SESSION.Alive and task.wait(.20) do
+        if S.TurboStrength then
+            if turboStrengthTick() then
+                failures = 0
+                setHubStatus("Força Turbo ativa")
+            else
+                failures += 1
+                if failures >= 10 then
+                    S.TurboStrength = false
+                    failures = 0
+                    setHubStatus("Força Turbo desligada: treino indisponível")
+                    if HubRuntime.RenderToggles then
+                        task.defer(HubRuntime.RenderToggles)
+                    end
+                end
+            end
+        else
+            failures = 0
+        end
+    end
+end)
 
 local function getPetShopFolder()
     local shared = RS:FindFirstChild("shared")
@@ -1069,17 +1148,14 @@ local function applySmartObjective()
     S.AutoMachine = false
     S.AutoBestMachine = false
     S.StrengthRebirth = false
+    S.TurboStrength = false
     S.AutoAgility = false
 
     local ok = true
 
     if S.SmartObjective == "Força" then
-        if canMachineFarm() then
-            S.AutoBestMachine = true
-            selectBestMachine()
-            S.AutoMachine = true
-        elseif canTrain() then
-            S.Train = true
+        if canMachineFarm() or canTrain() then
+            S.TurboStrength = true
         else
             ok = false
         end
@@ -1678,23 +1754,36 @@ HubRuntime.RenderToggles = renderAllToggles
 local function resolveToggleConflicts(key)
     if not S[key] then return end
 
-    if key == "AutoAgility" then
+    if key == "TurboStrength" then
+        S.Train = false
+        S.AutoMachine = false
+        S.AutoBestMachine = false
+        S.StrengthRebirth = false
+        S.AutoAgility = false
+        S.SmartRock = false
+        S.LockPosition = false
+        lockedCFrame = nil
+    elseif key == "AutoAgility" then
+        S.TurboStrength = false
         S.LockPosition = false
         S.SmartRock = false
         S.AutoMachine = false
         S.StrengthRebirth = false
         lockedCFrame = nil
     elseif key == "SmartRock" then
+        S.TurboStrength = false
         S.AutoAgility = false
         S.AutoMachine = false
         S.LockPosition = false
         lockedCFrame = nil
     elseif key == "AutoMachine" then
+        S.TurboStrength = false
         S.AutoAgility = false
         S.SmartRock = false
         S.LockPosition = false
         lockedCFrame = nil
     elseif key == "LockPosition" then
+        S.TurboStrength = false
         S.AutoAgility = false
         S.SmartRock = false
     end
@@ -1888,6 +1977,13 @@ toggle(
     "Equipa uma ferramenta de treino e ativa repetidamente para ganhar força.",
     "Train",
     canTrain
+)
+
+toggle(
+    "Força Turbo",
+    "Combina a melhor máquina disponível com pequenas rajadas de treino; se não houver máquina, usa sua ferramenta de treino.",
+    "TurboStrength",
+    function() return canMachineFarm() or canTrain() end
 )
 
 toggle(
@@ -2251,15 +2347,11 @@ card(
     "Ativa automaticamente o método de força disponível mais consistente nesta sessão.",
     function()
         stopAllAutomations()
-        if canMachineFarm() then
-            S.AutoBestMachine = true
-            selectBestMachine()
-            S.AutoMachine = true
-        elseif canTrain() then
-            S.Train = true
+        if canMachineFarm() or canTrain() then
+            S.TurboStrength = true
         end
         renderAllToggles()
-        setHubStatus("Perfil de Força ativado")
+        setHubStatus("Perfil de Força ativado • Turbo")
     end,
     COLORS.Green,
     function() return canMachineFarm() or canTrain() end
