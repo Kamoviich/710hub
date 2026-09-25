@@ -643,20 +643,23 @@ end
 
 
 local function turboStrengthTick()
-    if not hasCharacter() then return false end
+    local character = LP.Character
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    if not character or not humanoid or not root then return false end
 
+    refreshRemotes()
     local event = getMuscleEvent()
     local used = false
+    local machineReady = R.Machine ~= nil and event ~= nil and #scanMachines() > 0
 
     -- Prioriza uma máquina real carregada no servidor, pois o jogo associa o
     -- treino ao interactSeat. Se não houver máquina, usa a ferramenta normal.
-    if canMachineFarm() then
+    if machineReady then
         S.AutoBestMachine = true
         local info = selectBestMachine()
         if info and info.seat and info.seat.Parent then
-            local character = LP.Character
-            local root = character and character:FindFirstChild("HumanoidRootPart")
-            if root and (root.Position - info.seat.Position).Magnitude > 14 then
+            if (root.Position - info.seat.Position).Magnitude > 14 then
                 pcall(function()
                     root.CFrame = info.seat.CFrame * CFrame.new(0,3,0)
                 end)
