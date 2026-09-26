@@ -19,7 +19,7 @@ end
 
 local SESSION = {
     Alive = true,
-    Version = "2026.09-stable.8-recovery",
+    Version = "2026.09-stable.9",
     Connections = {},
 }
 
@@ -93,7 +93,7 @@ local S = {
     TurboStrength=false, AutoBoss=false,
     AutoAgility=false, SmartFarm=false,
     AutoEquipAfterHatch=false, AutoEvolveAfterHatch=false,
-    PerformanceMode=false, GoalEnabled=false,
+    PerformanceMode=false, StabilityMode=false, GoalEnabled=false,
     SmartObjective="Força", GoalStat="Strength", GoalValue=nil,
     HatchCrystal="Blue Crystal", RepDelay=.065, HatchDelay=.45,
     RebirthTarget=nil, SelectedMachine=nil,
@@ -109,6 +109,13 @@ local HubRuntime = {
     BossActive = false,
     BossTarget = "Aguardando spawn",
     BossReturnCFrame = nil,
+    RemoteWindowStarted = os.clock(),
+    RemoteWindowCalls = 0,
+    SkippedRemoteCalls = 0,
+    AvgFPS = 60,
+    LowFPSWindows = 0,
+    StabilityTrips = 0,
+    StabilityPrevious = nil,
 }
 
 local function setHubStatus(text)
@@ -138,10 +145,30 @@ trackConnection(LP.Idled:Connect(function()
     end)
 end))
 
+local function remoteBudgetPermit()
+    local now = os.clock()
+    if now - HubRuntime.RemoteWindowStarted >= 1 then
+        HubRuntime.RemoteWindowStarted = now
+        HubRuntime.RemoteWindowCalls = 0
+    end
+
+    local limit = S.StabilityMode and 45 or 160
+    if HubRuntime.RemoteWindowCalls >= limit then
+        HubRuntime.SkippedRemoteCalls += 1
+        return false
+    end
+
+    HubRuntime.RemoteWindowCalls += 1
+    return true
+end
+
 local function safeInvoke(remote, ...)
     if not SESSION.Alive then return nil end
     if not remote then
         setHubError("RemoteFunction não encontrada")
+        return nil
+    end
+    if not remoteBudgetPermit() then
         return nil
     end
     local args = table.pack(...)
@@ -158,6 +185,9 @@ local function safeFire(remote, ...)
     if not SESSION.Alive then return false end
     if not remote then
         setHubError("RemoteEvent não encontrado")
+        return false
+    end
+    if not remoteBudgetPermit() then
         return false
     end
     local args = table.pack(...)
@@ -222,7 +252,7 @@ trackConnection(LP.CharacterAdded:Connect(function(character)
 end))
 
 task.spawn(function()
-    while SESSION.Alive and task.wait(.08) do
+    while SESSION.Alive and task.wait(S.StabilityMode and .14 or .08) do
         if S.LockPosition and not HubRuntime.BossActive then
             local character = LP.Character
             local root = character and character:FindFirstChild("HumanoidRootPart")
@@ -426,7 +456,7 @@ end
 task.spawn(function()
     local currentBoss = nil
 
-    while SESSION.Alive and task.wait(.12) do
+    while SESSION.Alive and task.wait(S.StabilityMode and .20 or .12) do
         if not S.AutoBoss then
             if HubRuntime.BossActive then
                 finishBossFight(true)
@@ -716,7 +746,7 @@ local function bestTreadmill()
 end
 
 task.spawn(function()
-    while SESSION.Alive and task.wait(.05) do
+    while SESSION.Alive and task.wait(S.StabilityMode and .10 or .05) do
         if S.AutoAgility and not HubRuntime.BossActive then
             if S.LockPosition then
                 S.LockPosition = false
@@ -884,7 +914,8 @@ local function fastStrengthBurst()
 
     -- Muscle Legends aceita "rep" como a ação de treino. Em vez de depender
     -- de uma máquina específica, enviamos uma rajada curta e limitada.
-    for _ = 1, 8 do
+    local burst = S.StabilityMode and 3 or 8
+    for _ = 1, burst do
         if not SESSION.Alive or not S.TurboStrength then break end
         safeFire(event, "rep")
     end
@@ -898,7 +929,7 @@ task.spawn(function()
     local windowStrength = numberStat("Strength")
     local noGainWindows = 0
 
-    while SESSION.Alive and task.wait(.08) do
+    while SESSION.Alive and task.wait(S.StabilityMode and .14 or .08) do
         if S.TurboStrength and not HubRuntime.BossActive then
             if fastStrengthBurst() then
                 failures = 0
@@ -973,13 +1004,8 @@ local function buyShopPet(item)
         return false
     end
 
-    local ok, result = pcall(function()
-        HubRuntime.RemoteCalls += 1
-        return remote:InvokeServer(item)
-    end)
-
-    if not ok then
-        setHubError(result)
+    local result = safeInvoke(remote, item)
+    if result == nil and HubRuntime.LastError ~= "Nenhum" then
         return false
     end
 
@@ -1090,7 +1116,7 @@ local function evolveReadyOwned()
 end
 
 task.spawn(function()
-    while SESSION.Alive and task.wait(math.max(S.RepDelay, 0.12)) do
+    while SESSION.Alive and task.wait(math.max(S.RepDelay, S.StabilityMode and 0.18 or 0.12)) do
         if S.Train and not HubRuntime.BossActive then
             -- Prefer the game's normal Tool activation: this keeps the
             -- character animation visible and lets the tool's own LocalScript
@@ -1104,7 +1130,7 @@ task.spawn(function()
 end)
 
 task.spawn(function()
-    while SESSION.Alive and task.wait(.18) do
+    while SESSION.Alive and task.wait(S.StabilityMode and .35 or .18) do
         if S.Rebirth and not HubRuntime.BossActive then
             if S.RebirthTarget and currentRebirths() >= S.RebirthTarget then
                 S.Rebirth = false
@@ -1116,7 +1142,7 @@ task.spawn(function()
 end)
 
 task.spawn(function()
-    while SESSION.Alive and task.wait(.16) do
+    while SESSION.Alive and task.wait(S.StabilityMode and .24 or .16) do
         if S.AutoPunch then
             doAnimatedPunch()
         end
@@ -1124,7 +1150,7 @@ task.spawn(function()
 end)
 
 task.spawn(function()
-    while SESSION.Alive and task.wait(.18) do
+    while SESSION.Alive and task.wait(S.StabilityMode and .30 or .18) do
         if S.SmartRock and not HubRuntime.BossActive then
             farmBestRock()
         end
@@ -1141,7 +1167,7 @@ end)
 
 task.spawn(function()
     local failures = 0
-    while SESSION.Alive and task.wait(.28) do
+    while SESSION.Alive and task.wait(S.StabilityMode and .42 or .28) do
         if S.AutoMachine and not HubRuntime.BossActive then
             if useSelectedMachine(false) then
                 failures = 0
@@ -1161,7 +1187,7 @@ task.spawn(function()
 end)
 
 task.spawn(function()
-    while SESSION.Alive and task.wait(.25) do
+    while SESSION.Alive and task.wait(S.StabilityMode and .45 or .25) do
         if S.StrengthRebirth and not HubRuntime.BossActive then
             if not S.AutoMachine then
                 local animated = activateTrainingTool()
@@ -1189,7 +1215,7 @@ task.spawn(function()
     while SESSION.Alive and task.wait(.1) do
         if S.Hatch then
             safeInvoke(R.Crystal, "openCrystal", S.HatchCrystal)
-            task.wait(S.HatchDelay)
+            task.wait(S.StabilityMode and math.max(S.HatchDelay, .70) or S.HatchDelay)
         end
     end
 end)
@@ -1448,45 +1474,243 @@ task.spawn(function()
 end)
 
 local performanceSaved = {}
+local performanceDescendantConnection = nil
+
+local function savePerformanceValue(obj, key, value)
+    local bucket = performanceSaved[obj]
+    if not bucket then
+        bucket = {}
+        performanceSaved[obj] = bucket
+    end
+    if bucket[key] == nil then
+        bucket[key] = value
+    end
+end
+
+local function optimizeVisualObject(obj)
+    if not S.PerformanceMode or not obj then return end
+
+    if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam")
+        or obj:IsA("Smoke") or obj:IsA("Fire") or obj:IsA("Sparkles") then
+        savePerformanceValue(obj, "Enabled", obj.Enabled)
+        obj.Enabled = false
+    elseif obj:IsA("BloomEffect") or obj:IsA("SunRaysEffect")
+        or obj:IsA("DepthOfFieldEffect") or obj:IsA("BlurEffect") then
+        savePerformanceValue(obj, "Enabled", obj.Enabled)
+        obj.Enabled = false
+    end
+end
+
 local function setPerformanceMode(enabled)
+    if S.PerformanceMode == enabled then return end
     S.PerformanceMode = enabled
 
     if enabled then
-        performanceSaved.GlobalShadows = Lighting.GlobalShadows
+        performanceSaved.__GlobalShadows = Lighting.GlobalShadows
         Lighting.GlobalShadows = false
 
-        for _, obj in ipairs(game:GetDescendants()) do
-            if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") then
-                if performanceSaved[obj] == nil then
-                    performanceSaved[obj] = obj.Enabled
-                end
-                obj.Enabled = false
-            elseif obj:IsA("BloomEffect") or obj:IsA("SunRaysEffect") or obj:IsA("DepthOfFieldEffect") then
-                if performanceSaved[obj] == nil then
-                    performanceSaved[obj] = obj.Enabled
-                end
-                obj.Enabled = false
+        local terrain = workspace:FindFirstChildOfClass("Terrain")
+        if terrain then
+            performanceSaved.__Terrain = {
+                WaterWaveSize = terrain.WaterWaveSize,
+                WaterWaveSpeed = terrain.WaterWaveSpeed,
+                WaterReflectance = terrain.WaterReflectance,
+            }
+            pcall(function()
+                terrain.WaterWaveSize = 0
+                terrain.WaterWaveSpeed = 0
+                terrain.WaterReflectance = 0
+            end)
+        end
+
+        pcall(function()
+            local rendering = settings().Rendering
+            performanceSaved.__QualityLevel = rendering.QualityLevel
+            rendering.QualityLevel = Enum.QualityLevel.Level01
+        end)
+
+        local descendants = game:GetDescendants()
+        for i, obj in ipairs(descendants) do
+            pcall(optimizeVisualObject, obj)
+            if i % 250 == 0 then
+                task.wait()
             end
         end
 
-        setHubStatus("Modo desempenho ativado")
-    else
-        if performanceSaved.GlobalShadows ~= nil then
-            Lighting.GlobalShadows = performanceSaved.GlobalShadows
+        if not performanceDescendantConnection then
+            performanceDescendantConnection = trackConnection(game.DescendantAdded:Connect(function(obj)
+                if S.PerformanceMode then
+                    task.defer(function()
+                        pcall(optimizeVisualObject, obj)
+                    end)
+                end
+            end))
         end
 
-        for obj, value in pairs(performanceSaved) do
-            if typeof(obj) == "Instance" and obj.Parent and type(value) == "boolean" then
-                pcall(function() obj.Enabled = value end)
+        setHubStatus("Otimização gráfica ativada")
+    else
+        if performanceSaved.__GlobalShadows ~= nil then
+            Lighting.GlobalShadows = performanceSaved.__GlobalShadows
+        end
+
+        local terrain = workspace:FindFirstChildOfClass("Terrain")
+        local terrainSaved = performanceSaved.__Terrain
+        if terrain and terrainSaved then
+            pcall(function()
+                terrain.WaterWaveSize = terrainSaved.WaterWaveSize
+                terrain.WaterWaveSpeed = terrainSaved.WaterWaveSpeed
+                terrain.WaterReflectance = terrainSaved.WaterReflectance
+            end)
+        end
+
+        if performanceSaved.__QualityLevel ~= nil then
+            pcall(function()
+                settings().Rendering.QualityLevel = performanceSaved.__QualityLevel
+            end)
+        end
+
+        for obj, values in pairs(performanceSaved) do
+            if typeof(obj) == "Instance" and obj.Parent and type(values) == "table" then
+                for key, value in pairs(values) do
+                    pcall(function()
+                        obj[key] = value
+                    end)
+                end
             end
         end
 
         performanceSaved = {}
-        setHubStatus("Modo desempenho desativado")
+        setHubStatus("Otimização gráfica desativada")
     end
 end
 
+local function reduceHeavyLoad(reason)
+    local changed = false
+    for _, key in ipairs({
+        "TurboStrength",
+        "AutoAgility",
+        "AutoBoss",
+        "AutoMachine",
+        "SmartRock",
+        "StrengthRebirth",
+    }) do
+        if S[key] then
+            S[key] = false
+            changed = true
+        end
+    end
+
+    HubRuntime.BossActive = false
+    HubRuntime.BossTarget = "Aguardando spawn"
+    if changed then
+        HubRuntime.StabilityTrips += 1
+        setHubStatus("Proteção de estabilidade ativada • "..tostring(reason or "carga alta"))
+        if HubRuntime.RenderToggles then
+            task.defer(HubRuntime.RenderToggles)
+        end
+    end
+end
+
+local function setStabilityMode(enabled)
+    if S.StabilityMode == enabled then return end
+
+    if enabled then
+        HubRuntime.StabilityPrevious = {
+            RepDelay = S.RepDelay,
+            HatchDelay = S.HatchDelay,
+            PerformanceMode = S.PerformanceMode,
+            FPSCap = nil,
+        }
+
+        if type(getfpscap) == "function" then
+            pcall(function()
+                HubRuntime.StabilityPrevious.FPSCap = getfpscap()
+            end)
+        end
+
+        S.StabilityMode = true
+        S.RepDelay = math.max(S.RepDelay, .12)
+        S.HatchDelay = math.max(S.HatchDelay, .65)
+
+        if not S.PerformanceMode then
+            setPerformanceMode(true)
+        end
+
+        if type(setfpscap) == "function" then
+            pcall(function()
+                setfpscap(60)
+            end)
+        end
+
+        setHubStatus("Modo Estável ativado • carga limitada")
+    else
+        local previous = HubRuntime.StabilityPrevious
+        S.StabilityMode = false
+
+        if previous then
+            S.RepDelay = previous.RepDelay or S.RepDelay
+            S.HatchDelay = previous.HatchDelay or S.HatchDelay
+
+            if previous.PerformanceMode == false and S.PerformanceMode then
+                setPerformanceMode(false)
+            end
+
+            if previous.FPSCap and type(setfpscap) == "function" then
+                pcall(function()
+                    setfpscap(previous.FPSCap)
+                end)
+            end
+        end
+
+        HubRuntime.StabilityPrevious = nil
+        HubRuntime.LowFPSWindows = 0
+        setHubStatus("Modo Estável desativado")
+    end
+end
+
+-- Mede FPS localmente e reduz apenas funções pesadas se o cliente entrar
+-- numa queda sustentada de desempenho enquanto o Modo Estável estiver ligado.
+local fpsFrames = 0
+local fpsWindowStarted = os.clock()
+trackConnection(RunService.Heartbeat:Connect(function()
+    fpsFrames += 1
+end))
+
+task.spawn(function()
+    while SESSION.Alive and task.wait(2) do
+        local now = os.clock()
+        local elapsed = math.max(.1, now - fpsWindowStarted)
+        HubRuntime.AvgFPS = fpsFrames / elapsed
+        fpsFrames = 0
+        fpsWindowStarted = now
+
+        if S.StabilityMode then
+            if HubRuntime.AvgFPS < 15 then
+                HubRuntime.LowFPSWindows += 1
+            else
+                HubRuntime.LowFPSWindows = math.max(0, HubRuntime.LowFPSWindows - 1)
+            end
+
+            if HubRuntime.LowFPSWindows >= 3 then
+                if not S.PerformanceMode then
+                    setPerformanceMode(true)
+                end
+                reduceHeavyLoad("FPS baixo ("..math.floor(HubRuntime.AvgFPS)..")")
+                HubRuntime.LowFPSWindows = 0
+            end
+        else
+            HubRuntime.LowFPSWindows = 0
+        end
+    end
+end)
+
 SESSION.Cleanup = function()
+    if S.StabilityMode then
+        pcall(function()
+            setStabilityMode(false)
+        end)
+    end
+
     SESSION.Alive = false
 
     for _, connection in ipairs(SESSION.Connections) do
@@ -2834,7 +3058,9 @@ task.spawn(function()
             .." • muscleEvent: "..(muscleOK and "OK" or "AUSENTE")
             .." • Máquinas: "..machineCount
             .." • Respawns: "..HubRuntime.Respawns
+            .." • FPS: "..math.floor(HubRuntime.AvgFPS)
             .." • Chamadas: "..HubRuntime.RemoteCalls
+            .." • Cortadas: "..HubRuntime.SkippedRemoteCalls
             ..selfTest
     end
 end)
@@ -2916,15 +3142,55 @@ card(
     COLORS.Yellow
 )
 
+local stabilityButton = toggle(
+    "Modo Estável / Anti-Travamento",
+    "Limita chamadas, desacelera loops pesados, otimiza gráficos e reage automaticamente a quedas fortes de FPS.",
+    "StabilityMode"
+)
+
+stabilityButton.MouseButton1Click:Connect(function()
+    -- O toggle altera S.StabilityMode antes deste callback. Reaplicamos pelo
+    -- controlador para salvar/restaurar os valores corretamente.
+    local desired = S.StabilityMode
+    S.StabilityMode = not desired
+    setStabilityMode(desired)
+    renderAllToggles()
+end)
+
+local _, stabilityInfoTitle, stabilityInfoDesc = card(
+    "Estabilidade: monitorando",
+    "Mostra FPS médio e quantas chamadas foram cortadas pelo limitador de carga.",
+    function() end,
+    COLORS.Yellow
+)
+
+task.spawn(function()
+    while SESSION.Alive and task.wait(1) do
+        stabilityInfoTitle.Text = "Estabilidade • FPS: "..math.floor(HubRuntime.AvgFPS)
+        stabilityInfoDesc.Text = "Chamadas cortadas: "..HubRuntime.SkippedRemoteCalls
+            .." • Proteções acionadas: "..HubRuntime.StabilityTrips
+            .." • Modo: "..(S.StabilityMode and "ESTÁVEL" or "NORMAL")
+    end
+end)
+
 local performanceButton, performanceTitle, performanceDesc = card(
     "Modo desempenho: OFF",
-    "Desliga efeitos visuais pesados localmente para melhorar FPS.",
+    "Reduz partículas, pós-processamento, sombras, água e qualidade gráfica local para aliviar GPU/CPU.",
     function(_,titleLabel)
         setPerformanceMode(not S.PerformanceMode)
         titleLabel.Text = "Modo desempenho: "..(S.PerformanceMode and "ON" or "OFF")
     end,
     COLORS.Green
 )
+
+task.spawn(function()
+    while SESSION.Alive and task.wait(1) do
+        performanceTitle.Text = "Modo desempenho: "..(S.PerformanceMode and "ON" or "OFF")
+        performanceDesc.Text = S.PerformanceMode
+            and "Otimização gráfica local ativa • efeitos pesados reduzidos."
+            or "Reduz partículas, pós-processamento, sombras, água e qualidade gráfica local para aliviar GPU/CPU."
+    end
+end)
 
 card(
     "Reentrar no servidor",
@@ -2959,11 +3225,11 @@ card(
 local footer = Instance.new("TextLabel")
 footer.Size = UDim2.new(1,-6,0,36)
 footer.BackgroundTransparency = 1
-footer.Text = "RightShift abre/fecha • END para tudo • Ícone 710 permanece na tela"
+footer.Text = "Modo Estável reduz carga • RightShift abre/fecha • END para tudo"
 footer.TextColor3 = COLORS.Muted
 footer.Font = Enum.Font.Gotham
 footer.TextSize = 9
 footer.Parent = scroll
 
 setHubStatus("Pronto • "..SESSION.Version)
-print("[710Hub] Muscle Legends carregado • recovery build • "..SESSION.Version)
+print("[710Hub] Muscle Legends carregado • stability build • "..SESSION.Version)
