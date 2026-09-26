@@ -973,74 +973,6 @@ task.spawn(function()
     end
 end)
 
-local function maxStrengthF2PTick()
-    if not S.MaxStrengthF2P then return false end
-    if HubRuntime.BossActive then return false end
-
-    local trained = false
-
-    if canMachineFarm and canMachineFarm() then
-        S.AutoBestMachine = true
-        selectBestMachine()
-        trained = useSelectedMachine(false) == true
-    end
-
-    if not trained then
-        trained = fastStrengthBurst()
-    end
-
-    return trained
-end
-
-task.spawn(function()
-    local lastPetRefresh = 0
-    local lastStrength = numberStat("Strength")
-    local lastMeasure = os.clock()
-    local failures = 0
-
-    while SESSION.Alive and task.wait(S.StabilityMode and .18 or .10) do
-        if S.MaxStrengthF2P then
-            if os.clock() - lastPetRefresh >= 10 then
-                pcall(equipBestStrengthOwned)
-                lastPetRefresh = os.clock()
-            end
-
-            if maxStrengthF2PTick() then
-                failures = 0
-            else
-                failures += 1
-            end
-
-            if os.clock() - lastMeasure >= 3 then
-                local nowStrength = numberStat("Strength")
-                local gained = math.max(0, nowStrength - lastStrength)
-
-                if gained > 0 then
-                    setHubStatus("Força F2P Máxima • +"..math.floor(gained).." em 3s")
-                else
-                    setHubStatus("Força F2P Máxima • procurando melhor treino...")
-                end
-
-                lastStrength = nowStrength
-                lastMeasure = os.clock()
-
-                if failures >= 20 then
-                    S.MaxStrengthF2P = false
-                    failures = 0
-                    setHubStatus("Força F2P Máxima desligada: treino indisponível")
-                    if HubRuntime.RenderToggles then
-                        task.defer(HubRuntime.RenderToggles)
-                    end
-                end
-            end
-        else
-            failures = 0
-            lastStrength = numberStat("Strength")
-            lastMeasure = os.clock()
-        end
-    end
-end)
-
 local function getPetShopFolder()
     local shared = RS:FindFirstChild("shared")
     local runtime = shared and shared:FindFirstChild("runtime")
@@ -1448,6 +1380,73 @@ local function canPetShop()
     return R.PetShop ~= nil and getPetShopFolder() ~= nil
 end
 
+local function maxStrengthF2PTick()
+    if not S.MaxStrengthF2P then return false end
+    if HubRuntime.BossActive then return false end
+
+    local trained = false
+
+    if canMachineFarm() then
+        selectBestMachine()
+        trained = useSelectedMachine(false) == true
+    end
+
+    if not trained then
+        trained = fastStrengthBurst()
+    end
+
+    return trained
+end
+
+task.spawn(function()
+    local lastPetRefresh = 0
+    local lastStrength = numberStat("Strength")
+    local lastMeasure = os.clock()
+    local failures = 0
+
+    while SESSION.Alive and task.wait(S.StabilityMode and .18 or .10) do
+        if S.MaxStrengthF2P then
+            if os.clock() - lastPetRefresh >= 10 then
+                pcall(equipBestStrengthOwned)
+                lastPetRefresh = os.clock()
+            end
+
+            if maxStrengthF2PTick() then
+                failures = 0
+            else
+                failures += 1
+            end
+
+            if os.clock() - lastMeasure >= 3 then
+                local nowStrength = numberStat("Strength")
+                local gained = math.max(0, nowStrength - lastStrength)
+
+                if gained > 0 then
+                    setHubStatus("Força F2P Máxima • +"..math.floor(gained).." em 3s")
+                else
+                    setHubStatus("Força F2P Máxima • procurando melhor treino...")
+                end
+
+                lastStrength = nowStrength
+                lastMeasure = os.clock()
+
+                if failures >= 20 then
+                    S.MaxStrengthF2P = false
+                    failures = 0
+                    setHubStatus("Força F2P Máxima desligada: treino indisponível")
+                    if HubRuntime.RenderToggles then
+                        task.defer(HubRuntime.RenderToggles)
+                    end
+                end
+            end
+        else
+            failures = 0
+            lastStrength = numberStat("Strength")
+            lastMeasure = os.clock()
+        end
+    end
+end)
+
 local function runSelfTest()
     refreshRemotes()
 
@@ -1474,6 +1473,7 @@ local function runSelfTest()
     end)
     check("muscleEvent disponível", function() return getMuscleEvent() ~= nil end)
     check("Treino disponível", canTrain)
+    check("Força F2P Máxima", function() return canTrain() or canMachineFarm() end)
     check("Rebirth disponível", canRebirth)
     check("Punch disponível", canPunch)
     check("Auto Boss disponível", canAutoBoss)
@@ -2933,6 +2933,20 @@ card(
     end,
     COLORS.Yellow,
     canHatch
+)
+
+card(
+    "Equipar melhores pets de Força",
+    "Ordena seus pets pelo bônus de Strength e equipa os melhores disponíveis para o farm F2P.",
+    function()
+        if equipBestStrengthOwned() then
+            setHubStatus("Melhores pets de Força equipados")
+        else
+            setHubStatus("Não foi possível equipar pets de Força")
+        end
+    end,
+    COLORS.Yellow,
+    canPetManager
 )
 
 card(
