@@ -19,7 +19,7 @@ end
 
 local SESSION = {
     Alive = true,
-    Version = "2026.09-stable.7",
+    Version = "2026.09-stable.8-recovery",
     Connections = {},
 }
 
@@ -1641,8 +1641,8 @@ end
 -- sombra
 local shadow = Instance.new("Frame")
 shadow.Name = "Shadow"
-shadow.Size = UDim2.fromOffset(636, 616)
-shadow.Position = UDim2.new(.5, -318, .5, -308)
+shadow.Size = UDim2.fromOffset(486, 596)
+shadow.Position = UDim2.new(.5, -243, .5, -298)
 shadow.BackgroundColor3 = Color3.new(0,0,0)
 shadow.BackgroundTransparency = .48
 shadow.BorderSizePixel = 0
@@ -1652,8 +1652,8 @@ addCorner(shadow, 19)
 -- painel
 local main = Instance.new("Frame")
 main.Name = "Main"
-main.Size = UDim2.fromOffset(620, 600)
-main.Position = UDim2.new(.5, -310, .5, -300)
+main.Size = UDim2.fromOffset(470, 580)
+main.Position = UDim2.new(.5, -235, .5, -290)
 main.BackgroundColor3 = COLORS.Black
 main.BorderSizePixel = 0
 main.Active = true
@@ -1747,7 +1747,7 @@ local title = Instance.new("TextLabel")
 title.Position = UDim2.fromOffset(82,10)
 title.Size = UDim2.new(1,-210,0,28)
 title.BackgroundTransparency = 1
-title.Text = "710 HUB"
+title.Text = "710Hub"
 title.TextColor3 = COLORS.White
 title.TextXAlignment = Enum.TextXAlignment.Left
 title.Font = Enum.Font.GothamBlack
@@ -1758,7 +1758,7 @@ local subtitle = Instance.new("TextLabel")
 subtitle.Position = UDim2.fromOffset(82,38)
 subtitle.Size = UDim2.new(1,-210,0,20)
 subtitle.BackgroundTransparency = 1
-subtitle.Text = "MUSCLE LEGENDS • 710 EDITION"
+subtitle.Text = "MUSCLE LEGENDS • NEON JAMAICA"
 subtitle.TextColor3 = COLORS.Yellow
 subtitle.TextXAlignment = Enum.TextXAlignment.Left
 subtitle.Font = Enum.Font.GothamMedium
@@ -1769,7 +1769,7 @@ local version = Instance.new("TextLabel")
 version.Position = UDim2.fromOffset(82,55)
 version.Size = UDim2.new(1,-210,0,14)
 version.BackgroundTransparency = 1
-version.Text = "HOME • MAIN • REBIRTHS • BOSS • PETS • STATS • MISC"
+version.Text = "Farm • Pets • Teleportes • Utilidades"
 version.TextColor3 = COLORS.Muted
 version.TextXAlignment = Enum.TextXAlignment.Left
 version.Font = Enum.Font.Gotham
@@ -1802,196 +1802,29 @@ for _, cfg in ipairs(leafPositions) do
     drawCannabisLeaf(main, cfg[1], cfg[2], COLORS.Green, cfg[4], cfg[3])
 end
 
-local sidebar = Instance.new("Frame")
-sidebar.Name = "Sidebar"
-sidebar.Position = UDim2.fromOffset(12,91)
-sidebar.Size = UDim2.fromOffset(112,496)
-sidebar.BackgroundColor3 = COLORS.Black2
-sidebar.BorderSizePixel = 0
-sidebar.Parent = main
-addCorner(sidebar,14)
-addGradient(sidebar, Color3.fromRGB(7,13,9), Color3.fromRGB(4,25,11), 90)
-addStroke(sidebar,COLORS.Green,1.2,.55)
+local scroll = Instance.new("ScrollingFrame")
+scroll.Name = "Conteudo"
+scroll.Position = UDim2.fromOffset(13,91)
+scroll.Size = UDim2.new(1,-26,1,-104)
+scroll.BackgroundTransparency = 1
+scroll.BorderSizePixel = 0
+scroll.ScrollBarThickness = 3
+scroll.ScrollBarImageColor3 = COLORS.Green
+scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+scroll.CanvasSize = UDim2.new()
+scroll.Parent = main
 
-local sideLogo = Instance.new("TextLabel")
-sideLogo.Size = UDim2.new(1,-12,0,38)
-sideLogo.Position = UDim2.fromOffset(6,7)
-sideLogo.BackgroundTransparency = 1
-sideLogo.Text = "710"
-sideLogo.TextColor3 = COLORS.Yellow
-sideLogo.Font = Enum.Font.GothamBlack
-sideLogo.TextSize = 24
-sideLogo.Parent = sidebar
-
-local sideSub = Instance.new("TextLabel")
-sideSub.Size = UDim2.new(1,-12,0,18)
-sideSub.Position = UDim2.fromOffset(6,40)
-sideSub.BackgroundTransparency = 1
-sideSub.Text = "MUSCLE LEGENDS"
-sideSub.TextColor3 = COLORS.GreenBright
-sideSub.Font = Enum.Font.GothamBold
-sideSub.TextSize = 8
-sideSub.Parent = sidebar
-
-local tabButtonsHolder = Instance.new("Frame")
-tabButtonsHolder.Position = UDim2.fromOffset(6,67)
-tabButtonsHolder.Size = UDim2.new(1,-12,1,-75)
-tabButtonsHolder.BackgroundTransparency = 1
-tabButtonsHolder.Parent = sidebar
-
-local tabList = Instance.new("UIListLayout")
-tabList.Padding = UDim.new(0,7)
-tabList.SortOrder = Enum.SortOrder.LayoutOrder
-tabList.Parent = tabButtonsHolder
-
-local contentHost = Instance.new("Frame")
-contentHost.Name = "TabContent"
-contentHost.Position = UDim2.fromOffset(134,91)
-contentHost.Size = UDim2.new(1,-146,1,-104)
-contentHost.BackgroundTransparency = 1
-contentHost.Parent = main
-
-local tabs = {}
-local tabButtons = {}
-local activeScroll = nil
-local activeTabName = nil
-
-local TAB_ICONS = {
-    Home = "⌂",
-    Main = "⚡",
-    Rebirths = "↻",
-    Boss = "☠",
-    Pets = "◆",
-    Stats = "≡",
-    Misc = "⚙",
-}
-
-local function setTabVisual(name, selected)
-    local data = tabButtons[name]
-    if not data then return end
-    tween(data.button,.12,{
-        BackgroundColor3 = selected and Color3.fromRGB(13,48,24) or COLORS.Panel2
-    })
-    tween(data.stroke,.12,{
-        Color = selected and COLORS.Yellow or COLORS.Green,
-        Transparency = selected and .18 or .72
-    })
-    data.text.TextColor3 = selected and COLORS.Yellow or COLORS.White
-    data.icon.TextColor3 = selected and COLORS.GreenBright or COLORS.Muted
-    data.bar.Visible = selected
-end
-
-local function showTab(name)
-    if not tabs[name] then return end
-    activeTabName = name
-    for tabName, frame in pairs(tabs) do
-        frame.Visible = tabName == name
-        setTabVisual(tabName, tabName == name)
-    end
-end
-
-local function createTab(name)
-    local scroll = Instance.new("ScrollingFrame")
-    scroll.Name = name.."Tab"
-    scroll.Size = UDim2.fromScale(1,1)
-    scroll.BackgroundTransparency = 1
-    scroll.BorderSizePixel = 0
-    scroll.ScrollBarThickness = 3
-    scroll.ScrollBarImageColor3 = COLORS.Green
-    scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-    scroll.CanvasSize = UDim2.new()
-    scroll.Visible = false
-    scroll.Parent = contentHost
-
-    local list = Instance.new("UIListLayout")
-    list.Padding = UDim.new(0,9)
-    list.SortOrder = Enum.SortOrder.LayoutOrder
-    list.Parent = scroll
-
-    tabs[name] = scroll
-
-    local button = Instance.new("TextButton")
-    button.Size = UDim2.new(1,0,0,43)
-    button.BackgroundColor3 = COLORS.Panel2
-    button.BorderSizePixel = 0
-    button.AutoButtonColor = false
-    button.Text = ""
-    button.Parent = tabButtonsHolder
-    addCorner(button,10)
-    local stroke = addStroke(button,COLORS.Green,1,.72)
-
-    local bar = Instance.new("Frame")
-    bar.Size = UDim2.fromOffset(3,25)
-    bar.Position = UDim2.fromOffset(3,9)
-    bar.BackgroundColor3 = COLORS.Yellow
-    bar.BorderSizePixel = 0
-    bar.Visible = false
-    bar.Parent = button
-    addCorner(bar,3)
-
-    local icon = Instance.new("TextLabel")
-    icon.Position = UDim2.fromOffset(10,0)
-    icon.Size = UDim2.fromOffset(23,43)
-    icon.BackgroundTransparency = 1
-    icon.Text = TAB_ICONS[name] or "•"
-    icon.TextColor3 = COLORS.Muted
-    icon.Font = Enum.Font.GothamBold
-    icon.TextSize = 14
-    icon.Parent = button
-
-    local textLabel = Instance.new("TextLabel")
-    textLabel.Position = UDim2.fromOffset(34,0)
-    textLabel.Size = UDim2.new(1,-38,1,0)
-    textLabel.BackgroundTransparency = 1
-    textLabel.Text = string.upper(name)
-    textLabel.TextColor3 = COLORS.White
-    textLabel.TextXAlignment = Enum.TextXAlignment.Left
-    textLabel.Font = Enum.Font.GothamBold
-    textLabel.TextSize = 9
-    textLabel.Parent = button
-
-    button.MouseEnter:Connect(function()
-        if activeTabName ~= name then
-            tween(button,.1,{BackgroundColor3=COLORS.Panel3})
-        end
-    end)
-    button.MouseLeave:Connect(function()
-        if activeTabName ~= name then
-            tween(button,.1,{BackgroundColor3=COLORS.Panel2})
-        end
-    end)
-    button.MouseButton1Click:Connect(function()
-        showTab(name)
-    end)
-
-    tabButtons[name] = {
-        button=button,
-        stroke=stroke,
-        bar=bar,
-        text=textLabel,
-        icon=icon,
-    }
-
-    return scroll
-end
-
-for _, name in ipairs({"Home","Main","Rebirths","Boss","Pets","Stats","Misc"}) do
-    createTab(name)
-end
-
-local function useTab(name)
-    activeScroll = tabs[name]
-end
-
-showTab("Main")
-useTab("Main")
+local list = Instance.new("UIListLayout")
+list.Padding = UDim.new(0,9)
+list.SortOrder = Enum.SortOrder.LayoutOrder
+list.Parent = scroll
 
 local function section(name, desc)
     local holder = Instance.new("Frame")
     holder.Size = UDim2.new(1,-6,0,48)
     holder.BackgroundColor3 = COLORS.Black2
     holder.BorderSizePixel = 0
-    holder.Parent = activeScroll
+    holder.Parent = scroll
     addCorner(holder,12)
     addGradient(holder, Color3.fromRGB(8,15,10), Color3.fromRGB(10,30,16), 0)
     addStroke(holder,COLORS.Green,1.2,.5)
@@ -2047,7 +1880,7 @@ local function card(titleText, description, callback, accentColor, availableFn)
     b.BorderSizePixel = 0
     b.AutoButtonColor = false
     b.Text = ""
-    b.Parent = activeScroll
+    b.Parent = scroll
     addCorner(b,13)
     addGradient(b, COLORS.Panel2, Color3.fromRGB(8,18,11), 0)
     local stroke = addStroke(b,accentColorFinal,1.2,.62)
@@ -2311,7 +2144,7 @@ local menuOpen = true
 local function hideMenu()
     if not menuOpen then return end
     menuOpen = false
-    tween(main,.13,{Size=UDim2.fromOffset(590,560),BackgroundTransparency=.05})
+    tween(main,.13,{Size=UDim2.fromOffset(440,540),BackgroundTransparency=.05})
     task.wait(.13)
     main.Visible = false
     shadow.Visible = false
@@ -2324,8 +2157,8 @@ local function showMenu()
     mini.Visible = false
     main.Visible = true
     shadow.Visible = true
-    main.Size = UDim2.fromOffset(590,560)
-    tween(main,.18,{Size=UDim2.fromOffset(620,600),BackgroundTransparency=0})
+    main.Size = UDim2.fromOffset(440,540)
+    tween(main,.18,{Size=UDim2.fromOffset(470,580),BackgroundTransparency=0})
 end
 
 minimize.MouseButton1Click:Connect(hideMenu)
@@ -2364,48 +2197,6 @@ trackConnection(UIS.InputBegan:Connect(function(input, processed)
 end))
 
 -- conteúdo em português --------------------------------------------------------
-useTab("Home")
-
-section("710 HUB", "Painel principal inspirado na organização do Speed Hub X, com identidade própria do 710.")
-
-card(
-    "710Hub • "..SESSION.Version,
-    "Muscle Legends • Jamaica Neon • sessão única com recuperação após respawn.",
-    function() end,
-    COLORS.Yellow
-)
-
-card(
-    "Abrir funções principais",
-    "Vai para a aba Main com treino, força, máquinas, agilidade e farm inteligente.",
-    function()
-        showTab("Main")
-    end,
-    COLORS.Green
-)
-
-card(
-    "Abrir Auto Boss",
-    "Vai direto para a aba Boss para configurar o farm automático de bosses.",
-    function()
-        showTab("Boss")
-    end,
-    COLORS.Red,
-    canAutoBoss
-)
-
-card(
-    "Parar tudo agora",
-    "Desliga todas as automações do 710 imediatamente.",
-    function()
-        stopAllAutomations()
-        renderAllToggles()
-    end,
-    COLORS.Red
-)
-
-useTab("Main")
-
 section("FARM", "Automatizações principais para evoluir sua conta.")
 
 toggle(
@@ -2421,10 +2212,6 @@ toggle(
     "TurboStrength",
     canTrain
 )
-
-useTab("Rebirths")
-
-section("REBIRTHS", "Controles de rebirth separados no mesmo estilo de organização por abas.")
 
 toggle(
     "Rebirth automático",
@@ -2451,8 +2238,6 @@ card(
     end,
     COLORS.Yellow
 )
-
-useTab("Main")
 
 toggle(
     "Soco automático animado",
@@ -2481,8 +2266,6 @@ toggle(
     "Brawl",
     canBrawl
 )
-
-useTab("Boss")
 
 section("BOSSES", "Espera um boss aparecer, vai até ele automaticamente, ataca e depois retorna ao ponto anterior.")
 
@@ -2538,8 +2321,6 @@ card(
     COLORS.Yellow,
     canAutoBoss
 )
-
-useTab("Main")
 
 section("MÁQUINAS", "Treino usando as máquinas detectadas diretamente no mapa atual.")
 
@@ -2699,8 +2480,6 @@ smartFarmButton.MouseButton1Click:Connect(function()
     end
 end)
 
-useTab("Pets")
-
 section("PETS E CRISTAIS", "Funções para abrir cristais, comprar pets disponíveis e organizar sua coleção.")
 
 local _, apexTitle, apexDesc = card(
@@ -2800,8 +2579,6 @@ toggle(
     function() refreshRemotes(); return canHatch() and R.EvolvePet ~= nil and LP:FindFirstChild("petsFolder") ~= nil end
 )
 
-useTab("Misc")
-
 section("TELEPORTES", "Navegação rápida usando os pontos de teleporte encontrados no mapa.")
 
 local tpNames = {}
@@ -2844,8 +2621,6 @@ card(
     COLORS.Green,
     function() return #tpNames > 0 end
 )
-
-useTab("Home")
 
 section("PERFIS RÁPIDOS", "Atalhos que combinam várias funções para objetivos diferentes.")
 
@@ -2914,8 +2689,6 @@ card(
     function() return canRebirth() and (canMachineFarm() or canTrain()) end
 )
 
-useTab("Rebirths")
-
 section("METAS", "Defina um objetivo e o hub para automaticamente quando alcançar o valor.")
 
 local goalStats = {"Strength","Agility","Durability","Rebirths"}
@@ -2960,8 +2733,6 @@ toggle(
     "Quando o valor definido for alcançado, todas as automações são desligadas.",
     "GoalEnabled"
 )
-
-useTab("Stats")
 
 section("SESSÃO", "Informações úteis sobre seu progresso desde que o 710Hub foi iniciado.")
 
@@ -3117,8 +2888,6 @@ card(
     COLORS.Yellow
 )
 
-useTab("Misc")
-
 section("UTILIDADES", "Controles gerais do 710Hub.")
 
 local lockButton = toggle(
@@ -3194,8 +2963,7 @@ footer.Text = "RightShift abre/fecha • END para tudo • Ícone 710 permanece 
 footer.TextColor3 = COLORS.Muted
 footer.Font = Enum.Font.Gotham
 footer.TextSize = 9
-footer.Parent = activeScroll
+footer.Parent = scroll
 
-showTab("Main")
 setHubStatus("Pronto • "..SESSION.Version)
-print("[710Hub] Muscle Legends carregado • 710 tabbed edition • "..SESSION.Version)
+print("[710Hub] Muscle Legends carregado • recovery build • "..SESSION.Version)
