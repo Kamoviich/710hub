@@ -19,7 +19,7 @@ end
 
 local SESSION = {
     Alive = true,
-    Version = "2026.09-stable.9",
+    Version = "2026.09-stable.10",
     Connections = {},
 }
 
@@ -90,13 +90,14 @@ local S = {
     Train=false, Rebirth=false, Chests=false, Hatch=false, Brawl=false,
     AutoPunch=false, SmartRock=false, LockPosition=false,
     AutoMachine=false, AutoBestMachine=false, StrengthRebirth=false,
-    TurboStrength=false, AutoBoss=false,
+    TurboStrength=false, MaxStrengthF2P=false, AutoBoss=false,
     AutoAgility=false, SmartFarm=false,
     AutoEquipAfterHatch=false, AutoEvolveAfterHatch=false,
     PerformanceMode=false, StabilityMode=false, GoalEnabled=false,
     SmartObjective="Força", GoalStat="Strength", GoalValue=nil,
     HatchCrystal="Blue Crystal", RepDelay=.065, HatchDelay=.45,
     RebirthTarget=nil, SelectedMachine=nil,
+    LastRebirthAttempt=0,
 }
 
 local HubRuntime = {
@@ -281,6 +282,7 @@ local function stopAllAutomations()
     S.AutoBestMachine = false
     S.StrengthRebirth = false
     S.TurboStrength = false
+    S.MaxStrengthF2P = false
     S.AutoBoss = false
     S.AutoAgility = false
     S.SmartFarm = false
@@ -971,6 +973,74 @@ task.spawn(function()
     end
 end)
 
+local function maxStrengthF2PTick()
+    if not S.MaxStrengthF2P then return false end
+    if HubRuntime.BossActive then return false end
+
+    local trained = false
+
+    if canMachineFarm and canMachineFarm() then
+        S.AutoBestMachine = true
+        selectBestMachine()
+        trained = useSelectedMachine(false) == true
+    end
+
+    if not trained then
+        trained = fastStrengthBurst()
+    end
+
+    return trained
+end
+
+task.spawn(function()
+    local lastPetRefresh = 0
+    local lastStrength = numberStat("Strength")
+    local lastMeasure = os.clock()
+    local failures = 0
+
+    while SESSION.Alive and task.wait(S.StabilityMode and .18 or .10) do
+        if S.MaxStrengthF2P then
+            if os.clock() - lastPetRefresh >= 10 then
+                pcall(equipBestStrengthOwned)
+                lastPetRefresh = os.clock()
+            end
+
+            if maxStrengthF2PTick() then
+                failures = 0
+            else
+                failures += 1
+            end
+
+            if os.clock() - lastMeasure >= 3 then
+                local nowStrength = numberStat("Strength")
+                local gained = math.max(0, nowStrength - lastStrength)
+
+                if gained > 0 then
+                    setHubStatus("Força F2P Máxima • +"..math.floor(gained).." em 3s")
+                else
+                    setHubStatus("Força F2P Máxima • procurando melhor treino...")
+                end
+
+                lastStrength = nowStrength
+                lastMeasure = os.clock()
+
+                if failures >= 20 then
+                    S.MaxStrengthF2P = false
+                    failures = 0
+                    setHubStatus("Força F2P Máxima desligada: treino indisponível")
+                    if HubRuntime.RenderToggles then
+                        task.defer(HubRuntime.RenderToggles)
+                    end
+                end
+            end
+        else
+            failures = 0
+            lastStrength = numberStat("Strength")
+            lastMeasure = os.clock()
+        end
+    end
+end)
+
 local function getPetShopFolder()
     local shared = RS:FindFirstChild("shared")
     local runtime = shared and shared:FindFirstChild("runtime")
@@ -1071,6 +1141,36 @@ local function petPower(p)
     return score
 end
 
+local function petStrengthScore(p)
+    local score = 0
+    local found = false
+
+    local function add(container, key)
+        local value = container and container:FindFirstChild(key)
+        if value and tonumber(value.Value) then
+            score += tonumber(value.Value)
+            found = true
+        end
+    end
+
+    for _, key in ipairs({"strength","Strength"}) do
+        add(p.pet, key)
+    end
+
+    local perks = p.pet:FindFirstChild("perksFolder")
+    if perks then
+        for _, key in ipairs({"strength","Strength"}) do
+            add(perks, key)
+        end
+    end
+
+    if not found then
+        score = petPower(p)
+    end
+
+    return score
+end
+
 local function equippedPets()
     local set, slots = {}, 0
     local folder = LP:FindFirstChild("equippedPets")
@@ -1098,6 +1198,33 @@ local function equipBestOwned()
         safeFire(R.EquipPet, "equipPet", pets[i].pet)
         task.wait(.18)
     end
+end
+
+local function equipBestStrengthOwned()
+    refreshRemotes()
+    if not R.EquipPet then return false end
+
+    local pets = allOwnedPets()
+    if #pets == 0 then return false end
+
+    table.sort(pets, function(a,b)
+        return petStrengthScore(a) > petStrengthScore(b)
+    end)
+
+    local equipped, slots = equippedPets()
+    if slots <= 0 then slots = 3 end
+
+    for pet in pairs(equipped) do
+        safeFire(R.EquipPet, "unequipPet", pet)
+        task.wait(S.StabilityMode and .18 or .10)
+    end
+
+    for i = 1, math.min(slots, #pets) do
+        safeFire(R.EquipPet, "equipPet", pets[i].pet)
+        task.wait(S.StabilityMode and .22 or .12)
+    end
+
+    return true
 end
 
 local function evolveReadyOwned()
@@ -1130,12 +1257,19 @@ task.spawn(function()
 end)
 
 task.spawn(function()
-    while SESSION.Alive and task.wait(S.StabilityMode and .35 or .18) do
+    while SESSION.Alive and task.wait(S.StabilityMode and .14 or .06) do
         if S.Rebirth and not HubRuntime.BossActive then
             if S.RebirthTarget and currentRebirths() >= S.RebirthTarget then
                 S.Rebirth = false
             else
-                safeInvoke(R.Rebirth, "rebirthRequest")
+                -- Sem cooldown artificial do 710Hub. O servidor continua
+                -- decidindo quando um rebirth é realmente permitido.
+                local now = os.clock()
+                local minGap = S.StabilityMode and .12 or .045
+                if now - (S.LastRebirthAttempt or 0) >= minGap then
+                    S.LastRebirthAttempt = now
+                    safeInvoke(R.Rebirth, "rebirthRequest")
+                end
             end
         end
     end
@@ -1195,7 +1329,12 @@ task.spawn(function()
                     safeFire(getMuscleEvent(), "rep")
                 end
             end
-            safeInvoke(R.Rebirth, "rebirthRequest")
+            local now = os.clock()
+            local minGap = S.StabilityMode and .14 or .05
+            if now - (S.LastRebirthAttempt or 0) >= minGap then
+                S.LastRebirthAttempt = now
+                safeInvoke(R.Rebirth, "rebirthRequest")
+            end
         end
     end
 end)
@@ -1402,13 +1541,14 @@ local function applySmartObjective()
     S.AutoBestMachine = false
     S.StrengthRebirth = false
     S.TurboStrength = false
+    S.MaxStrengthF2P = false
     S.AutoAgility = false
 
     local ok = true
 
     if S.SmartObjective == "Força" then
         if canMachineFarm() or canTrain() then
-            S.TurboStrength = true
+            S.MaxStrengthF2P = true
         else
             ok = false
         end
@@ -1588,6 +1728,7 @@ local function reduceHeavyLoad(reason)
     local changed = false
     for _, key in ipairs({
         "TurboStrength",
+        "MaxStrengthF2P",
         "AutoAgility",
         "AutoBoss",
         "AutoMachine",
@@ -2205,7 +2346,18 @@ HubRuntime.RenderToggles = renderAllToggles
 local function resolveToggleConflicts(key)
     if not S[key] then return end
 
-    if key == "TurboStrength" then
+    if key == "MaxStrengthF2P" then
+        S.Train = false
+        S.TurboStrength = false
+        S.AutoMachine = false
+        S.AutoBestMachine = false
+        S.StrengthRebirth = false
+        S.AutoAgility = false
+        S.SmartRock = false
+        S.LockPosition = false
+        lockedCFrame = nil
+    elseif key == "TurboStrength" then
+        S.MaxStrengthF2P = false
         S.Train = false
         S.AutoMachine = false
         S.AutoBestMachine = false
@@ -2215,6 +2367,7 @@ local function resolveToggleConflicts(key)
         S.LockPosition = false
         lockedCFrame = nil
     elseif key == "AutoAgility" then
+        S.MaxStrengthF2P = false
         S.TurboStrength = false
         S.LockPosition = false
         S.SmartRock = false
@@ -2222,12 +2375,14 @@ local function resolveToggleConflicts(key)
         S.StrengthRebirth = false
         lockedCFrame = nil
     elseif key == "SmartRock" then
+        S.MaxStrengthF2P = false
         S.TurboStrength = false
         S.AutoAgility = false
         S.AutoMachine = false
         S.LockPosition = false
         lockedCFrame = nil
     elseif key == "AutoMachine" then
+        S.MaxStrengthF2P = false
         S.TurboStrength = false
         S.AutoAgility = false
         S.SmartRock = false
@@ -2438,8 +2593,15 @@ toggle(
 )
 
 toggle(
+    "Força F2P Máxima",
+    "Equipa automaticamente os melhores pets de Strength que você já possui e usa o melhor treino disponível sem precisar de pacote pago.",
+    "MaxStrengthF2P",
+    function() return canTrain() or canMachineFarm() end
+)
+
+toggle(
     "Rebirth automático",
-    "Faz rebirth automaticamente. Pode ser usado junto da meta de rebirth abaixo.",
+    "Tenta rebirth imediatamente sempre que possível, sem delay artificial do 710Hub. O servidor ainda controla o momento válido.",
     "Rebirth",
     canRebirth
 )
@@ -2854,10 +3016,11 @@ card(
     function()
         stopAllAutomations()
         if canMachineFarm() or canTrain() then
-            S.TurboStrength = true
+            S.MaxStrengthF2P = true
+            pcall(equipBestStrengthOwned)
         end
         renderAllToggles()
-        setHubStatus("Perfil de Força ativado • Força Rápida")
+        setHubStatus("Perfil de Força ativado • F2P Máxima")
     end,
     COLORS.Green,
     function() return canMachineFarm() or canTrain() end
@@ -2911,6 +3074,21 @@ card(
     end,
     COLORS.Yellow,
     function() return canRebirth() and (canMachineFarm() or canTrain()) end
+)
+
+card(
+    "Perfil: Rebirth F2P Máximo",
+    "Equipa melhores pets de Strength, ativa Força F2P Máxima e tenta rebirth assim que o servidor permitir.",
+    function()
+        stopAllAutomations()
+        pcall(equipBestStrengthOwned)
+        S.MaxStrengthF2P = true
+        S.Rebirth = true
+        renderAllToggles()
+        setHubStatus("Rebirth F2P Máximo ativado")
+    end,
+    COLORS.Yellow,
+    function() return canRebirth() and (canTrain() or canMachineFarm()) end
 )
 
 section("METAS", "Defina um objetivo e o hub para automaticamente quando alcançar o valor.")
