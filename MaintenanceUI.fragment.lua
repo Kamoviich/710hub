@@ -116,6 +116,13 @@ local function maintenanceUI()
     toggle("Retomar depois de morrer", "Espera Humanoid e personagem prontos; desligado exige Retomar manualmente.", "ResumeAfterDeath")
 
     section("PROTECAO E BOSSES", "Prioridade de alvo e espera por recuperacao de vida.")
+    toggle("Movimentacao defensiva no boss", "Muda a posicao lateral, recua por 2.5s apos perder vida e so ataca novamente acima de 55% de vida. Nao garante esquiva de ataques em area.", "BossDefense")
+    card("Aplicar protecao reforcada", "Liga defesa e protecao de vida: pausa em 55%, retoma em 85%. O retorno usa o ponto onde voce iniciou o combate; comece fora do alcance do boss.", function()
+        S.BossDefense, S.HealthGuard = true, true
+        S.HealthLow, S.HealthResume = 55, 85
+        renderAllToggles()
+        setHubStatus("Defesa reforcada aplicada: 55% / 85%")
+    end, COLORS.Yellow)
     card("Monitorar todos os bosses", "Remove a preferencia por nome e atualiza a lista de todas as categorias reconhecidas.", function()
         S.BossPreference = "Qualquer"
         M:observeBosses()

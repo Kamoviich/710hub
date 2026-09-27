@@ -18,7 +18,10 @@ As versoes antigas ja publicadas continuam no historico e nao sao bloqueadas ret
 
 **Manutencao:** a copia local completa do menu permanece em `710hub/710Hub.lua`; atualize o Worker usando `key-server/prepare.mjs` e Wrangler. Nao sobrescreva o carregador publico com essa copia completa. O modelo publico fica em `key-server/KeyLoader.template.lua` localmente.
 
-## Versao 2026.09-neon.20
+## Versao 2026.09-neon.21
+
+Auto Boss agora inclui movimentacao defensiva: deslocamento lateral, recuo de 2,5s apos perda de vida e suspensao de golpes enquanto a vida estiver em 55% ou menos. Verifica piso antes de reposicionar. A opcao Aplicar protecao reforcada configura pausa em 55% e retomada em 85%; inicie o combate fora do alcance para que o ponto de retorno seja adequado. A defesa e reativa, nao le ataques futuros, nao concede invulnerabilidade e pode nao evitar ataques em area.
+
 
 Treinos individuais em Farm: Peso (Weight), Flexoes (Pushups), Abdominais (Situps) e Parada de maos (Handstands). Um movimento por vez: ligar um desliga os outros e as rotinas que disputam ferramentas. Os treinos respeitam pausa, morte, comparacao, parada global e perfis salvos. Se a ferramenta faltar, aguardam sem usar outro movimento ou enviar treino generico. Auto Boss continua tendo prioridade temporaria; rebirth independente e preservado.
 

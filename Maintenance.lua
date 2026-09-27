@@ -13,7 +13,7 @@ return function(settings, clock)
         "SmartRock", "LockPosition", "AutoMachine", "AutoBestMachine", "StrengthRebirth",
         "TurboStrength", "MaxStrengthF2P", "AutoBoss", "AutoAgility", "SmartFarm",
         "AutoEquipAfterHatch", "AutoEvolveAfterHatch", "GoalEnabled"}
-    local booleans = {"BossReturn", "ResumeAfterDeath", "HealthGuard", "StallAlerts", "PerformanceMode", "StabilityMode", "RebirthGuard", "BreakEnabled"}
+    local booleans = {"BossReturn", "BossDefense", "ResumeAfterDeath", "HealthGuard", "StallAlerts", "PerformanceMode", "StabilityMode", "RebirthGuard", "BreakEnabled"}
     local numbers = {
         RepDelay = {.05, 5}, HatchDelay = {.1, 30}, BossDistance = {2, 12},
         HealthLow = {5, 60}, HealthResume = {65, 100}, StallSeconds = {30, 600},
@@ -38,6 +38,14 @@ return function(settings, clock)
     end
     function M:clearMovements()
         for _, pair in ipairs(self.Movements) do settings[pair[1]] = false end
+    end
+    function M:bossRetreat(health, maxHealth)
+        local previous = self.BossLastHealth
+        self.BossLastHealth = health
+        if not settings.BossDefense then self.BossRetreatUntil = nil; return false end
+        if previous and health < previous then self.BossRetreatUntil = clock() + 2.5 end
+        if maxHealth > 0 and health / maxHealth <= .55 then self.BossRetreatUntil = clock() + 2.5 end
+        return self.BossRetreatUntil ~= nil and clock() < self.BossRetreatUntil
     end
     function M:resolveMovement(key)
         if not settings[key] then return end
