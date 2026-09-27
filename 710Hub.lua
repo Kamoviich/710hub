@@ -1,11 +1,52 @@
+-- 710Hub bootstrap: mostra falhas antes da inicializacao do menu.
+local startupGui
+local startupLabel
+local function startupStatus(message)
+    warn("[710Hub] " .. message)
+    if startupLabel then startupLabel.Text = "710Hub\n\n" .. message end
+end
+
+local startupOK, startupError = xpcall(function()
+    local players = game:GetService("Players")
+    local deadline = os.clock() + 30
+    while not players.LocalPlayer and os.clock() < deadline do task.wait(0.1) end
+    local player = assert(players.LocalPlayer, "Jogador local indisponivel.")
+    local parent = assert(player:WaitForChild("PlayerGui", 15), "PlayerGui indisponivel.")
+    local old = parent:FindFirstChild("710Hub_Startup")
+    if old then old:Destroy() end
+    startupGui = Instance.new("ScreenGui")
+    startupGui.Name = "710Hub_Startup"
+    startupGui.ResetOnSpawn = false
+    startupGui.DisplayOrder = 100
+    startupGui.Parent = parent
+    startupLabel = Instance.new("TextLabel")
+    startupLabel.Size = UDim2.new(0.8, 0, 0, 180)
+    startupLabel.Position = UDim2.new(0.1, 0, 0.15, 0)
+    startupLabel.BackgroundColor3 = Color3.fromRGB(12, 23, 16)
+    startupLabel.TextColor3 = Color3.new(1, 1, 1)
+    startupLabel.TextSize = 16
+    startupLabel.TextWrapped = true
+    startupLabel.Parent = startupGui
+    local close = Instance.new("TextButton")
+    close.Text = "Fechar aviso"
+    close.Size = UDim2.new(0, 120, 0, 28)
+    close.Position = UDim2.new(0.5, -60, 1, 0)
+    close.Parent = startupLabel
+    close.Activated:Connect(function()
+        startupGui:Destroy()
+        startupLabel = nil
+    end)
+    startupStatus("Carregando...")
+    deadline = os.clock() + 30
+    while not game:IsLoaded() and os.clock() < deadline do task.wait(0.1) end
+    assert(game:IsLoaded(), "O jogo nao carregou em 30 segundos.")
 -- 710Hub - Muscle Legends (2026)
 -- Script único para Muscle Legends.
 -- Features: Auto Train, Auto Rebirth, Auto Chests, Auto Hatch, Pet Manager,
 -- Equip Best owned pets, teleport browser, Anti-AFK, Stop All.
 
 if game.GameId ~= 1268927906 then
-    warn("[710Hub] Este script é apenas para Muscle Legends.")
-    return
+    error("Abra Muscle Legends antes de executar o 710Hub. GameId atual: " .. tostring(game.GameId))
 end
 
 local ENV = (getgenv and getgenv()) or _G
@@ -19,7 +60,7 @@ end
 
 local SESSION = {
     Alive = true,
-    Version = "2026.09-stable.10",
+    Version = "2026.09-stable.11",
     Connections = {},
 }
 
@@ -39,8 +80,9 @@ local RunService = game:GetService("RunService")
 local TeleportService = game:GetService("TeleportService")
 local Lighting = game:GetService("Lighting")
 local LP = Players.LocalPlayer
-local rEvents = RS:WaitForChild("rEvents")
-local Backpack = LP:WaitForChild("Backpack")
+local rEvents = RS:WaitForChild("rEvents", 20)
+assert(rEvents, "rEvents nao apareceu em 20 segundos. Aguarde o jogo carregar e tente novamente.")
+local Backpack = LP:WaitForChild("Backpack", 10)
 
 local function getBackpack()
     local current = LP:FindFirstChildOfClass("Backpack")
@@ -98,6 +140,8 @@ local S = {
     HatchCrystal="Blue Crystal", RepDelay=.065, HatchDelay=.45,
     RebirthTarget=nil, SelectedMachine=nil,
     LastRebirthAttempt=0,
+    BossDistance=5, BossReturn=true,
+    StopAt=nil, ProgressionTarget=nil,
 }
 
 local HubRuntime = {
@@ -108,6 +152,7 @@ local HubRuntime = {
     Respawns = 0,
     RemoteRefreshes = 1,
     BossActive = false,
+    BossModel = nil, BossDeathsObserved = 0,
     BossTarget = "Aguardando spawn",
     BossReturnCFrame = nil,
     RemoteWindowStarted = os.clock(),
@@ -134,8 +179,7 @@ task.spawn(function()
     end
 end)
 
-local old = game:GetService("CoreGui"):FindFirstChild("710Hub_MuscleLegends")
-if old then old:Destroy() end
+-- A interface anterior e removida pelo controlador de sessao.
 
 trackConnection(LP.Idled:Connect(function()
     if not SESSION.Alive then return end
@@ -271,6 +315,8 @@ task.spawn(function()
 end)
 
 local function stopAllAutomations()
+    S.StopAt = nil
+    S.ProgressionTarget = nil
     S.Train = false
     S.Rebirth = false
     S.Chests = false
@@ -432,16 +478,18 @@ local function beginBossFight(target)
     end
 
     HubRuntime.BossActive = true
+    HubRuntime.BossModel = target
     HubRuntime.BossTarget = target.Name
     return true
 end
 
 local function finishBossFight(returnToStart)
+    HubRuntime.BossModel = nil
     local wasActive = HubRuntime.BossActive
     HubRuntime.BossActive = false
     HubRuntime.BossTarget = "Aguardando spawn"
 
-    if wasActive and returnToStart and HubRuntime.BossReturnCFrame then
+    if wasActive and returnToStart and S.BossReturn and HubRuntime.BossReturnCFrame then
         local character = LP.Character
         local root = character and character:FindFirstChild("HumanoidRootPart")
         if root then
@@ -457,6 +505,7 @@ end
 
 task.spawn(function()
     local currentBoss = nil
+    local nextScan = 0
 
     while SESSION.Alive and task.wait(S.StabilityMode and .20 or .12) do
         if not S.AutoBoss then
@@ -471,10 +520,19 @@ task.spawn(function()
             if not currentBoss or not currentBoss.Parent or not humanoid or humanoid.Health <= 0 or not root then
                 if HubRuntime.BossActive and currentBoss then
                     finishBossFight(true)
-                    setHubStatus("Boss finalizado • aguardando próximo spawn")
+                    if humanoid and humanoid.Health <= 0 then
+                        HubRuntime.BossDeathsObserved += 1
+                        setHubStatus("Boss morreu • aguardando proximo spawn")
+                    else
+                        setHubStatus("Boss saiu do alcance • aguardando proximo spawn")
+                    end
                 end
 
-                currentBoss = findAliveBoss()
+                currentBoss = nil
+                if os.clock() >= nextScan then
+                    nextScan = os.clock() + 2
+                    currentBoss = findAliveBoss()
+                end
                 if currentBoss then
                     beginBossFight(currentBoss)
                     setHubStatus("Auto Boss • "..currentBoss.Name)
@@ -495,7 +553,7 @@ task.spawn(function()
 
                     pcall(function()
                         local attackPosition = bossPart.Position
-                            - bossPart.CFrame.LookVector * 5
+                            - bossPart.CFrame.LookVector * S.BossDistance
                             + Vector3.new(0, 2.5, 0)
                         myRoot.CFrame = CFrame.lookAt(attackPosition, bossPart.Position)
                         myRoot.AssemblyLinearVelocity = Vector3.zero
@@ -1254,6 +1312,10 @@ end)
 
 task.spawn(function()
     while SESSION.Alive and task.wait(S.StabilityMode and .45 or .25) do
+        if S.StrengthRebirth and S.RebirthTarget and currentRebirths() >= S.RebirthTarget then
+            S.StrengthRebirth = false
+            if S.SmartObjective == "Rebirths" then S.SmartFarm = false end
+        end
         if S.StrengthRebirth and not HubRuntime.BossActive then
             if not S.AutoMachine then
                 local animated = activateTrainingTool()
@@ -1868,6 +1930,7 @@ SESSION.Cleanup = function()
     end
 end
 
+local function initializeUI()
 local TweenService = game:GetService("TweenService")
 local UIS = game:GetService("UserInputService")
 
@@ -1976,12 +2039,8 @@ local function tween(obj, time, goal)
     ):Play()
 end
 
-local guiParent = game:GetService("CoreGui")
-pcall(function()
-    if gethui then
-        guiParent = gethui()
-    end
-end)
+local guiParent = LP:WaitForChild("PlayerGui", 10)
+assert(guiParent, "PlayerGui indisponivel.")
 
 local oldGui = guiParent:FindFirstChild("710Hub_MuscleLegends")
 if oldGui then oldGui:Destroy() end
@@ -2169,8 +2228,8 @@ end
 
 local scroll = Instance.new("ScrollingFrame")
 scroll.Name = "Conteudo"
-scroll.Position = UDim2.fromOffset(13,91)
-scroll.Size = UDim2.new(1,-26,1,-104)
+scroll.Position = UDim2.fromOffset(13,130)
+scroll.Size = UDim2.new(1,-26,1,-143)
 scroll.BackgroundTransparency = 1
 scroll.BorderSizePixel = 0
 scroll.ScrollBarThickness = 3
@@ -2184,12 +2243,17 @@ list.Padding = UDim.new(0,9)
 list.SortOrder = Enum.SortOrder.LayoutOrder
 list.Parent = scroll
 
+local searchQuery = ""
+local currentSection = ""
+local searchEntries = {}
 local function section(name, desc)
+    currentSection = name .. " " .. (desc or "")
     local holder = Instance.new("Frame")
     holder.Size = UDim2.new(1,-6,0,48)
     holder.BackgroundColor3 = COLORS.Black2
     holder.BorderSizePixel = 0
     holder.Parent = scroll
+    searchEntries[#searchEntries + 1] = {Object = holder, Text = string.lower(currentSection)}
     addCorner(holder,12)
     addGradient(holder, Color3.fromRGB(8,15,10), Color3.fromRGB(10,30,16), 0)
     addStroke(holder,COLORS.Green,1.2,.5)
@@ -2240,6 +2304,8 @@ local function card(titleText, description, callback, accentColor, availableFn)
     local accentColorFinal = accentColor or COLORS.Green
 
     local b = Instance.new("TextButton")
+    local searchEntry = {Object = b, Text = string.lower(currentSection .. " " .. titleText .. " " .. (description or "")), Available = true}
+    searchEntries[#searchEntries + 1] = searchEntry
     b.Size = UDim2.new(1,-6,0,60)
     b.BackgroundColor3 = COLORS.Panel2
     b.BorderSizePixel = 0
@@ -2298,7 +2364,8 @@ local function card(titleText, description, callback, accentColor, availableFn)
     end
 
     local function renderAvailability()
-        b.Visible = isAvailable()
+        searchEntry.Available = isAvailable()
+        b.Visible = searchEntry.Available and (searchQuery == "" or string.find(searchEntry.Text, searchQuery, 1, true) ~= nil)
     end
 
     if availableFn then
@@ -2656,7 +2723,7 @@ toggle(
 section("BOSSES", "Espera um boss aparecer, vai até ele automaticamente, ataca e depois retorna ao ponto anterior.")
 
 toggle(
-    "Auto Boss ao spawnar",
+    "Auto Kill Boss / farm de boss",
     "Fica aguardando qualquer boss detectado no mapa; quando ele aparece, equipa Punch e ataca até o Humanoid acabar.",
     "AutoBoss",
     canAutoBoss
@@ -2672,7 +2739,7 @@ local _, bossStatusTitle, bossStatusDesc = card(
 task.spawn(function()
     while SESSION.Alive and task.wait(.5) do
         if HubRuntime.BossActive then
-            local boss = findAliveBoss()
+            local boss = HubRuntime.BossModel
             local hum = boss and bossHumanoid(boss)
             bossStatusTitle.Text = "Boss: "..HubRuntime.BossTarget
             bossStatusDesc.Text = hum
@@ -2680,7 +2747,7 @@ task.spawn(function()
                 or "Atacando boss detectado..."
         elseif S.AutoBoss then
             bossStatusTitle.Text = "Boss: aguardando spawn"
-            bossStatusDesc.Text = "Auto Boss está ligado e continuará esperando o próximo boss."
+            bossStatusDesc.Text = "Aguardando spawn. Mortes observadas: " .. HubRuntime.BossDeathsObserved
         else
             bossStatusTitle.Text = "Boss: Auto Boss desligado"
             bossStatusDesc.Text = "Ative a opção acima para começar a monitorar os spawns."
@@ -2707,6 +2774,14 @@ card(
     COLORS.Yellow,
     canAutoBoss
 )
+
+do
+    card("Distancia do boss: 5", "Alterna a distancia de ataque entre 3, 5 e 7 studs.", function(_, titleLabel)
+        S.BossDistance = S.BossDistance == 3 and 5 or (S.BossDistance == 5 and 7 or 3)
+        titleLabel.Text = "Distancia do boss: " .. S.BossDistance
+    end, COLORS.Yellow)
+    toggle("Retornar depois do boss", "Volta ao ponto anterior quando o combate termina.", "BossReturn")
+end
 
 section("MÁQUINAS", "Treino usando as máquinas detectadas diretamente no mapa atual.")
 
@@ -3425,3 +3500,124 @@ footer.Parent = scroll
 
 setHubStatus("Pronto • "..SESSION.Version)
 print("[710Hub] Muscle Legends carregado • stability build • "..SESSION.Version)
+
+
+-- Controles de progressao reaproveitam os metodos de treino existentes.
+section("PROGRESSAO", "Rebirths por objetivo, treino posterior e parada por tempo.")
+do
+    local targetAdds = {10, 25, 50, 100}
+    local targetIndex = 1
+    card("Ciclo: +10 rebirths, depois forca", "Clique para escolher a quantidade antes de iniciar o ciclo.", function(_, titleLabel)
+        targetIndex = targetIndex % #targetAdds + 1
+        titleLabel.Text = "Ciclo: +" .. targetAdds[targetIndex] .. " rebirths, depois forca"
+    end, COLORS.Yellow)
+    card("Iniciar ciclo de progressao", "Treina e tenta rebirth ate a meta; depois continua somente o treino de forca.", function()
+        stopAllAutomations()
+        S.ProgressionTarget = currentRebirths() + targetAdds[targetIndex]
+        S.RebirthTarget = S.ProgressionTarget
+        S.MaxStrengthF2P = true
+        S.Rebirth = true
+        setHubStatus("Ciclo iniciado: meta de " .. S.ProgressionTarget .. " rebirths")
+        renderAllToggles()
+    end, COLORS.Green, function() return canRebirth() and (canTrain() or canMachineFarm()) end)
+    card("Otimizar pets para forca agora", "Equipa os melhores pets de forca que voce ja possui.", function()
+        local equipped = equipBestStrengthOwned()
+        setHubStatus(equipped and "Pets de forca equipados" or "Pets de forca indisponiveis")
+    end, COLORS.Green, canPetManager)
+
+    local durations = {0, 15, 30, 60, 120}
+    local durationIndex = 1
+    local _, timerTitle, timerDescription = card("Parada automatica: desligada", "Clique para escolher 15, 30, 60 ou 120 minutos; clique novamente para desligar.", function()
+        durationIndex = durationIndex % #durations + 1
+        local minutes = durations[durationIndex]
+        S.StopAt = minutes > 0 and (os.clock() + minutes * 60) or nil
+    end, COLORS.Yellow)
+    local _, rateTitle, rateDescription = card("Rendimento: medindo", "Estimativa baseada na variacao observada; nao cria multiplicadores.", function() end, COLORS.Green)
+    task.spawn(function()
+        local lastStrength, lastRebirths = numberStat("Strength"), currentRebirths()
+        local lastSample, sampleStarted = os.clock(), os.clock()
+        local strengthGain, rebirthGain = 0, 0
+        while SESSION.Alive and task.wait(1) do
+            local now = os.clock()
+            local strength, rebirths = numberStat("Strength"), currentRebirths()
+            -- Ignora a queda de forca causada pelo rebirth.
+            strengthGain += math.max(0, strength - lastStrength)
+            rebirthGain += math.max(0, rebirths - lastRebirths)
+            lastStrength, lastRebirths = strength, rebirths
+            if now - lastSample >= 10 then
+                local elapsed = math.max(1, now - sampleStarted)
+                rateTitle.Text = string.format("Forca/min: %.0f | Rebirths/h: %.1f", strengthGain * 60 / elapsed, rebirthGain * 3600 / elapsed)
+                rateDescription.Text = "Media observada desde a abertura. Mortes de bosses observadas: " .. HubRuntime.BossDeathsObserved
+                lastSample = now
+            end
+            if S.StopAt then
+                local remaining = math.max(0, math.ceil(S.StopAt - now))
+                timerTitle.Text = string.format("Parada em %02d:%02d", math.floor(remaining / 60), remaining % 60)
+                if remaining == 0 then
+                    stopAllAutomations()
+                    setHubStatus("Tempo configurado encerrado")
+                end
+            else
+                timerTitle.Text = "Parada automatica: desligada"
+            end
+            timerDescription.Text = "Iniciar um novo perfil cancela o temporizador; configure o tempo depois do perfil."
+            if S.ProgressionTarget and rebirths >= S.ProgressionTarget then
+                S.ProgressionTarget = nil
+                S.Rebirth = false
+                S.StrengthRebirth = false
+                S.SmartFarm = false
+                S.MaxStrengthF2P = true
+                setHubStatus("Meta de rebirth atingida: continuando treino de forca")
+                renderAllToggles()
+            end
+        end
+    end)
+end
+
+-- Pesquisa local, sem bibliotecas ou downloads adicionais.
+do
+    local search = Instance.new("TextBox")
+    search.Name = "Pesquisar"
+    search.Size = UDim2.new(1, -26, 0, 30)
+    search.Position = UDim2.fromOffset(13, 89)
+    search.BackgroundColor3 = COLORS.Panel2
+    search.TextColor3 = COLORS.White
+    search.PlaceholderText = "Buscar funcao ou categoria..."
+    search.PlaceholderColor3 = COLORS.Muted
+    search.Text = ""
+    search.ClearTextOnFocus = false
+    search.TextSize = 14
+    search.Font = Enum.Font.Gotham
+    search.Parent = main
+    addCorner(search, 8)
+    trackConnection(search:GetPropertyChangedSignal("Text"):Connect(function()
+        local query = string.lower(search.Text):match("^%s*(.-)%s*$")
+        searchQuery = query
+        for _, entry in ipairs(searchEntries) do
+            entry.Object.Visible = entry.Available ~= false and (query == "" or string.find(entry.Text, query, 1, true) ~= nil)
+        end
+        scroll.CanvasPosition = Vector2.new()
+    end))
+end
+
+card("Encerrar 710Hub", "Desliga as automacoes, restaura os efeitos e remove o painel.", function()
+    stopAllAutomations()
+    SESSION.Cleanup()
+end, COLORS.Red)
+end
+initializeUI()
+
+end, function(message)
+    return debug.traceback(tostring(message), 2)
+end)
+if startupOK then
+    if startupGui then startupGui:Destroy() end
+else
+    local env = (getgenv and getgenv()) or _G
+    local session = env.__710HubSession
+    if session then
+        session.Alive = false
+        if session.Cleanup then pcall(session.Cleanup) end
+    end
+    startupStatus("Falha ao abrir. Envie esta mensagem:\n" .. tostring(startupError))
+end
