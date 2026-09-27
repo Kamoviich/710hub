@@ -115,6 +115,7 @@ function M:beginComparison()
     self.BenchmarkToken += 1
     local token = self.BenchmarkToken
     self.Comparing = true
+    self.BestTraining = nil
     self.BenchmarkResults = {}
     task.spawn(function()
         local ok, err = pcall(function()
@@ -152,6 +153,7 @@ function M:beginComparison()
                     if result.Valid then validCount += 1 end
                     if result.Valid and result.Rate > 0 and (not best or result.Rate > best.Rate) then best = result end
                 end
+                self.BestTraining = validCount >= 2 and best and best.Name or nil
                 self.ComparisonStatus = validCount >= 2 and best and ("Melhor observado: " .. best.Name .. " (" .. math.floor(best.Rate) .. "/min)")
                     or "Menos de duas amostras validas ou nenhum ganho; comparacao inconclusiva"
             end
@@ -227,6 +229,11 @@ task.spawn(function()
         local now = os.clock()
         local elapsed = now - lastTick
         lastTick = now
+        local active = false
+        for _, key in ipairs(M.AutoKeys) do
+            if key ~= "GoalEnabled" and S[key] then active = true; break end
+        end
+        M:tickBreak(elapsed, active)
         if (not M:canAct() or M.Comparing) and S.StopAt then S.StopAt += elapsed end
         local character = LP.Character
         local humanoid = character and character:FindFirstChildOfClass("Humanoid")

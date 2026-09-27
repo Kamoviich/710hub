@@ -6,7 +6,23 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/Kamoviich/710hub/main
 
 Abra Muscle Legends, execute o comando e aguarde o painel. RightShift abre/fecha o menu; End para as automacoes.
 
-## Versao 2026.09-neon.14
+## Versao 2026.09-neon.15
+
+### Rendimento, rebirth e planejamento
+
+- **Rendimento recente:** forca/minuto medida em uma janela de ate 60 segundos, com pelo menos 10 segundos de amostras. Descarta a janela depois de rebirth, queda de forca, pausa, treino desligado ou lacuna de amostragem. Ganhos de outras fontes podem influenciar a taxa.
+- **Previsao de meta:** digite a forca desejada para estimar minutos restantes ao ritmo recente. A previsao e informativa, nao interrompe o treino e nao garante o resultado. Sem ganho ou amostras suficientes, nao mostra tempo inventado.
+- **Forca minima antes do rebirth:** protecao opcional com limite definido pelo jogador. Nao descobre nem altera os requisitos oficiais do jogo, e o rebirth pode consumir a forca acumulada.
+- **Intervalo de rebirth:** de 0,5 a 30 segundos, padrao de 1 segundo. As duas rotinas compartilham a mesma trava; enquanto um pedido aguarda resposta, outro nao e enviado. Meta, pausa e comparacao sao respeitadas.
+- **Aplicar melhor treino:** depois de uma comparacao valida, inicia o metodo com melhor taxa observada. Para as demais rotinas e verifica se o metodo continua disponivel. Repita a comparacao depois de mudar pets ou bonus.
+- **Pausas programadas:** configure 1 a 240 minutos ativos e 1 a 60 minutos de descanso. Pausas manuais, por vida baixa e por respawn continuam independentes. Parar tudo ou carregar perfil reinicia o contador. O botao de encerrar descanso nao remove outras pausas.
+- **Codigos oficiais:** botoes para copiar megalift50, speedy50, spacegems50 e ultimate250, com alternativa para selecionar o texto quando o clipboard nao esta disponivel. Resgate na interface do jogo; validade e recompensa dependem do servidor.
+- **Guia de bonus:** explica os beneficios de Premium e grupo descritos na [pagina oficial do Muscle Legends](https://www.roblox.com/games/3623096087/Muscle-Legends), consultada em 27/09/2026. Nao compra beneficios nem concede multiplicadores.
+
+As configuracoes de intervalo, limite de forca e descanso entram nos perfis salvos. A meta da previsao vale apenas na sessao atual. As novas rotinas opcionais comecam desligadas.
+
+Validacao desta versao: compilacao Luau e 76 verificacoes automatizadas (45 de manutencao e 31 de progresso). A execucao no Roblox/Xeno ainda precisa ser confirmada no jogo.
+
 
 ### Menu neon e leitura
 
@@ -61,6 +77,7 @@ O arquivo `710Hub.lua` e autocontido: o comando de carregamento nao faz novos do
 
 ```text
 luau Maintenance.test.luau
+luau Progress.test.luau
 luau-compile --null 710Hub.lua
 ```
 

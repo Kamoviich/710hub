@@ -60,7 +60,7 @@ end
 
 local SESSION = {
     Alive = true,
-    Version = "2026.09-neon.14",
+    Version = "2026.09-neon.15",
     Connections = {},
 }
 
@@ -140,6 +140,8 @@ local S = {
     HatchCrystal="Blue Crystal", RepDelay=.065, HatchDelay=.45,
     RebirthTarget=nil, SelectedMachine=nil,
     LastRebirthAttempt=0,
+    RebirthGuard=false, RebirthFloor=0, RebirthInterval=1,
+    BreakEnabled=false, BreakEvery=30, BreakMinutes=5,
     BossDistance=5, BossReturn=true, BossPreference="Qualquer",
     ResumeAfterDeath=true, HealthGuard=true, HealthLow=25, HealthResume=75,
     StallAlerts=true, StallSeconds=60,
@@ -175,17 +177,18 @@ return function(settings, clock)
         BenchmarkToken = 0, Comparing = false, ProfileSlot = 1,
         Totals = {Strength = 0, Rebirths = 0, Deaths = 0},
         Started = clock(), LastProgress = clock(), LastAlert = 0,
-        Stalled = false, WasTraining = false,
+        Stalled = false, WasTraining = false, Samples = {}, ActiveSeconds = 0,
     }
     M.AutoKeys = {"Train", "Rebirth", "Chests", "Hatch", "Brawl", "AutoPunch",
         "SmartRock", "LockPosition", "AutoMachine", "AutoBestMachine", "StrengthRebirth",
         "TurboStrength", "MaxStrengthF2P", "AutoBoss", "AutoAgility", "SmartFarm",
         "AutoEquipAfterHatch", "AutoEvolveAfterHatch", "GoalEnabled"}
-    local booleans = {"BossReturn", "ResumeAfterDeath", "HealthGuard", "StallAlerts", "PerformanceMode", "StabilityMode"}
+    local booleans = {"BossReturn", "ResumeAfterDeath", "HealthGuard", "StallAlerts", "PerformanceMode", "StabilityMode", "RebirthGuard", "BreakEnabled"}
     local numbers = {
         RepDelay = {.05, 5}, HatchDelay = {.1, 30}, BossDistance = {2, 12},
         HealthLow = {5, 60}, HealthResume = {65, 100}, StallSeconds = {30, 600},
         GoalValue = {1, 1e15}, RebirthTarget = {1, 1e15}, ProgressionTarget = {1, 1e15},
+        RebirthFloor = {0, 1e15}, RebirthInterval = {.5, 30}, BreakEvery = {1, 240}, BreakMinutes = {1, 60},
     }
     local choices = {SmartObjective = {"Força", "Durabilidade", "Agilidade", "Rebirths"},
         GoalStat = {"Strength", "Agility", "Durability", "Rebirths"}}
@@ -275,6 +278,7 @@ return function(settings, clock)
         settings.StopAt = nil
         for key, value in pairs(validated) do settings[key] = value end
         self:pause("Manual", true)
+        self:resetBreak()
         self:log("Perfil", "Configuracao restaurada; use Retomar para iniciar")
         return true
     end
@@ -289,6 +293,16 @@ return function(settings, clock)
     end
     function M:sample(strength, rebirths, training)
         local now = clock()
+        if self.LastSampleAt and (now - self.LastSampleAt > 5 or strength < self.LastStrength or rebirths ~= self.LastRebirths) then
+            self.Samples = {}
+        end
+        if not training or not self:canAct() then self.Samples = {} end
+        if training and self:canAct() then
+            self.Samples[#self.Samples + 1] = {Time = now, Strength = strength}
+            while #self.Samples > 1 and self.Samples[1].Time < now - 60 do table.remove(self.Samples, 1) end
+            while #self.Samples > 120 do table.remove(self.Samples, 1) end
+        end
+        self.LastSampleAt = now
         if self.LastStrength then
             local gained = math.max(0, strength - self.LastStrength)
             local rebirthGain = math.max(0, rebirths - self.LastRebirths)
@@ -308,6 +322,41 @@ return function(settings, clock)
             return true
         end
         return false
+    end
+    function M:strengthRate()
+        local first, last = self.Samples[1], self.Samples[#self.Samples]
+        if not self:canAct() or not first or not last or clock() - last.Time > 5 or last.Time - first.Time < 10 then return nil end
+        return math.max(0, last.Strength - first.Strength) * 60 / (last.Time - first.Time)
+    end
+    function M:eta(current, target)
+        if not target then return nil end
+        if current >= target then return 0 end
+        local rate = self:strengthRate()
+        if not rate or rate <= 0 then return nil end
+        return (target - current) * 60 / rate
+    end
+    function M:canRequestRebirth(strength, rebirths)
+        if not self:canAct() or self.Comparing or self.RebirthInFlight then return false end
+        if settings.RebirthTarget and rebirths >= settings.RebirthTarget then return false end
+        if settings.RebirthGuard and strength < (settings.RebirthFloor or 0) then return false end
+        return clock() - (self.LastRebirthRequest or -math.huge) >= (settings.RebirthInterval or 1)
+    end
+    function M:resetBreak()
+        self.ActiveSeconds, self.BreakUntil = 0, nil
+        self:pause("Descanso", false)
+    end
+    function M:tickBreak(elapsed, active)
+        if not settings.BreakEnabled then self:resetBreak(); return end
+        if self.BreakUntil then
+            if clock() >= self.BreakUntil then self:resetBreak() end
+            return
+        end
+        if not active or not self:canAct() or self.Comparing then return end
+        self.ActiveSeconds += math.max(0, math.min(elapsed, 2))
+        if self.ActiveSeconds >= (settings.BreakEvery or 30) * 60 then
+            self.BreakUntil = clock() + (settings.BreakMinutes or 5) * 60
+            self:pause("Descanso", true)
+        end
     end
     function M:updateCapabilities(current)
         for name, available in pairs(current) do
@@ -468,6 +517,7 @@ local function stopAllAutomations()
     M:pause("Manual", false)
     M:log("Controle", "Todas as automacoes paradas")
     S.StopAt = nil
+    M:resetBreak()
     S.ProgressionTarget = nil
     S.Train = false
     S.Rebirth = false
@@ -1418,20 +1468,21 @@ task.spawn(function()
     end
 end)
 
+function M:attemptRebirth()
+    if not self:canRequestRebirth(numberStat("Strength"), currentRebirths()) then return end
+    self.LastRebirthRequest, self.RebirthInFlight = os.clock(), true
+    local ok, err = pcall(safeInvoke, R.Rebirth, "rebirthRequest")
+    self.RebirthInFlight = false
+    if not ok then setHubError(tostring(err)) end
+end
+
 task.spawn(function()
     while SESSION.Alive and task.wait(S.StabilityMode and .14 or .06) do
         if M:canAct() and S.Rebirth and not HubRuntime.BossActive then
             if S.RebirthTarget and currentRebirths() >= S.RebirthTarget then
                 S.Rebirth = false
             else
-                -- Sem cooldown artificial do 710Hub. O servidor continua
-                -- decidindo quando um rebirth é realmente permitido.
-                local now = os.clock()
-                local minGap = S.StabilityMode and .12 or .045
-                if now - (S.LastRebirthAttempt or 0) >= minGap then
-                    S.LastRebirthAttempt = now
-                    safeInvoke(R.Rebirth, "rebirthRequest")
-                end
+                M:attemptRebirth()
             end
         end
     end
@@ -1495,12 +1546,7 @@ task.spawn(function()
                     safeFire(getMuscleEvent(), "rep")
                 end
             end
-            local now = os.clock()
-            local minGap = S.StabilityMode and .14 or .05
-            if now - (S.LastRebirthAttempt or 0) >= minGap then
-                S.LastRebirthAttempt = now
-                safeInvoke(R.Rebirth, "rebirthRequest")
-            end
+            M:attemptRebirth()
         end
     end
 end)
@@ -2225,6 +2271,7 @@ function M:beginComparison()
     self.BenchmarkToken += 1
     local token = self.BenchmarkToken
     self.Comparing = true
+    self.BestTraining = nil
     self.BenchmarkResults = {}
     task.spawn(function()
         local ok, err = pcall(function()
@@ -2262,6 +2309,7 @@ function M:beginComparison()
                     if result.Valid then validCount += 1 end
                     if result.Valid and result.Rate > 0 and (not best or result.Rate > best.Rate) then best = result end
                 end
+                self.BestTraining = validCount >= 2 and best and best.Name or nil
                 self.ComparisonStatus = validCount >= 2 and best and ("Melhor observado: " .. best.Name .. " (" .. math.floor(best.Rate) .. "/min)")
                     or "Menos de duas amostras validas ou nenhum ganho; comparacao inconclusiva"
             end
@@ -2337,6 +2385,11 @@ task.spawn(function()
         local now = os.clock()
         local elapsed = now - lastTick
         lastTick = now
+        local active = false
+        for _, key in ipairs(M.AutoKeys) do
+            if key ~= "GoalEnabled" and S[key] then active = true; break end
+        end
+        M:tickBreak(elapsed, active)
         if (not M:canAct() or M.Comparing) and S.StopAt then S.StopAt += elapsed end
         local character = LP.Character
         local humanoid = character and character:FindFirstChildOfClass("Humanoid")
@@ -2473,6 +2526,7 @@ local searchQuery, currentSection = "", ""
 local searchEntries = {}
 local UI = {Category = "Farm", CurrentCategory = "Farm", Order = 0, Tabs = {}, Width = 650, LargeText = false}
 UI.Groups = {
+    ["RENDIMENTO E PLANEJAMENTO"] = "Metas", ["BONUS OFICIAIS"] = "Farm",
     ["FARM"] = "Farm", ["MÁQUINAS"] = "Farm", ["AGILIDADE"] = "Farm", ["FARM INTELIGENTE"] = "Farm",
     ["BOSSES"] = "Bosses", ["PROTECAO E BOSSES"] = "Bosses", ["PETS E CRISTAIS"] = "Pets",
     ["METAS"] = "Metas", ["PROGRESSAO"] = "Metas", ["METAS E COMPARACAO"] = "Metas",
@@ -3950,6 +4004,65 @@ local function maintenanceUI()
         end
         showReport("Comparacao", table.concat(lines, "\n"))
     end, COLORS.Yellow)
+    section("RENDIMENTO E PLANEJAMENTO", "Acompanhe ganhos reais e organize os ciclos de treino.")
+    local _, rateTitle, rateDesc = card("Rendimento recente", "Aguardando pelo menos 10 segundos de treino.", function()
+        showReport("Rendimento", "A taxa usa ate 60 segundos de observacoes. Pausas, rebirth e quedas de forca reiniciam a janela.\nA previsao depende de manter o mesmo ritmo; nao e garantia de ganho.")
+    end, COLORS.Yellow)
+    field("Forca desejada para a previsao (nao para o treino)", 1000000, function(value)
+        local n = tonumber(value)
+        if not n or n ~= n or n < 1 or n > 1e15 then return false, "Use um numero entre 1 e 1e15" end
+        M.PlanningTarget = n
+        return true, "Previsao atualizada"
+    end)
+    toggle("Esperar forca minima antes do rebirth", "O valor abaixo e um limite escolhido por voce, nao o requisito oficial do jogo.", "RebirthGuard")
+    field("Forca minima para tentar rebirth", S.RebirthFloor, function(value)
+        local n = tonumber(value)
+        if not n or n ~= n or n < 0 or n > 1e15 then return false, "Use de 0 a 1e15" end
+        S.RebirthFloor = n; return true
+    end)
+    field("Intervalo entre tentativas de rebirth (segundos)", S.RebirthInterval, function(value)
+        local n = tonumber(value)
+        if not n or n ~= n or n < .5 or n > 30 then return false, "Use de 0.5 a 30 segundos" end
+        S.RebirthInterval = n; return true
+    end)
+    card("Aplicar melhor treino medido", "Usa o resultado da ultima comparacao concluida. Para outras rotinas antes de iniciar o treino escolhido.", function()
+        local key = ({Ferramenta = "Train", Rajada = "TurboStrength", Maquina = "AutoMachine"})[M.BestTraining]
+        if not key or M.Comparing then setHubStatus("Conclua uma comparacao valida primeiro"); return end
+        if not (key == "AutoMachine" and canMachineFarm() or key ~= "AutoMachine" and canTrain()) then
+            setHubStatus("O metodo medido nao esta disponivel agora"); return
+        end
+        stopAllAutomations()
+        finishBossFight(true)
+        if key == "AutoMachine" then selectBestMachine() end
+        S[key] = true
+        renderAllToggles()
+        setHubStatus("Treino aplicado: " .. M.BestTraining)
+    end, COLORS.Green)
+    toggle("Pausas programadas", "Conta apenas tempo ativo. Preserva suas opcoes e retoma depois do descanso; outras pausas continuam valendo.", "BreakEnabled")
+    field("Descansar a cada quantos minutos ativos", S.BreakEvery, function(value)
+        local n = tonumber(value)
+        if not n or n ~= n or n < 1 or n > 240 then return false, "Use de 1 a 240 minutos" end
+        S.BreakEvery = n; M:resetBreak(); return true
+    end)
+    field("Duracao do descanso (minutos)", S.BreakMinutes, function(value)
+        local n = tonumber(value)
+        if not n or n ~= n or n < 1 or n > 60 then return false, "Use de 1 a 60 minutos" end
+        S.BreakMinutes = n; M:resetBreak(); return true
+    end)
+    card("Terminar descanso atual", "Reinicia o contador de descanso. Nao remove pausa manual, respawn ou protecao de vida.", function()
+        M:resetBreak()
+        setHubStatus("Contador de descanso reiniciado")
+    end, COLORS.Yellow)
+    section("BONUS OFICIAIS", "Codigos e beneficios publicados na pagina do Muscle Legends.")
+    for _, code in ipairs({"megalift50", "speedy50", "spacegems50", "ultimate250"}) do
+        card("Codigo: " .. code, "Clique para copiar e resgate na tela de codigos do jogo. A validade depende do servidor.", function()
+            local copied = type(setclipboard) == "function" and pcall(setclipboard, code)
+            if copied then setHubStatus("Codigo copiado: " .. code) else showReport("Codigo para copiar", code) end
+        end, COLORS.Yellow)
+    end
+    card("Como obter bonus oficiais", "Consulte os beneficios antes de escolher seu treino.", function()
+        showReport("Bonus oficiais", "A pagina do jogo informa:\n\nPremium: 2x forca no treino, +2 giros diarios, 2x recompensas de bau e +1 espaco de pet.\nGrupo Scriptbloxian Studios: bau do grupo e +1 giro diario.\n\nO 710Hub nao compra beneficios nem altera multiplicadores. Confira a elegibilidade dentro do jogo.\nFonte: https://www.roblox.com/games/3623096087/Muscle-Legends\nConsultado em 27/09/2026.")
+    end, COLORS.Yellow)
     section("HISTORICO E COMPATIBILIDADE", "Eventos recentes e recursos disponiveis nesta sessao.")
     card("Abrir historico da sessao", "Ganhos observados, mortes, pausas e ultimos 150 eventos.", function()
         showReport("Historico", M:report())
@@ -3973,6 +4086,15 @@ local function maintenanceUI()
             stateDesc.Text = M.Comparing and (M.ComparisonStatus or "Medindo...")
                 or (M.Stalled and "ALERTA: farm sem progresso. Abra o diagnostico." or HubRuntime.Status)
             profileTitle.Text = "Perfil: slot " .. M.ProfileSlot
+            local rate = M:strengthRate()
+            local target = M.PlanningTarget or 1000000
+            local eta = M:eta(numberStat("Strength"), target)
+            rateTitle.Text = rate and string.format("Forca recente: %.0f / minuto", rate) or "Rendimento: coletando amostras"
+            local estimate = eta == 0 and "atingida" or (eta and string.format("aprox. %.1f min", eta / 60) or "aguardando ritmo de treino")
+            rateDesc.Text = string.format("Meta: %.0f | %s", target, estimate)
+            if M.BreakUntil then
+                rateDesc.Text ..= string.format("\nDescanso: %.0fs restantes", math.max(0, M.BreakUntil - os.clock()))
+            end
         end
     end)
 end

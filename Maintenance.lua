@@ -5,17 +5,18 @@ return function(settings, clock)
         BenchmarkToken = 0, Comparing = false, ProfileSlot = 1,
         Totals = {Strength = 0, Rebirths = 0, Deaths = 0},
         Started = clock(), LastProgress = clock(), LastAlert = 0,
-        Stalled = false, WasTraining = false,
+        Stalled = false, WasTraining = false, Samples = {}, ActiveSeconds = 0,
     }
     M.AutoKeys = {"Train", "Rebirth", "Chests", "Hatch", "Brawl", "AutoPunch",
         "SmartRock", "LockPosition", "AutoMachine", "AutoBestMachine", "StrengthRebirth",
         "TurboStrength", "MaxStrengthF2P", "AutoBoss", "AutoAgility", "SmartFarm",
         "AutoEquipAfterHatch", "AutoEvolveAfterHatch", "GoalEnabled"}
-    local booleans = {"BossReturn", "ResumeAfterDeath", "HealthGuard", "StallAlerts", "PerformanceMode", "StabilityMode"}
+    local booleans = {"BossReturn", "ResumeAfterDeath", "HealthGuard", "StallAlerts", "PerformanceMode", "StabilityMode", "RebirthGuard", "BreakEnabled"}
     local numbers = {
         RepDelay = {.05, 5}, HatchDelay = {.1, 30}, BossDistance = {2, 12},
         HealthLow = {5, 60}, HealthResume = {65, 100}, StallSeconds = {30, 600},
         GoalValue = {1, 1e15}, RebirthTarget = {1, 1e15}, ProgressionTarget = {1, 1e15},
+        RebirthFloor = {0, 1e15}, RebirthInterval = {.5, 30}, BreakEvery = {1, 240}, BreakMinutes = {1, 60},
     }
     local choices = {SmartObjective = {"Força", "Durabilidade", "Agilidade", "Rebirths"},
         GoalStat = {"Strength", "Agility", "Durability", "Rebirths"}}
@@ -105,6 +106,7 @@ return function(settings, clock)
         settings.StopAt = nil
         for key, value in pairs(validated) do settings[key] = value end
         self:pause("Manual", true)
+        self:resetBreak()
         self:log("Perfil", "Configuracao restaurada; use Retomar para iniciar")
         return true
     end
@@ -119,6 +121,16 @@ return function(settings, clock)
     end
     function M:sample(strength, rebirths, training)
         local now = clock()
+        if self.LastSampleAt and (now - self.LastSampleAt > 5 or strength < self.LastStrength or rebirths ~= self.LastRebirths) then
+            self.Samples = {}
+        end
+        if not training or not self:canAct() then self.Samples = {} end
+        if training and self:canAct() then
+            self.Samples[#self.Samples + 1] = {Time = now, Strength = strength}
+            while #self.Samples > 1 and self.Samples[1].Time < now - 60 do table.remove(self.Samples, 1) end
+            while #self.Samples > 120 do table.remove(self.Samples, 1) end
+        end
+        self.LastSampleAt = now
         if self.LastStrength then
             local gained = math.max(0, strength - self.LastStrength)
             local rebirthGain = math.max(0, rebirths - self.LastRebirths)
@@ -138,6 +150,41 @@ return function(settings, clock)
             return true
         end
         return false
+    end
+    function M:strengthRate()
+        local first, last = self.Samples[1], self.Samples[#self.Samples]
+        if not self:canAct() or not first or not last or clock() - last.Time > 5 or last.Time - first.Time < 10 then return nil end
+        return math.max(0, last.Strength - first.Strength) * 60 / (last.Time - first.Time)
+    end
+    function M:eta(current, target)
+        if not target then return nil end
+        if current >= target then return 0 end
+        local rate = self:strengthRate()
+        if not rate or rate <= 0 then return nil end
+        return (target - current) * 60 / rate
+    end
+    function M:canRequestRebirth(strength, rebirths)
+        if not self:canAct() or self.Comparing or self.RebirthInFlight then return false end
+        if settings.RebirthTarget and rebirths >= settings.RebirthTarget then return false end
+        if settings.RebirthGuard and strength < (settings.RebirthFloor or 0) then return false end
+        return clock() - (self.LastRebirthRequest or -math.huge) >= (settings.RebirthInterval or 1)
+    end
+    function M:resetBreak()
+        self.ActiveSeconds, self.BreakUntil = 0, nil
+        self:pause("Descanso", false)
+    end
+    function M:tickBreak(elapsed, active)
+        if not settings.BreakEnabled then self:resetBreak(); return end
+        if self.BreakUntil then
+            if clock() >= self.BreakUntil then self:resetBreak() end
+            return
+        end
+        if not active or not self:canAct() or self.Comparing then return end
+        self.ActiveSeconds += math.max(0, math.min(elapsed, 2))
+        if self.ActiveSeconds >= (settings.BreakEvery or 30) * 60 then
+            self.BreakUntil = clock() + (settings.BreakMinutes or 5) * 60
+            self:pause("Descanso", true)
+        end
     end
     function M:updateCapabilities(current)
         for name, available in pairs(current) do

@@ -92,6 +92,7 @@ local searchQuery, currentSection = "", ""
 local searchEntries = {}
 local UI = {Category = "Farm", CurrentCategory = "Farm", Order = 0, Tabs = {}, Width = 650, LargeText = false}
 UI.Groups = {
+    ["RENDIMENTO E PLANEJAMENTO"] = "Metas", ["BONUS OFICIAIS"] = "Farm",
     ["FARM"] = "Farm", ["MÁQUINAS"] = "Farm", ["AGILIDADE"] = "Farm", ["FARM INTELIGENTE"] = "Farm",
     ["BOSSES"] = "Bosses", ["PROTECAO E BOSSES"] = "Bosses", ["PETS E CRISTAIS"] = "Pets",
     ["METAS"] = "Metas", ["PROGRESSAO"] = "Metas", ["METAS E COMPARACAO"] = "Metas",

@@ -172,6 +172,65 @@ local function maintenanceUI()
         end
         showReport("Comparacao", table.concat(lines, "\n"))
     end, COLORS.Yellow)
+    section("RENDIMENTO E PLANEJAMENTO", "Acompanhe ganhos reais e organize os ciclos de treino.")
+    local _, rateTitle, rateDesc = card("Rendimento recente", "Aguardando pelo menos 10 segundos de treino.", function()
+        showReport("Rendimento", "A taxa usa ate 60 segundos de observacoes. Pausas, rebirth e quedas de forca reiniciam a janela.\nA previsao depende de manter o mesmo ritmo; nao e garantia de ganho.")
+    end, COLORS.Yellow)
+    field("Forca desejada para a previsao (nao para o treino)", 1000000, function(value)
+        local n = tonumber(value)
+        if not n or n ~= n or n < 1 or n > 1e15 then return false, "Use um numero entre 1 e 1e15" end
+        M.PlanningTarget = n
+        return true, "Previsao atualizada"
+    end)
+    toggle("Esperar forca minima antes do rebirth", "O valor abaixo e um limite escolhido por voce, nao o requisito oficial do jogo.", "RebirthGuard")
+    field("Forca minima para tentar rebirth", S.RebirthFloor, function(value)
+        local n = tonumber(value)
+        if not n or n ~= n or n < 0 or n > 1e15 then return false, "Use de 0 a 1e15" end
+        S.RebirthFloor = n; return true
+    end)
+    field("Intervalo entre tentativas de rebirth (segundos)", S.RebirthInterval, function(value)
+        local n = tonumber(value)
+        if not n or n ~= n or n < .5 or n > 30 then return false, "Use de 0.5 a 30 segundos" end
+        S.RebirthInterval = n; return true
+    end)
+    card("Aplicar melhor treino medido", "Usa o resultado da ultima comparacao concluida. Para outras rotinas antes de iniciar o treino escolhido.", function()
+        local key = ({Ferramenta = "Train", Rajada = "TurboStrength", Maquina = "AutoMachine"})[M.BestTraining]
+        if not key or M.Comparing then setHubStatus("Conclua uma comparacao valida primeiro"); return end
+        if not (key == "AutoMachine" and canMachineFarm() or key ~= "AutoMachine" and canTrain()) then
+            setHubStatus("O metodo medido nao esta disponivel agora"); return
+        end
+        stopAllAutomations()
+        finishBossFight(true)
+        if key == "AutoMachine" then selectBestMachine() end
+        S[key] = true
+        renderAllToggles()
+        setHubStatus("Treino aplicado: " .. M.BestTraining)
+    end, COLORS.Green)
+    toggle("Pausas programadas", "Conta apenas tempo ativo. Preserva suas opcoes e retoma depois do descanso; outras pausas continuam valendo.", "BreakEnabled")
+    field("Descansar a cada quantos minutos ativos", S.BreakEvery, function(value)
+        local n = tonumber(value)
+        if not n or n ~= n or n < 1 or n > 240 then return false, "Use de 1 a 240 minutos" end
+        S.BreakEvery = n; M:resetBreak(); return true
+    end)
+    field("Duracao do descanso (minutos)", S.BreakMinutes, function(value)
+        local n = tonumber(value)
+        if not n or n ~= n or n < 1 or n > 60 then return false, "Use de 1 a 60 minutos" end
+        S.BreakMinutes = n; M:resetBreak(); return true
+    end)
+    card("Terminar descanso atual", "Reinicia o contador de descanso. Nao remove pausa manual, respawn ou protecao de vida.", function()
+        M:resetBreak()
+        setHubStatus("Contador de descanso reiniciado")
+    end, COLORS.Yellow)
+    section("BONUS OFICIAIS", "Codigos e beneficios publicados na pagina do Muscle Legends.")
+    for _, code in ipairs({"megalift50", "speedy50", "spacegems50", "ultimate250"}) do
+        card("Codigo: " .. code, "Clique para copiar e resgate na tela de codigos do jogo. A validade depende do servidor.", function()
+            local copied = type(setclipboard) == "function" and pcall(setclipboard, code)
+            if copied then setHubStatus("Codigo copiado: " .. code) else showReport("Codigo para copiar", code) end
+        end, COLORS.Yellow)
+    end
+    card("Como obter bonus oficiais", "Consulte os beneficios antes de escolher seu treino.", function()
+        showReport("Bonus oficiais", "A pagina do jogo informa:\n\nPremium: 2x forca no treino, +2 giros diarios, 2x recompensas de bau e +1 espaco de pet.\nGrupo Scriptbloxian Studios: bau do grupo e +1 giro diario.\n\nO 710Hub nao compra beneficios nem altera multiplicadores. Confira a elegibilidade dentro do jogo.\nFonte: https://www.roblox.com/games/3623096087/Muscle-Legends\nConsultado em 27/09/2026.")
+    end, COLORS.Yellow)
     section("HISTORICO E COMPATIBILIDADE", "Eventos recentes e recursos disponiveis nesta sessao.")
     card("Abrir historico da sessao", "Ganhos observados, mortes, pausas e ultimos 150 eventos.", function()
         showReport("Historico", M:report())
@@ -195,6 +254,15 @@ local function maintenanceUI()
             stateDesc.Text = M.Comparing and (M.ComparisonStatus or "Medindo...")
                 or (M.Stalled and "ALERTA: farm sem progresso. Abra o diagnostico." or HubRuntime.Status)
             profileTitle.Text = "Perfil: slot " .. M.ProfileSlot
+            local rate = M:strengthRate()
+            local target = M.PlanningTarget or 1000000
+            local eta = M:eta(numberStat("Strength"), target)
+            rateTitle.Text = rate and string.format("Forca recente: %.0f / minuto", rate) or "Rendimento: coletando amostras"
+            local estimate = eta == 0 and "atingida" or (eta and string.format("aprox. %.1f min", eta / 60) or "aguardando ritmo de treino")
+            rateDesc.Text = string.format("Meta: %.0f | %s", target, estimate)
+            if M.BreakUntil then
+                rateDesc.Text ..= string.format("\nDescanso: %.0fs restantes", math.max(0, M.BreakUntil - os.clock()))
+            end
         end
     end)
 end
