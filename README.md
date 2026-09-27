@@ -18,7 +18,18 @@ As versoes antigas ja publicadas continuam no historico e nao sao bloqueadas ret
 
 **Manutencao:** a copia local completa do menu permanece em `710hub/710Hub.lua`; atualize o Worker usando `key-server/prepare.mjs` e Wrangler. Nao sobrescreva o carregador publico com essa copia completa. O modelo publico fica em `key-server/KeyLoader.template.lua` localmente.
 
-## Versao 2026.09-neon.17
+## Versao 2026.09-neon.18
+
+### Bosses: deteccao e chances
+
+- Reconhece marcadores Boss/Chefe, tags, atributos, DisplayName e rigs aninhados. Tambem le vida numerica Health/HP e partes principais ou corpos simples. Exclui jogadores, seus descendentes e modelos que envolvam personagens de jogadores.
+- **Monitorar todos os bosses** remove a preferencia por nome. **Diagnosticar boss proximo** mostra NPCs reconheciveis ate 150 studs. Um nome exato no campo Boss preferido autoriza aquele NPC como alvo; confirme pelo diagnostico antes de usar.
+- **Chances e historico dos bosses** mostra as taxas do print fornecido pelo proprietario: Comum 50%, Raro 30%, Epico 15%, Lendario 4%, Mitico 1%; Arco-iris somente administradores. Essas taxas nao foram inferidas do historico e podem mudar com atualizacoes do jogo.
+- Monitora aparicoes a cada 5 segundos e avisa ao detectar Lendario, Mitico ou Arco-iris, mesmo com Auto Boss desligado. Historico limitado aos 30 encontros mais recentes, apenas nesta sessao. Um mesmo objeto e contado uma vez; objetos reutilizados, streaming e bosses fora do alcance tornam os dados incompletos.
+- Nao ha previsao deterministica de raridade nem horario de spawn. A chance de ao menos um Lendario/Mitico em 20 sorteios e aproximadamente 64,2%, **somente se** forem independentes com taxa constante de 5%. Sequencias anteriores nao provam que um raro esteja devido.
+
+Validacao: 22 testes de deteccao e probabilidades, mais 76 testes existentes; compilacao Luau. A estrutura real dos bosses precisa ser confirmada no cliente usando o diagnostico.
+
 
 A logo original preta e amarela e usada no cabecalho e no botao de reabrir. A versao 17 remove a transparencia durante carregamento, recorta as margens pela interface, renova o cache e inclui Diagnostico da logo na categoria Sessao. O PNG pode ser baixado do Worker ou do GitHub. O script baixa o PNG do repositorio e guarda em `710hub_logo_neon_v2.png`. Requer `writefile` e `getcustomasset` ou `getsynasset`; sem suporte, ou se a imagem nao carregar, permanece o texto 710. O carregamento da logo nao bloqueia a abertura do menu. A imagem nao foi enviada ao catalogo Roblox.
 

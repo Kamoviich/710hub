@@ -116,12 +116,27 @@ local function maintenanceUI()
     toggle("Retomar depois de morrer", "Espera Humanoid e personagem prontos; desligado exige Retomar manualmente.", "ResumeAfterDeath")
 
     section("PROTECAO E BOSSES", "Prioridade de alvo e espera por recuperacao de vida.")
+    card("Monitorar todos os bosses", "Remove a preferencia por nome e atualiza a lista de todas as categorias reconhecidas.", function()
+        S.BossPreference = "Qualquer"
+        M:observeBosses()
+        showReport("Bosses no mapa", M.VisibleBossText)
+    end, COLORS.Green)
+    card("Chances e historico dos bosses", "Comum 50%, Raro 30%, Epico 15%, Lendario 4%, Mitico 1%. Mostra historico observado; nao preve o sorteio.", function()
+        showReport("Chances dos bosses", M:bossOddsReport())
+    end, COLORS.Yellow)
+    local _, _, observedBossDesc = card("Bosses observados agora", "Procurando...", function()
+        M:observeBosses()
+        showReport("Bosses no mapa", M.VisibleBossText)
+    end, COLORS.Yellow)
+    card("Diagnosticar boss proximo", "Mostra nomes, vida e motivo de reconhecimento dos NPCs ate 150 studs. Abra perto do boss.", function()
+        showReport("Diagnostico de bosses", M:bossDiagnostic())
+    end, COLORS.Yellow)
     field("Boss preferido (Qualquer ou nome exato)", S.BossPreference, function(value)
         value = value:match("^%s*(.-)%s*$")
         if #value < 1 or #value > 150 then return false, "Nome precisa ter entre 1 e 150 caracteres" end
         S.BossPreference = value
         M:log("Boss", "Preferencia: " .. value)
-        return true, "Preferencia aplicada na proxima escolha de alvo"
+        return true, "Nome autorizado como boss; aplicado na proxima escolha de alvo"
     end)
     card("Listar bosses detectados", "Mostra nomes dos bosses vivos visiveis ao cliente para copiar no campo acima.", function()
         showReport("Bosses detectados", table.concat(M:bossNames(), "\n"))
@@ -257,6 +272,7 @@ local function maintenanceUI()
             stateDesc.Text = M.Comparing and (M.ComparisonStatus or "Medindo...")
                 or (M.Stalled and "ALERTA: farm sem progresso. Abra o diagnostico." or HubRuntime.Status)
             profileTitle.Text = "Perfil: slot " .. M.ProfileSlot
+            observedBossDesc.Text = M.VisibleBossText or "Procurando..."
             local rate = M:strengthRate()
             local target = M.PlanningTarget or 1000000
             local eta = M:eta(numberStat("Strength"), target)

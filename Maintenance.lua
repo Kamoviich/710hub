@@ -6,6 +6,7 @@ return function(settings, clock)
         Totals = {Strength = 0, Rebirths = 0, Deaths = 0},
         Started = clock(), LastProgress = clock(), LastAlert = 0,
         Stalled = false, WasTraining = false, Samples = {}, ActiveSeconds = 0,
+        BossCounts = {}, BossObservations = 0, BossRecent = {},
     }
     M.AutoKeys = {"Train", "Rebirth", "Chests", "Hatch", "Brawl", "AutoPunch",
         "SmartRock", "LockPosition", "AutoMachine", "AutoBestMachine", "StrengthRebirth",
@@ -185,6 +186,43 @@ return function(settings, clock)
             self.BreakUntil = clock() + (settings.BreakMinutes or 5) * 60
             self:pause("Descanso", true)
         end
+    end
+    function M:bossRarity(text)
+        local value = string.lower(tostring(text or ""))
+        for a, b in pairs({["é"]="e", ["É"]="e", ["í"]="i", ["Í"]="i", ["á"]="a", ["Á"]="a"}) do value = value:gsub(a, b) end
+        for _, group in ipairs({
+            {"Arco-iris", "rainbow", "arco"}, {"Mitico", "mythic", "mitico"},
+            {"Lendario", "legendary", "lendario"}, {"Epico", "epic", "epico"},
+            {"Raro", "rare", "raro"}, {"Comum", "common", "comum"},
+        }) do
+            for i = 2, #group do if value:find(group[i], 1, true) then return group[1] end end
+        end
+        return "Desconhecido"
+    end
+    function M:recordBoss(rarity, name)
+        self.BossObservations += 1
+        self.BossCounts[rarity] = (self.BossCounts[rarity] or 0) + 1
+        self.BossRecent[#self.BossRecent + 1] = {Time = math.floor(clock() - self.Started), Rarity = rarity, Name = name}
+        if #self.BossRecent > 30 then table.remove(self.BossRecent, 1) end
+        self:log("Boss observado", rarity .. " - " .. name)
+    end
+    function M:bossOddsReport()
+        local lines = {"CHANCES EXIBIDAS PELO JOGO (print fornecido)",
+            "Comum: 50% | Raro: 30% | Epico: 15% | Lendario: 4% | Mitico: 1%",
+            "Arco-iris: apenas administradores; fora do sorteio normal.",
+            "Mais provavel no proximo sorteio: Comum (50%). Epico ou melhor: 20%. Lendario ou Mitico: 5%.",
+            "Se os sorteios forem independentes e as taxas permanecerem iguais, a chance de pelo menos um Lendario/Mitico e:",
+            string.format("10 sorteios: %.1f%% | 20: %.1f%% | 50: %.1f%%", (1-.95^10)*100, (1-.95^20)*100, (1-.95^50)*100),
+            "Isso nao preve o proximo boss, nem um horario. Uma sequencia de comuns nao aumenta automaticamente a chance seguinte.",
+            "", "OBSERVACOES DESTA SESSAO: " .. self.BossObservations,
+            "Contamos aparicoes detectadas. Streaming, entrada no servidor e modelos reutilizados podem afetar a amostra; nao e um registro completo dos sorteios."}
+        for _, name in ipairs({"Comum", "Raro", "Epico", "Lendario", "Mitico", "Arco-iris", "Desconhecido"}) do
+            local count = self.BossCounts[name] or 0
+            lines[#lines + 1] = string.format("%s: %d observados", name, count)
+        end
+        lines[#lines + 1] = "\nULTIMAS APARICOES (nao comprovam padrao):"
+        for _, item in ipairs(self.BossRecent) do lines[#lines + 1] = string.format("%ds | %s | %s", item.Time, item.Rarity, item.Name) end
+        return table.concat(lines, "\n")
     end
     function M:updateCapabilities(current)
         for name, available in pairs(current) do

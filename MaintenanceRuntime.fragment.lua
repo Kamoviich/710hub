@@ -3,6 +3,37 @@ M:log("Sessao", "710Hub " .. SESSION.Version)
 M.ProfileData = {Schema = 1, Slots = {}, LastSlot = 1}
 M.ProfilePath = "710hub_profiles_v1.json"
 M.BenchmarkResults = {}
+M.BossSeen = setmetatable({}, {__mode = "k"})
+
+function M:observeBosses()
+    local bosses = self:scanBosses()
+    local current = {}
+    for _, boss in ipairs(bosses) do
+        local root = bossRoot(boss)
+        local texts = {boss.Name}
+        local hum = boss:FindFirstChildWhichIsA("Humanoid", true)
+        if hum then texts[#texts + 1] = hum.DisplayName end
+        for _, key in ipairs({"Rarity", "BossType", "Tier"}) do
+            local value = boss:GetAttribute(key)
+            if type(value) == "string" then texts[#texts + 1] = value end
+        end
+        for _, obj in ipairs(boss:GetDescendants()) do
+            if obj:IsA("TextLabel") then texts[#texts + 1] = obj.Text end
+        end
+        local rarity = self:bossRarity(table.concat(texts, " "))
+        current[#current + 1] = rarity .. " - " .. boss.Name
+        if not self.BossSeen[root] then
+            self.BossSeen[root] = true
+            self:recordBoss(rarity, boss.Name)
+            if rarity == "Lendario" or rarity == "Mitico" or rarity == "Arco-iris" then
+                pcall(function()
+                    game:GetService("StarterGui"):SetCore("SendNotification", {Title = "710Hub - Boss encontrado", Text = rarity .. ": " .. boss.Name, Duration = 8})
+                end)
+            end
+        end
+    end
+    self.VisibleBossText = #current > 0 and table.concat(current, "\n") or "Nenhum boss reconhecido. Use Diagnosticar boss proximo."
+end
 
 function M:saveProfile()
     if self.Comparing then return false, "Finalize a comparacao antes de salvar" end
@@ -97,6 +128,36 @@ function M:bossNames()
         return a < b
     end)
     return names
+end
+
+function M:bossDiagnostic()
+    local myRoot = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+    local rows = {}
+    for _, object in ipairs(workspace:GetDescendants()) do
+        if object:IsA("Model") then
+            local root, health = bossRoot(object), bossHumanoid(object)
+            if root and health then
+                local distance = myRoot and (myRoot.Position - root.Position).Magnitude or 0
+                if distance <= 150 then
+                    local isPlayer = false
+                    for _, player in ipairs(Players:GetPlayers()) do
+                        local character = player.Character
+                        if character and (object == character or object:IsDescendantOf(character) or character:IsDescendantOf(object)) then isPlayer = true; break end
+                    end
+                    if not isPlayer then
+                        rows[#rows + 1] = {Distance = distance, Text = string.format("%s\nNome: %s | distancia: %.0f | vida: %.0f\nDetectado: %s | tags: %s",
+                            object:GetFullName(), object.Name, distance, health.Health,
+                            modelHasBossMarker(object) and "sim" or "nao", table.concat(object:GetTags(), ", "))}
+                    end
+                end
+            end
+        end
+    end
+    table.sort(rows, function(a, b) return a.Distance < b.Distance end)
+    local lines = {"710Hub " .. SESSION.Version .. " | NPCs com vida legivel ate 150 studs", "Se o boss aparecer como nao detectado, copie seu Nome para Boss preferido. Isso autoriza esse nome como alvo; confira antes de ligar Auto Boss."}
+    for i = 1, math.min(20, #rows) do lines[#lines + 1] = rows[i].Text end
+    if #rows == 0 then lines[#lines + 1] = "Nenhum NPC com vida e raiz legiveis. A estrutura deste boss ainda precisa ser identificada." end
+    return table.concat(lines, "\n\n")
 end
 
 function M:beginComparison()
@@ -222,11 +283,16 @@ do
 end
 
 task.spawn(function()
-    local lastTick, lastScan, lastSample = os.clock(), 0, 0
+    local lastTick, lastScan, lastSample, lastBossScan = os.clock(), 0, 0, 0
     while SESSION.Alive do
         task.wait(.25)
         if not SESSION.Alive then break end
         local now = os.clock()
+        if now - lastBossScan >= 5 then
+            lastBossScan = now
+            local ok, err = pcall(function() M:observeBosses() end)
+            if not ok then M.VisibleBossText = "Diagnostico necessario: " .. tostring(err) end
+        end
         local elapsed = now - lastTick
         lastTick = now
         local active = false
