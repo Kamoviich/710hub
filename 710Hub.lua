@@ -60,7 +60,7 @@ end
 
 local SESSION = {
     Alive = true,
-    Version = "2026.09-stable.11",
+    Version = "2026.09-stable.12",
     Connections = {},
 }
 
@@ -140,7 +140,9 @@ local S = {
     HatchCrystal="Blue Crystal", RepDelay=.065, HatchDelay=.45,
     RebirthTarget=nil, SelectedMachine=nil,
     LastRebirthAttempt=0,
-    BossDistance=5, BossReturn=true,
+    BossDistance=5, BossReturn=true, BossPreference="Qualquer",
+    ResumeAfterDeath=true, HealthGuard=true, HealthLow=25, HealthResume=75,
+    StallAlerts=true, StallSeconds=60,
     StopAt=nil, ProgressionTarget=nil,
 }
 
@@ -163,6 +165,172 @@ local HubRuntime = {
     StabilityTrips = 0,
     StabilityPrevious = nil,
 }
+
+-- BEGIN MAINTENANCE CORE
+local M = (function()
+-- Pure controller, embedded into 710Hub.lua by build.ps1. No Roblox dependencies.
+return function(settings, clock)
+    local M = {
+        Reasons = {}, History = {}, Capabilities = {}, Alerts = {},
+        BenchmarkToken = 0, Comparing = false, ProfileSlot = 1,
+        Totals = {Strength = 0, Rebirths = 0, Deaths = 0},
+        Started = clock(), LastProgress = clock(), LastAlert = 0,
+        Stalled = false, WasTraining = false,
+    }
+    M.AutoKeys = {"Train", "Rebirth", "Chests", "Hatch", "Brawl", "AutoPunch",
+        "SmartRock", "LockPosition", "AutoMachine", "AutoBestMachine", "StrengthRebirth",
+        "TurboStrength", "MaxStrengthF2P", "AutoBoss", "AutoAgility", "SmartFarm",
+        "AutoEquipAfterHatch", "AutoEvolveAfterHatch", "GoalEnabled"}
+    local booleans = {"BossReturn", "ResumeAfterDeath", "HealthGuard", "StallAlerts", "PerformanceMode", "StabilityMode"}
+    local numbers = {
+        RepDelay = {.05, 5}, HatchDelay = {.1, 30}, BossDistance = {2, 12},
+        HealthLow = {5, 60}, HealthResume = {65, 100}, StallSeconds = {30, 600},
+        GoalValue = {1, 1e15}, RebirthTarget = {1, 1e15}, ProgressionTarget = {1, 1e15},
+    }
+    local choices = {SmartObjective = {"Força", "Durabilidade", "Agilidade", "Rebirths"},
+        GoalStat = {"Strength", "Agility", "Durability", "Rebirths"}}
+    local strings = {"HatchCrystal", "SelectedMachine", "BossPreference"}
+
+    function M:log(kind, message)
+        self.History[#self.History + 1] = {Time = math.floor(clock() - self.Started), Kind = kind, Message = tostring(message)}
+        if #self.History > 150 then table.remove(self.History, 1) end
+    end
+    function M:canAct()
+        return next(self.Reasons) == nil
+    end
+    function M:pause(reason, enabled)
+        if (self.Reasons[reason] == true) == enabled then return end
+        self.Reasons[reason] = enabled and true or nil
+        self.LastProgress = clock()
+        self:log(enabled and "Pausa" or "Retomada", reason)
+    end
+    function M:reasonText()
+        local result = {}
+        for reason in pairs(self.Reasons) do result[#result + 1] = reason end
+        table.sort(result)
+        return #result > 0 and table.concat(result, ", ") or "Ativo"
+    end
+    function M:automationSnapshot()
+        local result = {}
+        for _, key in ipairs(self.AutoKeys) do result[key] = settings[key] == true end
+        return result
+    end
+    function M:clearAutomation()
+        for _, key in ipairs(self.AutoKeys) do settings[key] = false end
+    end
+    function M:restoreAutomation(snapshot)
+        for _, key in ipairs(self.AutoKeys) do settings[key] = snapshot[key] == true end
+    end
+    function M:cancelComparison()
+        self.BenchmarkToken += 1
+        self.Comparing = false
+    end
+    function M:profile()
+        local result = self:automationSnapshot()
+        for _, key in ipairs(booleans) do result[key] = settings[key] end
+        for key in pairs(numbers) do result[key] = settings[key] end
+        for key in pairs(choices) do result[key] = settings[key] end
+        for _, key in ipairs(strings) do result[key] = settings[key] end
+        return {Schema = 1, Settings = result}
+    end
+    function M:validateProfile(profile)
+        if type(profile) ~= "table" or profile.Schema ~= 1 or type(profile.Settings) ~= "table" then
+            return nil, "Formato de perfil invalido"
+        end
+        local source, result = profile.Settings, {}
+        local function checkBoolean(key)
+            if source[key] ~= nil and type(source[key]) ~= "boolean" then return false end
+            result[key] = source[key]
+            return true
+        end
+        for _, key in ipairs(self.AutoKeys) do if not checkBoolean(key) then return nil, key end end
+        for _, key in ipairs(booleans) do if not checkBoolean(key) then return nil, key end end
+        for key, bounds in pairs(numbers) do
+            local value = source[key]
+            if value ~= nil then
+                if type(value) ~= "number" or value ~= value or value < bounds[1] or value > bounds[2] then return nil, key end
+                result[key] = value
+            end
+        end
+        for key, options in pairs(choices) do
+            if source[key] ~= nil then
+                if not table.find(options, source[key]) then return nil, key end
+                result[key] = source[key]
+            end
+        end
+        for _, key in ipairs(strings) do
+            if source[key] ~= nil then
+                if type(source[key]) ~= "string" or #source[key] > 150 then return nil, key end
+                result[key] = source[key]
+            end
+        end
+        return result
+    end
+    function M:applyProfile(profile)
+        local validated, problem = self:validateProfile(profile)
+        if not validated then return false, "Perfil rejeitado: " .. problem end
+        self:cancelComparison()
+        self:clearAutomation()
+        settings.GoalValue, settings.RebirthTarget, settings.ProgressionTarget, settings.SelectedMachine = nil, nil, nil, nil
+        settings.StopAt = nil
+        for key, value in pairs(validated) do settings[key] = value end
+        self:pause("Manual", true)
+        self:log("Perfil", "Configuracao restaurada; use Retomar para iniciar")
+        return true
+    end
+    function M:setGoal(text)
+        local value = tonumber(text)
+        if not value or value ~= value or value < 1 or value > 1e15 or value % 1 ~= 0 then
+            return false, "Digite um inteiro entre 1 e 1000000000000000"
+        end
+        settings.GoalValue = value
+        self:log("Meta", settings.GoalStat .. " = " .. tostring(value))
+        return true
+    end
+    function M:sample(strength, rebirths, training)
+        local now = clock()
+        if self.LastStrength then
+            local gained = math.max(0, strength - self.LastStrength)
+            local rebirthGain = math.max(0, rebirths - self.LastRebirths)
+            self.Totals.Strength += gained
+            self.Totals.Rebirths += rebirthGain
+            if rebirthGain > 0 then self:log("Rebirth", "+" .. rebirthGain) end
+            if gained > 0 or rebirthGain > 0 then self.LastProgress = now; self.Stalled = false end
+        end
+        self.LastStrength, self.LastRebirths = strength, rebirths
+        if not training or not self:canAct() or not self.WasTraining then self.LastProgress = now end
+        self.WasTraining = training
+        if settings.StallAlerts and training and self:canAct() and now - self.LastProgress >= settings.StallSeconds
+            and now - self.LastAlert >= settings.StallSeconds then
+            self.LastAlert = now
+            self.Stalled = true
+            self:log("Alerta", "Sem ganho de forca ou rebirth por " .. settings.StallSeconds .. "s")
+            return true
+        end
+        return false
+    end
+    function M:updateCapabilities(current)
+        for name, available in pairs(current) do
+            if self.Capabilities[name] ~= nil and self.Capabilities[name] ~= available then
+                self:log("Compatibilidade", name .. (available and ": disponivel novamente" or ": indisponivel"))
+            end
+        end
+        self.Capabilities = current
+    end
+    function M:report()
+        local lines = {"710Hub - historico da sessao", "Estado: " .. self:reasonText(),
+            string.format("Tempo: %ds | Forca observada: %.0f | Rebirths: %.0f | Mortes: %d", clock() - self.Started,
+                self.Totals.Strength, self.Totals.Rebirths, self.Totals.Deaths), ""}
+        for _, entry in ipairs(self.History) do
+            lines[#lines + 1] = string.format("[%ds] %s: %s", entry.Time, entry.Kind, entry.Message)
+        end
+        return table.concat(lines, "\n")
+    end
+    return M
+end
+end)()(S, os.clock)
+M:pause("Respawn", true)
+-- END MAINTENANCE CORE
 
 local function setHubStatus(text)
     HubRuntime.Status = tostring(text or "")
@@ -208,6 +376,7 @@ local function remoteBudgetPermit()
 end
 
 local function safeInvoke(remote, ...)
+    if not M:canAct() then return nil end
     if not SESSION.Alive then return nil end
     if not remote then
         setHubError("RemoteFunction não encontrada")
@@ -227,6 +396,7 @@ local function safeInvoke(remote, ...)
 end
 
 local function safeFire(remote, ...)
+    if not M:canAct() then return false end
     if not SESSION.Alive then return false end
     if not remote then
         setHubError("RemoteEvent não encontrado")
@@ -274,31 +444,10 @@ local function captureLockPosition()
     return false
 end
 
-trackConnection(LP.CharacterAdded:Connect(function(character)
-    if not SESSION.Alive then return end
-    HubRuntime.Respawns += 1
-    lockedCFrame = nil
-    S.LockPosition = false
-    agilityOriginalWalkSpeed = nil
-    agilityLastTeleport = 0
-    HubRuntime.BossActive = false
-    HubRuntime.BossTarget = "Aguardando spawn"
-    HubRuntime.BossReturnCFrame = nil
-    setHubStatus("Respawn detectado • retomando automações")
-
-    task.spawn(function()
-        local humanoid = character:WaitForChild("Humanoid", 10)
-        local root = character:WaitForChild("HumanoidRootPart", 10)
-        if SESSION.Alive and humanoid and root then
-            task.wait(.75)
-            setHubStatus("Pronto após respawn")
-        end
-    end)
-end))
 
 task.spawn(function()
     while SESSION.Alive and task.wait(S.StabilityMode and .14 or .08) do
-        if S.LockPosition and not HubRuntime.BossActive then
+        if M:canAct() and S.LockPosition and not HubRuntime.BossActive then
             local character = LP.Character
             local root = character and character:FindFirstChild("HumanoidRootPart")
             if not lockedCFrame then
@@ -315,6 +464,9 @@ task.spawn(function()
 end)
 
 local function stopAllAutomations()
+    M:cancelComparison()
+    M:pause("Manual", false)
+    M:log("Controle", "Todas as automacoes paradas")
     S.StopAt = nil
     S.ProgressionTarget = nil
     S.Train = false
@@ -353,6 +505,7 @@ local function findPunchTool()
 end
 
 local function doAnimatedPunch()
+    if not SESSION.Alive or not M:canAct() then return false end
     local character = LP.Character
     local humanoid = character and character:FindFirstChildOfClass("Humanoid")
     local tool = findPunchTool()
@@ -452,6 +605,13 @@ local function findAliveBoss()
         end
     end
 
+    if S.BossPreference ~= "Qualquer" then
+        local preferred = {}
+        for _, candidate in ipairs(candidates) do
+            if string.lower(candidate.Name) == string.lower(S.BossPreference) then preferred[#preferred + 1] = candidate end
+        end
+        if #preferred > 0 then candidates = preferred end
+    end
     if #candidates == 0 then return nil end
 
     local character = LP.Character
@@ -508,6 +668,8 @@ task.spawn(function()
     local nextScan = 0
 
     while SESSION.Alive and task.wait(S.StabilityMode and .20 or .12) do
+        if not M:canAct() then continue end
+        if currentBoss and not HubRuntime.BossActive then currentBoss = nil end
         if not S.AutoBoss then
             if HubRuntime.BossActive then
                 finishBossFight(true)
@@ -522,6 +684,7 @@ task.spawn(function()
                     finishBossFight(true)
                     if humanoid and humanoid.Health <= 0 then
                         HubRuntime.BossDeathsObserved += 1
+                        M:log("Boss", "Morte observada: " .. currentBoss.Name)
                         setHubStatus("Boss morreu • aguardando proximo spawn")
                     else
                         setHubStatus("Boss saiu do alcance • aguardando proximo spawn")
@@ -590,6 +753,7 @@ local function bestAvailableRock()
 end
 
 local function farmBestRock()
+    if not SESSION.Alive or not M:canAct() then return false end
     local rock = bestAvailableRock()
     if not rock then return false end
 
@@ -727,6 +891,7 @@ local function getSelectedMachine()
 end
 
 local function useSelectedMachine(moveCharacter)
+    if not SESSION.Alive or not M:canAct() then return false end
     local info = S.AutoBestMachine and selectBestMachine() or getSelectedMachine()
     if not info or not info.seat or not info.seat.Parent then return false end
 
@@ -807,7 +972,7 @@ end
 
 task.spawn(function()
     while SESSION.Alive and task.wait(S.StabilityMode and .10 or .05) do
-        if S.AutoAgility and not HubRuntime.BossActive then
+        if M:canAct() and S.AutoAgility and not HubRuntime.BossActive then
             if S.LockPosition then
                 S.LockPosition = false
                 lockedCFrame = nil
@@ -893,6 +1058,7 @@ local function findTrainingTool()
 end
 
 local function activateTrainingTool()
+    if not SESSION.Alive or not M:canAct() then return false end
     local character = LP.Character
     local humanoid = character and character:FindFirstChildOfClass("Humanoid")
     if not humanoid then return false end
@@ -908,6 +1074,7 @@ local function activateTrainingTool()
         task.wait(.05)
     end
 
+    if not SESSION.Alive or not M:canAct() then return false end
     if tool.Parent == character then
         local ok = pcall(function()
             tool:Activate()
@@ -920,6 +1087,7 @@ end
 
 
 local function equipStrengthTool()
+    if not SESSION.Alive or not M:canAct() then return false end
     local character = LP.Character
     local humanoid = character and character:FindFirstChildOfClass("Humanoid")
     local backpack = getBackpack()
@@ -956,6 +1124,7 @@ local function equipStrengthTool()
 end
 
 local function fastStrengthBurst()
+    if not SESSION.Alive or not M:canAct() then return false end
     local character = LP.Character
     local humanoid = character and character:FindFirstChildOfClass("Humanoid")
     if not character or not humanoid or humanoid.Health <= 0 then
@@ -976,7 +1145,7 @@ local function fastStrengthBurst()
     -- de uma máquina específica, enviamos uma rajada curta e limitada.
     local burst = S.StabilityMode and 3 or 8
     for _ = 1, burst do
-        if not SESSION.Alive or not S.TurboStrength then break end
+        if not SESSION.Alive or not M:canAct() or not (S.TurboStrength or S.MaxStrengthF2P) then break end
         safeFire(event, "rep")
     end
 
@@ -990,7 +1159,7 @@ task.spawn(function()
     local noGainWindows = 0
 
     while SESSION.Alive and task.wait(S.StabilityMode and .14 or .08) do
-        if S.TurboStrength and not HubRuntime.BossActive then
+        if M:canAct() and S.TurboStrength and not HubRuntime.BossActive then
             if fastStrengthBurst() then
                 failures = 0
             else
@@ -1174,6 +1343,7 @@ local function equippedPets()
 end
 
 local function equipBestOwned()
+    if not SESSION.Alive or not M:canAct() then return false end
     if not R.EquipPet then return end
     local pets = allOwnedPets()
     table.sort(pets, function(a,b) return petPower(a) > petPower(b) end)
@@ -1191,6 +1361,7 @@ local function equipBestOwned()
 end
 
 local function equipBestStrengthOwned()
+    if not SESSION.Alive or not M:canAct() then return false end
     refreshRemotes()
     if not R.EquipPet then return false end
 
@@ -1218,6 +1389,7 @@ local function equipBestStrengthOwned()
 end
 
 local function evolveReadyOwned()
+    if not SESSION.Alive or not M:canAct() then return false end
     if not R.EvolvePet then return end
     local counts = {}
     for _, entry in ipairs(allOwnedPets()) do
@@ -1234,7 +1406,7 @@ end
 
 task.spawn(function()
     while SESSION.Alive and task.wait(math.max(S.RepDelay, S.StabilityMode and 0.18 or 0.12)) do
-        if S.Train and not HubRuntime.BossActive then
+        if M:canAct() and S.Train and not HubRuntime.BossActive then
             -- Prefer the game's normal Tool activation: this keeps the
             -- character animation visible and lets the tool's own LocalScript
             -- handle the training event. Fallback only if no usable tool exists.
@@ -1248,7 +1420,7 @@ end)
 
 task.spawn(function()
     while SESSION.Alive and task.wait(S.StabilityMode and .14 or .06) do
-        if S.Rebirth and not HubRuntime.BossActive then
+        if M:canAct() and S.Rebirth and not HubRuntime.BossActive then
             if S.RebirthTarget and currentRebirths() >= S.RebirthTarget then
                 S.Rebirth = false
             else
@@ -1267,7 +1439,7 @@ end)
 
 task.spawn(function()
     while SESSION.Alive and task.wait(S.StabilityMode and .24 or .16) do
-        if S.AutoPunch then
+        if M:canAct() and S.AutoPunch then
             doAnimatedPunch()
         end
     end
@@ -1275,7 +1447,7 @@ end)
 
 task.spawn(function()
     while SESSION.Alive and task.wait(S.StabilityMode and .30 or .18) do
-        if S.SmartRock and not HubRuntime.BossActive then
+        if M:canAct() and S.SmartRock and not HubRuntime.BossActive then
             farmBestRock()
         end
     end
@@ -1283,7 +1455,7 @@ end)
 
 task.spawn(function()
     while SESSION.Alive and task.wait(2) do
-        if S.AutoBestMachine then
+        if M:canAct() and S.AutoBestMachine then
             selectBestMachine()
         end
     end
@@ -1292,7 +1464,7 @@ end)
 task.spawn(function()
     local failures = 0
     while SESSION.Alive and task.wait(S.StabilityMode and .42 or .28) do
-        if S.AutoMachine and not HubRuntime.BossActive then
+        if M:canAct() and S.AutoMachine and not HubRuntime.BossActive then
             if useSelectedMachine(false) then
                 failures = 0
             else
@@ -1316,7 +1488,7 @@ task.spawn(function()
             S.StrengthRebirth = false
             if S.SmartObjective == "Rebirths" then S.SmartFarm = false end
         end
-        if S.StrengthRebirth and not HubRuntime.BossActive then
+        if M:canAct() and S.StrengthRebirth and not HubRuntime.BossActive then
             if not S.AutoMachine then
                 local animated = activateTrainingTool()
                 if not animated then
@@ -1335,8 +1507,9 @@ end)
 
 task.spawn(function()
     while SESSION.Alive and task.wait(2) do
-        if S.Chests then
+        if M:canAct() and S.Chests then
             for _,name in ipairs(CHESTS) do
+                if not SESSION.Alive or not M:canAct() or not S.Chests then break end
                 safeInvoke(R.Chest, name)
                 task.wait(.12)
             end
@@ -1346,7 +1519,7 @@ end)
 
 task.spawn(function()
     while SESSION.Alive and task.wait(.1) do
-        if S.Hatch then
+        if M:canAct() and S.Hatch then
             safeInvoke(R.Crystal, "openCrystal", S.HatchCrystal)
             task.wait(S.StabilityMode and math.max(S.HatchDelay, .70) or S.HatchDelay)
         end
@@ -1357,12 +1530,12 @@ task.spawn(function()
     local lastEquip = 0
     local lastEvolve = 0
     while SESSION.Alive and task.wait(1) do
-        if S.Hatch and S.AutoEquipAfterHatch and os.clock() - lastEquip >= 8 then
+        if M:canAct() and S.Hatch and S.AutoEquipAfterHatch and os.clock() - lastEquip >= 8 then
             equipBestOwned()
             lastEquip = os.clock()
             setHubStatus("Melhores pets equipados automaticamente")
         end
-        if S.Hatch and S.AutoEvolveAfterHatch and os.clock() - lastEvolve >= 25 then
+        if M:canAct() and S.Hatch and S.AutoEvolveAfterHatch and os.clock() - lastEvolve >= 25 then
             evolveReadyOwned()
             lastEvolve = os.clock()
             setHubStatus("Verificação de evolução concluída")
@@ -1372,7 +1545,7 @@ end)
 
 task.spawn(function()
     while SESSION.Alive and task.wait(2) do
-        if S.Brawl then safeFire(R.Brawl, "joinBrawl") end
+        if M:canAct() and S.Brawl then safeFire(R.Brawl, "joinBrawl") end
     end
 end)
 
@@ -1443,6 +1616,7 @@ local function canPetShop()
 end
 
 local function maxStrengthF2PTick()
+    if not SESSION.Alive or not M:canAct() then return false end
     if not S.MaxStrengthF2P then return false end
     if HubRuntime.BossActive then return false end
 
@@ -1467,7 +1641,7 @@ task.spawn(function()
     local failures = 0
 
     while SESSION.Alive and task.wait(S.StabilityMode and .18 or .10) do
-        if S.MaxStrengthF2P then
+        if M:canAct() and S.MaxStrengthF2P then
             if os.clock() - lastPetRefresh >= 10 then
                 pcall(equipBestStrengthOwned)
                 lastPetRefresh = os.clock()
@@ -1654,7 +1828,7 @@ end
 
 task.spawn(function()
     while SESSION.Alive and task.wait(.8) do
-        if S.SmartFarm then
+        if M:canAct() and S.SmartFarm then
             applySmartObjective()
         end
     end
@@ -1667,7 +1841,7 @@ end
 
 task.spawn(function()
     while SESSION.Alive and task.wait(.5) do
-        if S.GoalEnabled and S.GoalValue and goalCurrentValue() >= S.GoalValue then
+        if M:canAct() and not M.Comparing and S.GoalEnabled and S.GoalValue and goalCurrentValue() >= S.GoalValue then
             stopAllAutomations()
             S.GoalEnabled = false
             setHubStatus("Meta atingida: "..S.GoalStat)
@@ -1908,6 +2082,8 @@ task.spawn(function()
 end)
 
 SESSION.Cleanup = function()
+    M:cancelComparison()
+    M:pause("Encerrado", true)
     if S.StabilityMode then
         pcall(function()
             setStabilityMode(false)
@@ -1929,6 +2105,274 @@ SESSION.Cleanup = function()
         end)
     end
 end
+
+local function initializeMaintenance()
+-- BEGIN MAINTENANCE RUNTIME
+-- Inserted into initializeMaintenance by build.ps1.
+M:log("Sessao", "710Hub " .. SESSION.Version)
+M.ProfileData = {Schema = 1, Slots = {}, LastSlot = 1}
+M.ProfilePath = "710hub_profiles_v1.json"
+M.BenchmarkResults = {}
+
+function M:saveProfile()
+    if self.Comparing then return false, "Finalize a comparacao antes de salvar" end
+    self.ProfileData.Slots[tostring(self.ProfileSlot)] = self:profile()
+    self.ProfileData.LastSlot = self.ProfileSlot
+    self.ProfileData.Baseline = self.Capabilities
+    ENV.__710HubProfiles = self.ProfileData
+    if type(writefile) ~= "function" then
+        return true, "Perfil salvo apenas nesta sessao: gravacao em disco indisponivel"
+    end
+    local ok, err = pcall(function()
+        writefile(self.ProfilePath, game:GetService("HttpService"):JSONEncode(self.ProfileData))
+    end)
+    self:log("Perfil", "Salvo no slot " .. self.ProfileSlot)
+    return ok, ok and "Perfil salvo em disco" or ("Salvo na sessao; falha no disco: " .. tostring(err))
+end
+
+function M:loadProfile()
+    local profile = self.ProfileData.Slots[tostring(self.ProfileSlot)]
+    if not profile then return false, "Este slot ainda esta vazio" end
+    local oldPerformance, oldStability = S.PerformanceMode, S.StabilityMode
+    local ok, err = self:applyProfile(profile)
+    if ok then
+        local desiredPerformance, desiredStability = S.PerformanceMode, S.StabilityMode
+        local desiredRepDelay, desiredHatchDelay = S.RepDelay, S.HatchDelay
+        S.PerformanceMode, S.StabilityMode = oldPerformance, oldStability
+        setStabilityMode(false)
+        S.RepDelay, S.HatchDelay = desiredRepDelay, desiredHatchDelay
+        setPerformanceMode(desiredPerformance == true)
+        setStabilityMode(desiredStability == true)
+        finishBossFight(true)
+        lockedCFrame = nil
+        return true, "Perfil restaurado em pausa. Clique em Retomar."
+    end
+    return false, err
+end
+
+do
+    local data = ENV.__710HubProfiles
+    if type(readfile) == "function" then
+        local ok, saved = pcall(function()
+            local raw = readfile(M.ProfilePath)
+            assert(#raw <= 100000, "Arquivo de perfis grande demais")
+            return game:GetService("HttpService"):JSONDecode(raw)
+        end)
+        if ok then data = saved end
+    end
+    if type(data) == "table" and data.Schema == 1 and type(data.Slots) == "table" then
+        M.ProfileData = data
+        M.ProfileSlot = table.find({1, 2, 3}, data.LastSlot) and data.LastSlot or 1
+        if type(data.Baseline) == "table" then
+            for name, available in pairs(data.Baseline) do
+                if type(name) == "string" and type(available) == "boolean" then M.Capabilities[name] = available end
+            end
+        end
+        if data.Slots[tostring(M.ProfileSlot)] then
+            local ok, message = M:loadProfile()
+            setHubStatus(message)
+            if not ok then M:log("Perfil", message) end
+        end
+    end
+end
+
+function M:checkCompatibility()
+    local checks = {Treino = canTrain, Rebirth = canRebirth, Boss = canAutoBoss,
+        Maquinas = canMachineFarm, Pedras = canRockFarm, Agilidade = canAgilityFarm,
+        Baus = canChestFarm, Cristais = canHatch, Pets = canPetManager}
+    local current, lines = {}, {"Compatibilidade observada nesta sessao:"}
+    for name, check in pairs(checks) do
+        local ok, available = pcall(check)
+        current[name] = ok and available == true
+        lines[#lines + 1] = name .. ": " .. (current[name] and "disponivel" or "indisponivel")
+    end
+    self:updateCapabilities(current)
+    table.sort(lines)
+    self.CompatibilityReport = table.concat(lines, "\n")
+    return self.CompatibilityReport
+end
+
+function M:bossNames()
+    local names, seen = {"Qualquer"}, {}
+    for _, object in ipairs(workspace:GetDescendants()) do
+        if object:IsA("Model") and modelHasBossMarker(object) and not seen[object.Name] then
+            seen[object.Name] = true
+            names[#names + 1] = object.Name
+        end
+    end
+    table.sort(names, function(a, b)
+        if a == b then return false end
+        if a == "Qualquer" then return true end
+        if b == "Qualquer" then return false end
+        return a < b
+    end)
+    return names
+end
+
+function M:beginComparison()
+    if self.Comparing then return false, "Comparacao ja em andamento" end
+    if not self:canAct() then return false, "Retome a sessao antes de comparar" end
+    local methods = {}
+    if canTrain() then
+        methods[#methods + 1] = {Name = "Ferramenta", Key = "Train"}
+        methods[#methods + 1] = {Name = "Rajada", Key = "TurboStrength"}
+    end
+    if canMachineFarm() then methods[#methods + 1] = {Name = "Maquina", Key = "AutoMachine"} end
+    if #methods < 2 then return false, "Sao necessarios dois metodos disponiveis" end
+    local snapshot = self:automationSnapshot()
+    self:clearAutomation()
+    finishBossFight(true)
+    self.BenchmarkToken += 1
+    local token = self.BenchmarkToken
+    self.Comparing = true
+    self.BenchmarkResults = {}
+    task.spawn(function()
+        local ok, err = pcall(function()
+            for _, method in ipairs(methods) do
+                if not SESSION.Alive or self.BenchmarkToken ~= token or not self:canAct() then break end
+                self:clearAutomation()
+                S[method.Key] = true
+                if method.Key == "AutoMachine" then selectBestMachine() end
+                self.ComparisonStatus = "Medindo " .. method.Name .. " por 20 segundos"
+                local startTime, startStrength, startRebirths = os.clock(), numberStat("Strength"), currentRebirths()
+                local valid = true
+                while os.clock() - startTime < 20 do
+                    task.wait(.25)
+                    if not SESSION.Alive or self.BenchmarkToken ~= token or not self:canAct() then return end
+                    if currentRebirths() ~= startRebirths or numberStat("Strength") < startStrength or not S[method.Key] then
+                        valid = false
+                        break
+                    end
+                end
+                local elapsed = math.max(.1, os.clock() - startTime)
+                self.BenchmarkResults[#self.BenchmarkResults + 1] = {Name = method.Name, Valid = valid,
+                    Rate = math.max(0, numberStat("Strength") - startStrength) * 60 / elapsed}
+            end
+        end)
+        if self.BenchmarkToken == token then
+            self:restoreAutomation(snapshot)
+            self.Comparing = false
+            if not ok then
+                self.ComparisonStatus = "Comparacao interrompida: " .. tostring(err)
+            elseif not self:canAct() then
+                self.ComparisonStatus = "Comparacao interrompida por pausa; repita quando o personagem estiver pronto"
+            else
+                local best, validCount = nil, 0
+                for _, result in ipairs(self.BenchmarkResults) do
+                    if result.Valid then validCount += 1 end
+                    if result.Valid and result.Rate > 0 and (not best or result.Rate > best.Rate) then best = result end
+                end
+                self.ComparisonStatus = validCount >= 2 and best and ("Melhor observado: " .. best.Name .. " (" .. math.floor(best.Rate) .. "/min)")
+                    or "Menos de duas amostras validas ou nenhum ganho; comparacao inconclusiva"
+            end
+            self:log("Comparacao", self.ComparisonStatus)
+            if HubRuntime.RenderToggles then HubRuntime.RenderToggles() end
+        end
+    end)
+    return true, "Comparacao iniciada; as rotinas anteriores serao restauradas"
+end
+
+do
+    local generation, deathConnection = 0, nil
+    local function bindCharacter(character)
+        generation += 1
+        local ownGeneration = generation
+        if deathConnection then
+            deathConnection:Disconnect()
+            local index = table.find(SESSION.Connections, deathConnection)
+            if index then table.remove(SESSION.Connections, index) end
+            deathConnection = nil
+        end
+        M:pause("Respawn", true)
+        M:pause("Vida baixa", false)
+        HubRuntime.BossActive, HubRuntime.BossModel, HubRuntime.BossReturnCFrame = false, nil, nil
+        lockedCFrame = nil
+        agilityOriginalWalkSpeed, agilityLastTeleport = nil, 0
+        task.spawn(function()
+            local humanoid = character:WaitForChild("Humanoid", 15)
+            local root = character:WaitForChild("HumanoidRootPart", 15)
+            if not SESSION.Alive or ownGeneration ~= generation or LP.Character ~= character then return end
+            if not humanoid or not root then
+                M:log("Respawn", "Personagem incompleto; aguardando componentes")
+            end
+            -- Continue esperando com cancelamento, sem retomar num personagem incompleto.
+            while SESSION.Alive and ownGeneration == generation and LP.Character == character and (not humanoid or not root) do
+                task.wait(1)
+                humanoid = character:FindFirstChildOfClass("Humanoid")
+                root = character:FindFirstChild("HumanoidRootPart")
+            end
+            if not SESSION.Alive or ownGeneration ~= generation or LP.Character ~= character then return end
+            local function died()
+                M.Totals.Deaths += 1
+                M:log("Morte", "Aguardando novo personagem")
+                M:pause("Respawn", true)
+                if not S.ResumeAfterDeath then M:pause("Manual", true) end
+            end
+            deathConnection = trackConnection(humanoid.Died:Connect(died))
+            if humanoid.Health <= 0 then died(); return end
+            task.wait(.75)
+            if SESSION.Alive and ownGeneration == generation and LP.Character == character and humanoid.Health > 0 then
+                refreshRemotes()
+                M:pause("Respawn", false)
+                M:log("Respawn", "Personagem pronto; configuracao preservada")
+            end
+        end)
+    end
+    trackConnection(LP.CharacterRemoving:Connect(function()
+        M:pause("Respawn", true)
+        if not S.ResumeAfterDeath then M:pause("Manual", true) end
+    end))
+    trackConnection(LP.CharacterAdded:Connect(function(character)
+        HubRuntime.Respawns += 1
+        bindCharacter(character)
+    end))
+    if LP.Character then bindCharacter(LP.Character) end
+end
+
+task.spawn(function()
+    local lastTick, lastScan, lastSample = os.clock(), 0, 0
+    while SESSION.Alive do
+        task.wait(.25)
+        if not SESSION.Alive then break end
+        local now = os.clock()
+        local elapsed = now - lastTick
+        lastTick = now
+        if (not M:canAct() or M.Comparing) and S.StopAt then S.StopAt += elapsed end
+        local character = LP.Character
+        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+        if S.HealthGuard and S.AutoBoss and humanoid and humanoid.MaxHealth > 0 and humanoid.Health > 0 then
+            local percent = humanoid.Health * 100 / humanoid.MaxHealth
+            if percent <= S.HealthLow and not M.Reasons["Vida baixa"] then
+                M:pause("Vida baixa", true)
+                finishBossFight(true)
+                M:log("Boss", "Combate suspenso por vida baixa")
+            elseif percent >= S.HealthResume then
+                M:pause("Vida baixa", false)
+            end
+        else
+            M:pause("Vida baixa", false)
+        end
+        if now - lastSample >= 1 then
+            lastSample = now
+            local training = not HubRuntime.BossActive and (S.Train or S.Rebirth or S.StrengthRebirth
+                or S.MaxStrengthF2P or S.TurboStrength or S.AutoMachine)
+            if M:sample(numberStat("Strength"), currentRebirths(), training == true) then
+                setHubError("Farm sem progresso; consulte o diagnostico")
+                pcall(function()
+                    game:GetService("StarterGui"):SetCore("SendNotification", {Title = "710Hub", Text = "Farm sem progresso. Confira o diagnostico.", Duration = 8})
+                end)
+            end
+        end
+        if now - lastScan >= 15 and not M.Reasons.Respawn then
+            lastScan = now
+            local ok, err = pcall(function() M:checkCompatibility() end)
+            if not ok then setHubError("Diagnostico: " .. tostring(err)) end
+        end
+    end
+end)
+-- END MAINTENANCE RUNTIME
+end
+initializeMaintenance()
 
 local function initializeUI()
 local TweenService = game:GetService("TweenService")
@@ -2504,8 +2948,16 @@ local function toggle(titleText, description, key, availableFn)
 
     local function render()
         local available = isAvailable()
-        if not available then S[key] = false end
-        b.Visible = available
+        -- Availability may disappear during respawn; preserve the user's choice.
+        local matches = true
+        for _, entry in ipairs(searchEntries) do
+            if entry.Object == b then
+                entry.Available = available
+                matches = searchQuery == "" or string.find(entry.Text, searchQuery, 1, true) ~= nil
+                break
+            end
+        end
+        b.Visible = available and matches
 
         local on = available and S[key]
         state.Text = on and "ON" or "OFF"
@@ -2533,6 +2985,11 @@ local function toggle(titleText, description, key, availableFn)
             return
         end
 
+        if M.Comparing then
+            M:cancelComparison()
+            M:clearAutomation()
+            M.ComparisonStatus = "Comparacao cancelada por alteracao manual"
+        end
         S[key] = not S[key]
         resolveToggleConflicts(key)
         renderAllToggles()
@@ -2796,7 +3253,7 @@ local function machineNames()
 end
 
 local namesAtLoad = machineNames()
-if #namesAtLoad > 0 then
+if #namesAtLoad > 0 and not S.SelectedMachine then
     S.SelectedMachine = namesAtLoad[1]
 end
 
@@ -3550,7 +4007,7 @@ do
                 rateDescription.Text = "Media observada desde a abertura. Mortes de bosses observadas: " .. HubRuntime.BossDeathsObserved
                 lastSample = now
             end
-            if S.StopAt then
+            if S.StopAt and M:canAct() and not M.Comparing then
                 local remaining = math.max(0, math.ceil(S.StopAt - now))
                 timerTitle.Text = string.format("Parada em %02d:%02d", math.floor(remaining / 60), remaining % 60)
                 if remaining == 0 then
@@ -3558,10 +4015,10 @@ do
                     setHubStatus("Tempo configurado encerrado")
                 end
             else
-                timerTitle.Text = "Parada automatica: desligada"
+                timerTitle.Text = S.StopAt and "Parada automatica: pausada" or "Parada automatica: desligada"
             end
             timerDescription.Text = "Iniciar um novo perfil cancela o temporizador; configure o tempo depois do perfil."
-            if S.ProgressionTarget and rebirths >= S.ProgressionTarget then
+            if M:canAct() and not M.Comparing and S.ProgressionTarget and rebirths >= S.ProgressionTarget then
                 S.ProgressionTarget = nil
                 S.Rebirth = false
                 S.StrengthRebirth = false
@@ -3573,6 +4030,192 @@ do
         end
     end)
 end
+
+-- BEGIN MAINTENANCE UI
+-- Inserted inside initializeUI; isolated function keeps Luau register use bounded.
+local function maintenanceUI()
+    local function showReport(title, body)
+        local old = gui:FindFirstChild("MaintenanceReport")
+        if old then old:Destroy() end
+        local frame = Instance.new("Frame")
+        frame.Name = "MaintenanceReport"
+        frame.Size = UDim2.new(.85, 0, .75, 0)
+        frame.Position = UDim2.new(.075, 0, .125, 0)
+        frame.BackgroundColor3 = COLORS.Panel
+        frame.ZIndex = 20
+        frame.Parent = gui
+        addCorner(frame, 12)
+        local close = Instance.new("TextButton")
+        close.Text = title .. "  |  Fechar"
+        close.Size = UDim2.new(1, 0, 0, 36)
+        close.TextColor3 = COLORS.White
+        close.BackgroundColor3 = COLORS.GreenDark
+        close.ZIndex = 21
+        close.Parent = frame
+        close.Activated:Connect(function() frame:Destroy() end)
+        local reportScroll = Instance.new("ScrollingFrame")
+        reportScroll.Position = UDim2.fromOffset(8, 42)
+        reportScroll.Size = UDim2.new(1, -16, 1, -50)
+        reportScroll.BackgroundTransparency = 1
+        reportScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+        reportScroll.CanvasSize = UDim2.new()
+        reportScroll.ZIndex = 21
+        reportScroll.Parent = frame
+        local text = Instance.new("TextBox")
+        text.Size = UDim2.new(1, -12, 0, 0)
+        text.AutomaticSize = Enum.AutomaticSize.Y
+        text.Text = body
+        text.TextEditable = false
+        text.ClearTextOnFocus = false
+        text.MultiLine = true
+        text.TextWrapped = true
+        text.TextXAlignment = Enum.TextXAlignment.Left
+        text.TextYAlignment = Enum.TextYAlignment.Top
+        text.TextColor3 = COLORS.White
+        text.BackgroundTransparency = 1
+        text.TextSize = 14
+        text.Font = Enum.Font.Code
+        text.ZIndex = 22
+        text.Parent = reportScroll
+    end
+    local function field(title, value, callback)
+        local frame = Instance.new("Frame")
+        frame.Size = UDim2.new(1, -6, 0, 68)
+        frame.BackgroundColor3 = COLORS.Panel2
+        frame.Parent = scroll
+        addCorner(frame, 10)
+        searchEntries[#searchEntries + 1] = {Object = frame, Text = string.lower(currentSection .. " " .. title)}
+        local label = Instance.new("TextLabel")
+        label.Size = UDim2.new(1, -20, 0, 25)
+        label.Position = UDim2.fromOffset(10, 0)
+        label.Text = title
+        label.TextColor3 = COLORS.White
+        label.BackgroundTransparency = 1
+        label.TextSize = 12
+        label.Parent = frame
+        local input = Instance.new("TextBox")
+        input.Size = UDim2.new(1, -20, 0, 30)
+        input.Position = UDim2.fromOffset(10, 29)
+        input.Text = tostring(value or "")
+        input.ClearTextOnFocus = false
+        input.TextSize = 14
+        input.TextColor3 = COLORS.White
+        input.BackgroundColor3 = COLORS.Black2
+        input.Parent = frame
+        input.FocusLost:Connect(function()
+            local ok, message = callback(input.Text)
+            input.TextColor3 = ok and COLORS.White or COLORS.Red
+            setHubStatus(message or (ok and "Configurado" or "Valor invalido"))
+        end)
+        return input
+    end
+    section("CONTROLE E PERFIS", "Salve configuracoes e suspenda o farm sem perder suas escolhas.")
+    local _, stateTitle, stateDesc = card("Estado da sessao", "", function() end, COLORS.Yellow)
+    card("Pausar / Retomar", "Mantem as opcoes. Pausas por morte ou vida baixa terminam quando o personagem estiver pronto.", function()
+        M:pause("Manual", not M.Reasons.Manual)
+        renderAllToggles()
+    end, COLORS.Yellow)
+    local _, profileTitle = card("Perfil: slot " .. M.ProfileSlot, "Clique para alternar entre os tres slots.", function(_, title)
+        M.ProfileSlot = M.ProfileSlot % 3 + 1
+        title.Text = "Perfil: slot " .. M.ProfileSlot
+    end, COLORS.Yellow)
+    card("Salvar perfil", "O ultimo perfil salvo sera restaurado em pausa ao abrir. Disco quando disponivel; senao, memoria da sessao.", function()
+        local _, message = M:saveProfile()
+        setHubStatus(message)
+        showReport("Perfil", message)
+    end, COLORS.Green)
+    card("Carregar perfil", "Restaura este slot em pausa. Clique em Retomar para iniciar as rotinas salvas.", function()
+        local _, message = M:loadProfile()
+        setHubStatus(message)
+        renderAllToggles()
+    end, COLORS.Green)
+    toggle("Retomar depois de morrer", "Espera Humanoid e personagem prontos; desligado exige Retomar manualmente.", "ResumeAfterDeath")
+
+    section("PROTECAO E BOSSES", "Prioridade de alvo e espera por recuperacao de vida.")
+    field("Boss preferido (Qualquer ou nome exato)", S.BossPreference, function(value)
+        value = value:match("^%s*(.-)%s*$")
+        if #value < 1 or #value > 150 then return false, "Nome precisa ter entre 1 e 150 caracteres" end
+        S.BossPreference = value
+        M:log("Boss", "Preferencia: " .. value)
+        return true, "Preferencia aplicada na proxima escolha de alvo"
+    end)
+    card("Listar bosses detectados", "Mostra nomes dos bosses vivos visiveis ao cliente para copiar no campo acima.", function()
+        showReport("Bosses detectados", table.concat(M:bossNames(), "\n"))
+    end, COLORS.Green)
+    toggle("Protecao de vida baixa", "Pausa o combate abaixo do limite e espera recuperar. Retorna ao ponto inicial se o retorno estiver ligado.", "HealthGuard")
+    field("Pausar boss abaixo de vida (%)", S.HealthLow, function(value)
+        local n = tonumber(value)
+        if not n or n ~= n or n < 5 or n > 60 then return false, "Use de 5 a 60%" end
+        S.HealthLow = n; return true
+    end)
+    field("Retomar boss acima de vida (%)", S.HealthResume, function(value)
+        local n = tonumber(value)
+        if not n or n ~= n or n < 65 or n > 100 then return false, "Use de 65 a 100%" end
+        S.HealthResume = n; return true
+    end)
+    toggle("Alertar farm sem progresso", "Observa forca e rebirth; ignora pausas e combate com boss.", "StallAlerts")
+    field("Tempo sem progresso para alertar (segundos)", S.StallSeconds, function(value)
+        local n = tonumber(value)
+        if not n or n ~= n or n < 30 or n > 600 then return false, "Use de 30 a 600 segundos" end
+        S.StallSeconds = n; return true
+    end)
+
+    section("METAS E COMPARACAO", "Metas digitadas e recomendacao baseada em treino observado.")
+    field("Meta absoluta da estatistica selecionada em METAS", S.GoalValue, function(value)
+        local ok, message = M:setGoal(value)
+        return ok, message or ("Meta definida para " .. S.GoalStat .. "; ative a parada por meta em METAS")
+    end)
+    field("Rebirths adicionais no ciclo personalizado", 25, function(value)
+        local n = tonumber(value)
+        if not n or n ~= n or n % 1 ~= 0 or n < 1 or n > 1000000 then return false, "Use um inteiro de 1 a 1000000" end
+        M.CustomRebirths = n; return true
+    end)
+    card("Iniciar ciclo personalizado", "Faz a quantidade digitada de rebirths e depois continua o treino de forca.", function()
+        stopAllAutomations()
+        S.ProgressionTarget = currentRebirths() + (M.CustomRebirths or 25)
+        S.RebirthTarget = S.ProgressionTarget
+        S.MaxStrengthF2P, S.Rebirth = true, true
+        renderAllToggles()
+    end, COLORS.Green, function() return canRebirth() and (canTrain() or canMachineFarm()) end)
+    card("Comparar metodos de treino", "Mede ate tres metodos por 20s cada. Suspende rebirth e outras rotinas durante a medicao.", function()
+        local _, message = M:beginComparison()
+        setHubStatus(message)
+    end, COLORS.Green)
+    card("Resultado da comparacao", "Mostra taxas observadas; amostras interrompidas nao contam como recomendacao.", function()
+        local lines = {M.ComparisonStatus or "Nenhuma comparacao realizada"}
+        for _, result in ipairs(M.BenchmarkResults) do
+            lines[#lines + 1] = result.Name .. ": " .. (result.Valid and (math.floor(result.Rate) .. " forca/min") or "amostra invalida")
+        end
+        showReport("Comparacao", table.concat(lines, "\n"))
+    end, COLORS.Yellow)
+    section("HISTORICO E COMPATIBILIDADE", "Eventos recentes e recursos disponiveis nesta sessao.")
+    card("Abrir historico da sessao", "Ganhos observados, mortes, pausas e ultimos 150 eventos.", function()
+        showReport("Historico", M:report())
+    end, COLORS.Green)
+    card("Exportar historico", "Grava 710hub_historico.txt quando permitido. O relatorio tambem pode ser selecionado e copiado.", function()
+        local report = M:report()
+        if type(writefile) == "function" then
+            local ok = pcall(writefile, "710hub_historico.txt", report)
+            setHubStatus(ok and "Historico exportado" or "Falha ao gravar historico")
+        end
+        showReport("Historico", report)
+    end, COLORS.Yellow)
+    card("Verificar compatibilidade agora", "Inspeciona objetos e recursos; nao confirma que o servidor aceitara as acoes.", function()
+        showReport("Compatibilidade", M:checkCompatibility())
+    end, COLORS.Green)
+    task.spawn(function()
+        while SESSION.Alive do
+            task.wait(.5)
+            if not SESSION.Alive then break end
+            stateTitle.Text = M.Comparing and "Comparando treinos" or ("Sessao: " .. M:reasonText())
+            stateDesc.Text = M.Comparing and (M.ComparisonStatus or "Medindo...")
+                or (M.Stalled and "ALERTA: farm sem progresso. Abra o diagnostico." or HubRuntime.Status)
+            profileTitle.Text = "Perfil: slot " .. M.ProfileSlot
+        end
+    end)
+end
+maintenanceUI()
+-- END MAINTENANCE UI
 
 -- Pesquisa local, sem bibliotecas ou downloads adicionais.
 do
@@ -3621,3 +4264,4 @@ else
     end
     startupStatus("Falha ao abrir. Envie esta mensagem:\n" .. tostring(startupError))
 end
+
