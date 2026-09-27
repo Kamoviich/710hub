@@ -60,7 +60,7 @@ end
 
 local SESSION = {
     Alive = true,
-    Version = "2026.09-stable.12",
+    Version = "2026.09-neon.13",
     Connections = {},
 }
 
@@ -2378,472 +2378,330 @@ local function initializeUI()
 local TweenService = game:GetService("TweenService")
 local UIS = game:GetService("UserInputService")
 
--- 710Hub UI • Jamaica Green ---------------------------------------------------
+-- BEGIN MAINTENANCE MENU
+-- Neon interface with responsive layout and shared category/search filtering.
 local COLORS = {
-    Black = Color3.fromRGB(3, 5, 4),
-    Black2 = Color3.fromRGB(7, 11, 8),
-    Panel = Color3.fromRGB(10, 17, 12),
-    Panel2 = Color3.fromRGB(13, 23, 16),
-    Panel3 = Color3.fromRGB(18, 34, 22),
-    Green = Color3.fromRGB(0, 255, 102),
-    GreenBright = Color3.fromRGB(77, 255, 145),
-    GreenDark = Color3.fromRGB(0, 74, 31),
-    Yellow = Color3.fromRGB(255, 238, 0),
-    YellowSoft = Color3.fromRGB(255, 247, 104),
-    White = Color3.fromRGB(248, 255, 249),
-    Muted = Color3.fromRGB(143, 166, 148),
-    Off = Color3.fromRGB(62, 72, 65),
-    Red = Color3.fromRGB(255, 48, 70),
-    NeonDim = Color3.fromRGB(0, 120, 52),
+    Black = Color3.fromRGB(8, 11, 20), Black2 = Color3.fromRGB(13, 18, 30),
+    Panel = Color3.fromRGB(16, 23, 38), Panel2 = Color3.fromRGB(20, 29, 46),
+    Panel3 = Color3.fromRGB(28, 43, 60), Green = Color3.fromRGB(51, 255, 163),
+    GreenBright = Color3.fromRGB(107, 255, 201), GreenDark = Color3.fromRGB(15, 67, 58),
+    Yellow = Color3.fromRGB(255, 215, 102), YellowSoft = Color3.fromRGB(255, 235, 170),
+    White = Color3.fromRGB(242, 248, 255), Muted = Color3.fromRGB(181, 197, 218),
+    Off = Color3.fromRGB(101, 119, 143), Red = Color3.fromRGB(255, 105, 137),
+    NeonDim = Color3.fromRGB(36, 110, 95), Cyan = Color3.fromRGB(76, 218, 255),
 }
-
 local function addCorner(obj, radius)
-    local x = Instance.new("UICorner")
-    x.CornerRadius = UDim.new(0, radius or 10)
-    x.Parent = obj
-    return x
+    local item = Instance.new("UICorner")
+    item.CornerRadius = UDim.new(0, radius or 10); item.Parent = obj; return item
 end
-
 local function addStroke(obj, color, thickness, transparency)
-    local x = Instance.new("UIStroke")
-    x.Color = color
-    x.Thickness = thickness or 1
-    x.Transparency = transparency or 0
-    x.Parent = obj
-    return x
+    local item = Instance.new("UIStroke")
+    item.Color = color; item.Thickness = thickness or 1
+    item.Transparency = transparency or 0; item.Parent = obj; return item
 end
-
-local function addGradient(obj, c1, c2, rotation)
-    local gradient = Instance.new("UIGradient")
-    gradient.Color = ColorSequence.new(c1, c2)
-    gradient.Rotation = rotation or 0
-    gradient.Parent = obj
-    return gradient
+local function addGradient(obj, first, second, rotation)
+    local item = Instance.new("UIGradient")
+    item.Color = ColorSequence.new(first, second); item.Rotation = rotation or 0
+    item.Parent = obj; return item
 end
-
-local function addNeonStroke(obj, color)
-    local glow = addStroke(obj, color, 5, .78)
-    local core = addStroke(obj, color, 1.5, .08)
-    return glow, core
+local function tween(obj, duration, goal)
+    TweenService:Create(obj, TweenInfo.new(duration or .16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), goal):Play()
 end
-
-local function drawCannabisLeaf(parent, position, scale, color, transparency, rotation)
-    scale = scale or 1
-    local holder = Instance.new("Frame")
-    holder.Name = "CannabisLeaf"
-    holder.AnchorPoint = Vector2.new(.5,.5)
-    holder.Position = position
-    holder.Size = UDim2.fromOffset(72*scale,72*scale)
-    holder.BackgroundTransparency = 1
-    holder.Rotation = rotation or 0
-    holder.Parent = parent
-
-    local stem = Instance.new("Frame")
-    stem.AnchorPoint = Vector2.new(.5,.5)
-    stem.Position = UDim2.new(.5,0,.72,0)
-    stem.Size = UDim2.fromOffset(3*scale,28*scale)
-    stem.BackgroundColor3 = color
-    stem.BackgroundTransparency = transparency or 0
-    stem.BorderSizePixel = 0
-    stem.Rotation = 0
-    stem.Parent = holder
-    addCorner(stem,4)
-
-    local leaves = {
-        {0, 0, -17, 9, 36},
-        {-28, -10, -10, 8, 30},
-        {28, 10, -10, 8, 30},
-        {-52, -17, 0, 7, 25},
-        {52, 17, 0, 7, 25},
-        {-72, -20, 9, 6, 20},
-        {72, 20, 9, 6, 20},
-    }
-
-    for _, data in ipairs(leaves) do
-        local petal = Instance.new("Frame")
-        petal.AnchorPoint = Vector2.new(.5,.85)
-        petal.Position = UDim2.new(.5, data[2]*scale, .5, data[3]*scale)
-        petal.Size = UDim2.fromOffset(data[4]*scale, data[5]*scale)
-        petal.BackgroundColor3 = color
-        petal.BackgroundTransparency = transparency or 0
-        petal.BorderSizePixel = 0
-        petal.Rotation = data[1]
-        petal.Parent = holder
-        addCorner(petal, math.max(4, math.floor(8*scale)))
-    end
-
-    return holder
-end
-
-local function tween(obj, time, goal)
-    TweenService:Create(
-        obj,
-        TweenInfo.new(time or .15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-        goal
-    ):Play()
-end
-
-local guiParent = LP:WaitForChild("PlayerGui", 10)
-assert(guiParent, "PlayerGui indisponivel.")
-
+local guiParent = assert(LP:WaitForChild("PlayerGui", 10), "PlayerGui indisponivel")
 local oldGui = guiParent:FindFirstChild("710Hub_MuscleLegends")
 if oldGui then oldGui:Destroy() end
-
 local gui = Instance.new("ScreenGui")
-gui.Name = "710Hub_MuscleLegends"
-gui.ResetOnSpawn = false
-gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-gui.IgnoreGuiInset = false
-gui.Parent = guiParent
-
+gui.Name = "710Hub_MuscleLegends"; gui.ResetOnSpawn = false
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling; gui.Parent = guiParent
 local baseCleanup = SESSION.Cleanup
 SESSION.Cleanup = function()
     pcall(baseCleanup)
-    pcall(function()
-        if gui and gui.Parent then
-            gui:Destroy()
+    if gui then gui:Destroy() end
+end
+local shadow = Instance.new("Frame")
+shadow.BackgroundColor3 = Color3.new(0, 0, 0); shadow.BackgroundTransparency = .35
+shadow.BorderSizePixel = 0; shadow.Parent = gui; addCorner(shadow, 22)
+local main = Instance.new("Frame")
+main.Name = "Main"; main.BackgroundColor3 = COLORS.Black; main.BorderSizePixel = 0
+main.Active = true; main.Parent = gui; addCorner(main, 18)
+addStroke(main, COLORS.Cyan, 1.5, .3)
+addGradient(main, COLORS.Black, Color3.fromRGB(11, 24, 32), 70)
+local header = Instance.new("Frame")
+header.Size = UDim2.new(1, -32, 0, 58); header.Position = UDim2.fromOffset(16, 8)
+header.BackgroundTransparency = 1; header.Active = true; header.Parent = main
+local minimize = Instance.new("TextButton")
+minimize.Name = "Minimizar"; minimize.Size = UDim2.fromOffset(42, 40)
+minimize.Position = UDim2.new(1, 0, 0, 7); minimize.AnchorPoint = Vector2.new(1, 0)
+minimize.Text = "−"; minimize.TextSize = 26; minimize.Font = Enum.Font.GothamBold
+minimize.TextColor3 = COLORS.Cyan; minimize.BackgroundColor3 = COLORS.Panel2
+minimize.BorderSizePixel = 0; minimize.Parent = header; addCorner(minimize, 10)
+do
+    local logo = Instance.new("TextLabel")
+    logo.Size = UDim2.fromOffset(48, 44); logo.Position = UDim2.fromOffset(0, 6)
+    logo.Text = "710"; logo.Font = Enum.Font.GothamBlack; logo.TextSize = 18
+    logo.TextColor3 = COLORS.Green; logo.BackgroundColor3 = COLORS.GreenDark
+    logo.BorderSizePixel = 0; logo.Parent = header; addCorner(logo, 12)
+    addStroke(logo, COLORS.Green, 1, .3)
+    local title = Instance.new("TextLabel")
+    title.Position = UDim2.fromOffset(60, 4); title.Size = UDim2.new(1, -114, 0, 29)
+    title.BackgroundTransparency = 1; title.Text = "710Hub"; title.TextSize = 25
+    title.Font = Enum.Font.GothamBlack; title.TextColor3 = COLORS.White
+    title.TextXAlignment = Enum.TextXAlignment.Left; title.Parent = header
+    local subtitle = Instance.new("TextLabel")
+    subtitle.Position = UDim2.fromOffset(61, 34); subtitle.Size = UDim2.new(1, -115, 0, 19)
+    subtitle.BackgroundTransparency = 1; subtitle.Text = "MUSCLE LEGENDS"; subtitle.TextSize = 12
+    subtitle.Font = Enum.Font.GothamMedium; subtitle.TextColor3 = COLORS.Cyan
+    subtitle.TextXAlignment = Enum.TextXAlignment.Left; subtitle.Parent = header
+    local line = Instance.new("Frame")
+    line.Size = UDim2.new(1, -32, 0, 2); line.Position = UDim2.fromOffset(16, 65)
+    line.BackgroundColor3 = Color3.new(1, 1, 1); line.BorderSizePixel = 0; line.Parent = main
+    local gradient = addGradient(line, COLORS.Green, COLORS.Cyan, 0)
+    local animation = TweenService:Create(gradient, TweenInfo.new(3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {Offset = Vector2.new(.6, 0)})
+    animation:Play()
+    gui.Destroying:Connect(function() animation:Cancel() end)
+end
+local scroll = Instance.new("ScrollingFrame")
+scroll.Name = "Conteudo"; scroll.Position = UDim2.fromOffset(16, 169)
+scroll.Size = UDim2.new(1, -32, 1, -229); scroll.BackgroundTransparency = 1
+scroll.BorderSizePixel = 0; scroll.ScrollBarThickness = 5
+scroll.ScrollBarImageColor3 = COLORS.Green; scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+scroll.CanvasSize = UDim2.new(); scroll.ScrollingDirection = Enum.ScrollingDirection.Y
+scroll.ClipsDescendants = true; scroll.Parent = main
+local list = Instance.new("UIListLayout")
+list.Padding = UDim.new(0, 10); list.SortOrder = Enum.SortOrder.LayoutOrder; list.Parent = scroll
+local searchQuery, currentSection = "", ""
+local searchEntries = {}
+local UI = {Category = "Farm", CurrentCategory = "Farm", Order = 0, Tabs = {}, Width = 650, LargeText = false}
+UI.Groups = {
+    ["FARM"] = "Farm", ["MÁQUINAS"] = "Farm", ["AGILIDADE"] = "Farm", ["FARM INTELIGENTE"] = "Farm",
+    ["BOSSES"] = "Bosses", ["PROTECAO E BOSSES"] = "Bosses", ["PETS E CRISTAIS"] = "Pets",
+    ["METAS"] = "Metas", ["PROGRESSAO"] = "Metas", ["METAS E COMPARACAO"] = "Metas",
+    ["PERFIS RÁPIDOS"] = "Perfis", ["CONTROLE E PERFIS"] = "Perfis",
+    ["SESSÃO"] = "Sessão", ["DIAGNÓSTICO"] = "Sessão", ["HISTORICO E COMPATIBILIDADE"] = "Sessão",
+    ["UTILIDADES"] = "Ajustes", ["TELEPORTES"] = "Ajustes",
+}
+function UI:normalize(text)
+    text = string.lower(text)
+    for accented, plain in pairs({["á"]="a",["à"]="a",["ã"]="a",["â"]="a",["é"]="e",["ê"]="e",["í"]="i",["ó"]="o",["ô"]="o",["õ"]="o",["ú"]="u",["ç"]="c",["Á"]="a",["Ã"]="a",["É"]="e",["Í"]="i",["Ó"]="o",["Ú"]="u",["Ç"]="c",["Õ"]="o"}) do
+        text = string.gsub(text, accented, plain)
+    end
+    return text
+end
+function UI:addEntry(object, text, heading)
+    self.Order += 1; object.LayoutOrder = self.Order
+    local entry = {Object = object, Text = self:normalize(text), Category = self.CurrentCategory,
+        Section = currentSection, Heading = heading == true, Available = true}
+    searchEntries[#searchEntries + 1] = entry
+    return entry
+end
+function UI:matches(entry)
+    if searchQuery ~= "" then return string.find(entry.Text, searchQuery, 1, true) ~= nil end
+    return entry.Category == self.Category
+end
+function UI:refresh(resetScroll, animate)
+    local count, sections = 0, {}
+    for _, entry in ipairs(searchEntries) do
+        if not entry.Heading then
+            local visible = entry.Available ~= false and self:matches(entry)
+            entry.Object.Visible = visible
+            if visible then count += 1; sections[entry.Section] = true end
+            if visible and animate then
+                entry.Object.BackgroundTransparency = .45
+                tween(entry.Object, .2, {BackgroundTransparency = 0})
+            end
+        end
+    end
+    for _, entry in ipairs(searchEntries) do
+        if entry.Heading then entry.Object.Visible = sections[entry.Section] == true end
+    end
+    for category, tab in pairs(self.Tabs) do
+        local selected = searchQuery == "" and category == self.Category
+        tween(tab, .14, {BackgroundColor3 = selected and COLORS.GreenDark or COLORS.Panel2,
+            TextColor3 = selected and COLORS.GreenBright or COLORS.Muted})
+    end
+    if self.Empty then self.Empty.Visible = count == 0 end
+    if resetScroll then scroll.CanvasPosition = Vector2.new() end
+end
+function UI:resize()
+    local viewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(800, 700)
+    self.Width = math.max(280, math.min(740, viewport.X - 28))
+    local height = math.max(280, math.min(690, viewport.Y - 60))
+    main.Size = UDim2.fromOffset(self.Width, height)
+    main.Position = UDim2.new(.5, -self.Width / 2, .5, -height / 2)
+    shadow.Size = UDim2.fromOffset(self.Width + 10, height + 10)
+    shadow.Position = UDim2.new(.5, -self.Width / 2 - 5, .5, -height / 2 + 1)
+    for _, entry in ipairs(searchEntries) do if entry.Resize then entry.Resize() end end
+end
+do
+    local nav = Instance.new("ScrollingFrame")
+    nav.Name = "Categorias"; nav.Position = UDim2.fromOffset(16, 122)
+    nav.Size = UDim2.new(1, -32, 0, 39); nav.BackgroundTransparency = 1; nav.BorderSizePixel = 0
+    nav.ScrollBarThickness = 2; nav.ScrollBarImageColor3 = COLORS.Cyan
+    nav.ScrollingDirection = Enum.ScrollingDirection.X; nav.AutomaticCanvasSize = Enum.AutomaticSize.X
+    nav.CanvasSize = UDim2.new(); nav.Parent = main
+    local layout = Instance.new("UIListLayout")
+    layout.FillDirection = Enum.FillDirection.Horizontal; layout.Padding = UDim.new(0, 7)
+    layout.SortOrder = Enum.SortOrder.LayoutOrder; layout.Parent = nav
+    for index, category in ipairs({"Farm", "Bosses", "Pets", "Metas", "Perfis", "Sessão", "Ajustes"}) do
+        local tab = Instance.new("TextButton")
+        tab.Size = UDim2.fromOffset(87, 34); tab.Text = category; tab.Font = Enum.Font.GothamBold
+        tab.TextSize = 14; tab.TextColor3 = COLORS.Muted; tab.BackgroundColor3 = COLORS.Panel2
+        tab.BorderSizePixel = 0; tab.LayoutOrder = index; tab.Parent = nav; addCorner(tab, 9)
+        UI.Tabs[category] = tab
+        tab.Activated:Connect(function()
+            UI.Category = category
+            if UI.Search then UI.Search.Text = "" end
+            searchQuery = ""
+            UI:refresh(true, true)
+        end)
+    end
+    local empty = Instance.new("TextLabel")
+    empty.Size = UDim2.new(1, -16, 0, 90); empty.Text = "Nenhuma função encontrada.\nTente outra busca ou categoria."
+    empty.TextSize = 16; empty.TextColor3 = COLORS.Muted; empty.TextWrapped = true
+    empty.BackgroundTransparency = 1; empty.Visible = false; empty.Parent = scroll; UI.Empty = empty
+    local bottom = Instance.new("Frame")
+    bottom.Size = UDim2.new(1, -32, 0, 42); bottom.Position = UDim2.new(0, 16, 1, -50)
+    bottom.BackgroundColor3 = COLORS.Panel; bottom.BorderSizePixel = 0; bottom.Parent = main; addCorner(bottom, 10)
+    local pause = Instance.new("TextButton")
+    pause.Size = UDim2.fromOffset(90, 32); pause.Position = UDim2.new(1, -198, 0, 5)
+    pause.TextSize = 13; pause.Font = Enum.Font.GothamBold; pause.BackgroundColor3 = COLORS.GreenDark
+    pause.TextColor3 = COLORS.Green; pause.BorderSizePixel = 0; pause.Parent = bottom; addCorner(pause, 8)
+    pause.Activated:Connect(function() M:pause("Manual", not M.Reasons.Manual) end)
+    local stop = Instance.new("TextButton")
+    stop.Size = UDim2.fromOffset(96, 32); stop.Position = UDim2.new(1, -102, 0, 5)
+    stop.Text = "Parar tudo"; stop.TextSize = 13; stop.Font = Enum.Font.GothamBold
+    stop.TextColor3 = COLORS.Red; stop.BackgroundColor3 = Color3.fromRGB(54, 28, 42)
+    stop.BorderSizePixel = 0; stop.Parent = bottom; addCorner(stop, 8)
+    stop.Activated:Connect(stopAllAutomations)
+    local status = Instance.new("TextLabel")
+    status.Size = UDim2.new(1, -214, 1, 0); status.Position = UDim2.fromOffset(10, 0)
+    status.BackgroundTransparency = 1; status.TextColor3 = COLORS.Green; status.TextSize = 13
+    status.Font = Enum.Font.GothamMedium; status.TextXAlignment = Enum.TextXAlignment.Left
+    status.TextTruncate = Enum.TextTruncate.AtEnd; status.Parent = bottom
+    task.spawn(function()
+        while SESSION.Alive do
+            pause.Text = M.Reasons.Manual and "Retomar" or "Pausar"
+            status.Text = M:canAct() and "● Pronto" or "● Em pausa"
+            status.TextColor3 = M:canAct() and COLORS.Green or COLORS.Yellow
+            task.wait(.5)
         end
     end)
+    local dragging, origin, position, touch = false, nil, nil, nil
+    header.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true; origin = input.Position; position = main.Position; touch = input
+        end
+    end)
+    trackConnection(UIS.InputEnded:Connect(function(input)
+        if input == touch or input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
+    end))
+    trackConnection(UIS.InputChanged:Connect(function(input)
+        if not dragging or not (input.UserInputType == Enum.UserInputType.MouseMovement or input == touch) then return end
+        local delta = input.Position - origin
+        local viewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(800, 700)
+        local x = position.X.Scale * viewport.X + position.X.Offset + delta.X
+        local y = position.Y.Scale * viewport.Y + position.Y.Offset + delta.Y
+        main.Position = UDim2.fromOffset(math.clamp(x, 0, math.max(0, viewport.X - main.Size.X.Offset)),
+            math.clamp(y, 0, math.max(0, viewport.Y - main.Size.Y.Offset - 40)))
+        shadow.Position = main.Position + UDim2.fromOffset(-5, 1)
+    end))
+    local cameraConnection
+    local function watchViewport()
+        if cameraConnection then cameraConnection:Disconnect() end
+        if workspace.CurrentCamera then
+            cameraConnection = trackConnection(workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(function() UI:resize() end))
+        end
+        UI:resize()
+    end
+    trackConnection(workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(watchViewport))
+    watchViewport()
 end
-
--- sombra
-local shadow = Instance.new("Frame")
-shadow.Name = "Shadow"
-shadow.Size = UDim2.fromOffset(486, 596)
-shadow.Position = UDim2.new(.5, -243, .5, -298)
-shadow.BackgroundColor3 = Color3.new(0,0,0)
-shadow.BackgroundTransparency = .48
-shadow.BorderSizePixel = 0
-shadow.Parent = gui
-addCorner(shadow, 19)
-
--- painel
-local main = Instance.new("Frame")
-main.Name = "Main"
-main.Size = UDim2.fromOffset(470, 580)
-main.Position = UDim2.new(.5, -235, .5, -290)
-main.BackgroundColor3 = COLORS.Black
-main.BorderSizePixel = 0
-main.Active = true
-main.Draggable = true
-main.Parent = gui
-addCorner(main, 17)
-addGradient(main, COLORS.Black, Color3.fromRGB(4,18,9), 90)
-addNeonStroke(main, COLORS.Green)
-
-main:GetPropertyChangedSignal("Position"):Connect(function()
-    shadow.Position = UDim2.new(
-        main.Position.X.Scale,
-        main.Position.X.Offset - 8,
-        main.Position.Y.Scale,
-        main.Position.Y.Offset - 8
-    )
-end)
-
--- faixa superior
-local header = Instance.new("Frame")
-header.Size = UDim2.new(1,0,0,78)
-header.BackgroundColor3 = COLORS.Panel
-header.BorderSizePixel = 0
-header.Parent = main
-addCorner(header,17)
-addGradient(header, Color3.fromRGB(8,18,11), Color3.fromRGB(0,48,21), 0)
-
-local headerFix = Instance.new("Frame")
-headerFix.Size = UDim2.new(1,0,0,18)
-headerFix.Position = UDim2.new(0,0,1,-18)
-headerFix.BackgroundColor3 = COLORS.Panel
-headerFix.BorderSizePixel = 0
-headerFix.Parent = header
-
--- faixa Jamaica
-local g1 = Instance.new("Frame", header)
-g1.Size = UDim2.new(.34,0,0,5)
-g1.Position = UDim2.new(0,0,1,-5)
-g1.BackgroundColor3 = COLORS.Green
-g1.BorderSizePixel = 0
-addStroke(g1, COLORS.GreenBright, 2, .45)
-
-local y1 = Instance.new("Frame", header)
-y1.Size = UDim2.new(.32,0,0,5)
-y1.Position = UDim2.new(.34,0,1,-5)
-y1.BackgroundColor3 = COLORS.Yellow
-y1.BorderSizePixel = 0
-addStroke(y1, COLORS.YellowSoft, 2, .42)
-
-local g2 = Instance.new("Frame", header)
-g2.Size = UDim2.new(.34,0,0,5)
-g2.Position = UDim2.new(.66,0,1,-5)
-g2.BackgroundColor3 = COLORS.Green
-g2.BorderSizePixel = 0
-addStroke(g2, COLORS.GreenBright, 2, .45)
-
--- logo
-local logo = Instance.new("TextLabel")
-logo.Size = UDim2.fromOffset(58,58)
-logo.Position = UDim2.fromOffset(10,8)
-logo.BackgroundColor3 = COLORS.Black2
-logo.Text = "710"
-logo.TextColor3 = COLORS.Yellow
-logo.Font = Enum.Font.GothamBlack
-logo.TextSize = 20
-logo.BorderSizePixel = 0
-logo.Parent = header
-addCorner(logo,15)
-addGradient(logo, COLORS.GreenDark, COLORS.Black2, 45)
-addNeonStroke(logo,COLORS.Yellow)
-
--- folhas de cannabis desenhadas pela própria interface
-local headerLeafA = drawCannabisLeaf(
-    header,
-    UDim2.new(1,-118,.5,-1),
-    .68,
-    COLORS.GreenBright,
-    .06,
-    -13
-)
-local headerLeafB = drawCannabisLeaf(
-    header,
-    UDim2.new(1,-77,.5,0),
-    .52,
-    COLORS.Yellow,
-    .18,
-    16
-)
-
-local title = Instance.new("TextLabel")
-title.Position = UDim2.fromOffset(82,10)
-title.Size = UDim2.new(1,-210,0,28)
-title.BackgroundTransparency = 1
-title.Text = "710Hub"
-title.TextColor3 = COLORS.White
-title.TextXAlignment = Enum.TextXAlignment.Left
-title.Font = Enum.Font.GothamBlack
-title.TextSize = 22
-title.Parent = header
-
-local subtitle = Instance.new("TextLabel")
-subtitle.Position = UDim2.fromOffset(82,38)
-subtitle.Size = UDim2.new(1,-210,0,20)
-subtitle.BackgroundTransparency = 1
-subtitle.Text = "MUSCLE LEGENDS • NEON JAMAICA"
-subtitle.TextColor3 = COLORS.Yellow
-subtitle.TextXAlignment = Enum.TextXAlignment.Left
-subtitle.Font = Enum.Font.GothamMedium
-subtitle.TextSize = 10
-subtitle.Parent = header
-
-local version = Instance.new("TextLabel")
-version.Position = UDim2.fromOffset(82,55)
-version.Size = UDim2.new(1,-210,0,14)
-version.BackgroundTransparency = 1
-version.Text = "Farm • Pets • Teleportes • Utilidades"
-version.TextColor3 = COLORS.Muted
-version.TextXAlignment = Enum.TextXAlignment.Left
-version.Font = Enum.Font.Gotham
-version.TextSize = 9
-version.Parent = header
-
-local minimize = Instance.new("TextButton")
-minimize.Size = UDim2.fromOffset(34,34)
-minimize.Position = UDim2.new(1,-44,0,20)
-minimize.BackgroundColor3 = COLORS.Black2
-minimize.Text = "—"
-minimize.TextColor3 = COLORS.Yellow
-minimize.Font = Enum.Font.GothamBold
-minimize.TextSize = 22
-minimize.BorderSizePixel = 0
-minimize.Parent = header
-addCorner(minimize,10)
-addNeonStroke(minimize,COLORS.Yellow)
-
--- padrão de folhas de cannabis em neon no fundo
-local leafPositions = {
-    {UDim2.new(.04,0,.25,0), .55, -18, .82},
-    {UDim2.new(.93,0,.32,0), .62, 18, .84},
-    {UDim2.new(.05,0,.51,0), .45, 12, .87},
-    {UDim2.new(.92,0,.61,0), .52, -20, .86},
-    {UDim2.new(.05,0,.78,0), .58, -9, .86},
-    {UDim2.new(.92,0,.86,0), .48, 22, .88},
-}
-for _, cfg in ipairs(leafPositions) do
-    drawCannabisLeaf(main, cfg[1], cfg[2], COLORS.Green, cfg[4], cfg[3])
-end
-
-local scroll = Instance.new("ScrollingFrame")
-scroll.Name = "Conteudo"
-scroll.Position = UDim2.fromOffset(13,130)
-scroll.Size = UDim2.new(1,-26,1,-143)
-scroll.BackgroundTransparency = 1
-scroll.BorderSizePixel = 0
-scroll.ScrollBarThickness = 3
-scroll.ScrollBarImageColor3 = COLORS.Green
-scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-scroll.CanvasSize = UDim2.new()
-scroll.Parent = main
-
-local list = Instance.new("UIListLayout")
-list.Padding = UDim.new(0,9)
-list.SortOrder = Enum.SortOrder.LayoutOrder
-list.Parent = scroll
-
-local searchQuery = ""
-local currentSection = ""
-local searchEntries = {}
 local function section(name, desc)
     currentSection = name .. " " .. (desc or "")
+    UI.CurrentCategory = UI.Groups[name] or "Ajustes"
     local holder = Instance.new("Frame")
-    holder.Size = UDim2.new(1,-6,0,48)
-    holder.BackgroundColor3 = COLORS.Black2
-    holder.BorderSizePixel = 0
-    holder.Parent = scroll
-    searchEntries[#searchEntries + 1] = {Object = holder, Text = string.lower(currentSection)}
-    addCorner(holder,12)
-    addGradient(holder, Color3.fromRGB(8,15,10), Color3.fromRGB(10,30,16), 0)
-    addStroke(holder,COLORS.Green,1.2,.5)
-
-    local barG = Instance.new("Frame")
-    barG.Size = UDim2.fromOffset(4,30)
-    barG.Position = UDim2.fromOffset(8,9)
-    barG.BackgroundColor3 = COLORS.Green
-    barG.BorderSizePixel = 0
-    barG.Parent = holder
-    addCorner(barG,3)
-
-    local barY = Instance.new("Frame")
-    barY.Size = UDim2.fromOffset(3,20)
-    barY.Position = UDim2.fromOffset(14,14)
-    barY.BackgroundColor3 = COLORS.Yellow
-    barY.BorderSizePixel = 0
-    barY.Parent = holder
-    addCorner(barY,3)
-
-    local t = Instance.new("TextLabel")
-    t.Position = UDim2.fromOffset(25,5)
-    t.Size = UDim2.new(1,-31,0,21)
-    t.BackgroundTransparency = 1
-    t.Text = string.upper(name)
-    t.TextColor3 = COLORS.Yellow
-    t.TextXAlignment = Enum.TextXAlignment.Left
-    t.Font = Enum.Font.GothamBlack
-    t.TextSize = 12
-    t.Parent = holder
-
-    local d = Instance.new("TextLabel")
-    d.Position = UDim2.fromOffset(25,25)
-    d.Size = UDim2.new(1,-31,0,16)
-    d.BackgroundTransparency = 1
-    d.Text = desc or ""
-    d.TextColor3 = COLORS.Muted
-    d.TextXAlignment = Enum.TextXAlignment.Left
-    d.Font = Enum.Font.Gotham
-    d.TextSize = 9
-    d.TextTruncate = Enum.TextTruncate.AtEnd
-    d.Parent = holder
+    holder.Size = UDim2.new(1, -9, 0, 70); holder.BackgroundTransparency = 1
+    holder.BorderSizePixel = 0; holder.Parent = scroll
+    local entry = UI:addEntry(holder, currentSection, true)
+    local title = Instance.new("TextLabel")
+    title.Position = UDim2.fromOffset(2, 8); title.Size = UDim2.new(1, -4, 0, 24)
+    title.BackgroundTransparency = 1; title.Text = name; title.TextSize = 17
+    title.TextColor3 = COLORS.Green; title.Font = Enum.Font.GothamBold
+    title.TextXAlignment = Enum.TextXAlignment.Left; title.TextWrapped = true; title.Parent = holder
+    local detail = Instance.new("TextLabel")
+    detail.Position = UDim2.fromOffset(2, 36); detail.Size = UDim2.new(1, -4, 0, 32)
+    detail.Text = desc or ""; detail.TextSize = 14; detail.TextColor3 = COLORS.Muted
+    detail.Font = Enum.Font.Gotham; detail.BackgroundTransparency = 1; detail.TextWrapped = true
+    detail.TextXAlignment = Enum.TextXAlignment.Left; detail.TextYAlignment = Enum.TextYAlignment.Top; detail.Parent = holder
+    entry.Resize = function()
+        local width = math.max(100, UI.Width - 48)
+        title.TextSize = UI.LargeText and 19 or 17; detail.TextSize = UI.LargeText and 16 or 14
+        local service = game:GetService("TextService")
+        local th = service:GetTextSize(title.Text, title.TextSize, title.Font, Vector2.new(width, 10000)).Y + 4
+        local dh = service:GetTextSize(detail.Text, detail.TextSize, detail.Font, Vector2.new(width, 10000)).Y + 4
+        title.Size = UDim2.new(1, -4, 0, th); detail.Position = UDim2.fromOffset(2, th + 12)
+        detail.Size = UDim2.new(1, -4, 0, dh); holder.Size = UDim2.new(1, -9, 0, th + dh + 20)
+    end
+    entry.Resize()
 end
-
 local availabilityRefs = {}
-
 local function card(titleText, description, callback, accentColor, availableFn)
     local accentColorFinal = accentColor or COLORS.Green
-
     local b = Instance.new("TextButton")
-    local searchEntry = {Object = b, Text = string.lower(currentSection .. " " .. titleText .. " " .. (description or "")), Available = true}
-    searchEntries[#searchEntries + 1] = searchEntry
-    b.Size = UDim2.new(1,-6,0,60)
-    b.BackgroundColor3 = COLORS.Panel2
-    b.BorderSizePixel = 0
-    b.AutoButtonColor = false
-    b.Text = ""
-    b.Parent = scroll
-    addCorner(b,13)
-    addGradient(b, COLORS.Panel2, Color3.fromRGB(8,18,11), 0)
-    local stroke = addStroke(b,accentColorFinal,1.2,.62)
-
-    local glow = Instance.new("Frame")
-    glow.Size = UDim2.fromOffset(4,38)
-    glow.Position = UDim2.fromOffset(8,11)
-    glow.BackgroundColor3 = accentColorFinal
-    glow.BackgroundTransparency = .55
-    glow.BorderSizePixel = 0
-    glow.Parent = b
-    addCorner(glow,4)
-    addStroke(glow,accentColorFinal,3,.65)
-
+    b.BackgroundColor3 = COLORS.Panel2; b.BorderSizePixel = 0; b.AutoButtonColor = false
+    b.Text = ""; b.Parent = scroll; addCorner(b, 12)
+    local entry = UI:addEntry(b, currentSection .. " " .. titleText .. " " .. (description or ""))
+    local stroke = addStroke(b, accentColorFinal, 1, .7)
     local accent = Instance.new("Frame")
-    accent.Size = UDim2.fromOffset(3,34)
-    accent.Position = UDim2.fromOffset(9,13)
-    accent.BackgroundColor3 = accentColorFinal
-    accent.BorderSizePixel = 0
-    accent.Parent = b
-    addCorner(accent,3)
-
+    accent.Size = UDim2.fromOffset(3, 24); accent.Position = UDim2.fromOffset(0, 16)
+    accent.BackgroundColor3 = accentColorFinal; accent.BorderSizePixel = 0; accent.Parent = b; addCorner(accent, 2)
     local t = Instance.new("TextLabel")
-    t.Position = UDim2.fromOffset(23,8)
-    t.Size = UDim2.new(1,-34,0,21)
-    t.BackgroundTransparency = 1
-    t.Text = titleText
-    t.TextColor3 = COLORS.White
-    t.TextXAlignment = Enum.TextXAlignment.Left
-    t.Font = Enum.Font.GothamBold
-    t.TextSize = 13
-    t.Parent = b
-
+    t.Name = "Titre"; t.Position = UDim2.fromOffset(16, 13); t.BackgroundTransparency = 1
+    t.Text = titleText; t.TextColor3 = COLORS.White; t.Font = Enum.Font.GothamBold; t.TextSize = 16
+    t.TextWrapped = true; t.TextXAlignment = Enum.TextXAlignment.Left; t.TextYAlignment = Enum.TextYAlignment.Top; t.Parent = b
     local d = Instance.new("TextLabel")
-    d.Position = UDim2.fromOffset(23,31)
-    d.Size = UDim2.new(1,-34,0,17)
-    d.BackgroundTransparency = 1
-    d.Text = description or ""
-    d.TextColor3 = COLORS.Muted
-    d.TextXAlignment = Enum.TextXAlignment.Left
-    d.Font = Enum.Font.Gotham
-    d.TextSize = 9
-    d.TextTruncate = Enum.TextTruncate.AtEnd
-    d.Parent = b
-
+    d.BackgroundTransparency = 1; d.Text = description or ""; d.TextColor3 = COLORS.Muted
+    d.Font = Enum.Font.Gotham; d.TextSize = 14; d.TextWrapped = true
+    d.TextXAlignment = Enum.TextXAlignment.Left; d.TextYAlignment = Enum.TextYAlignment.Top; d.Parent = b
+    entry.Resize = function()
+        local reserve = b:GetAttribute("IsToggle") and 108 or 0
+        local width = math.max(100, UI.Width - 75 - reserve)
+        t.TextSize = UI.LargeText and 18 or 16; d.TextSize = UI.LargeText and 16 or 14
+        local service = game:GetService("TextService")
+        local th = service:GetTextSize(t.Text, t.TextSize, t.Font, Vector2.new(width, 10000)).Y + 4
+        local dh = service:GetTextSize(d.Text, d.TextSize, d.Font, Vector2.new(width, 10000)).Y + 4
+        t.Size = UDim2.new(1, -32 - reserve, 0, th)
+        d.Position = UDim2.fromOffset(16, 18 + th); d.Size = UDim2.new(1, -32, 0, dh)
+        -- Descriptions use the full width below the toggle for easier reading.
+        if reserve > 0 then
+            dh = service:GetTextSize(d.Text, d.TextSize, d.Font, Vector2.new(math.max(100, UI.Width - 75), 10000)).Y + 4
+            d.Size = UDim2.new(1, -32, 0, dh)
+        end
+        b.Size = UDim2.new(1, -9, 0, math.max(78, 32 + th + dh))
+    end
+    entry.Resize()
+    t:GetPropertyChangedSignal("Text"):Connect(entry.Resize)
+    d:GetPropertyChangedSignal("Text"):Connect(entry.Resize)
+    b:GetAttributeChangedSignal("IsToggle"):Connect(entry.Resize)
     local function isAvailable()
         if not availableFn then return true end
-        local ok, result = pcall(availableFn)
-        return ok and result == true
+        local ok, available = pcall(availableFn); return ok and available == true
     end
-
     local function renderAvailability()
-        searchEntry.Available = isAvailable()
-        b.Visible = searchEntry.Available and (searchQuery == "" or string.find(searchEntry.Text, searchQuery, 1, true) ~= nil)
+        entry.Available = isAvailable(); b.Visible = entry.Available and UI:matches(entry)
     end
-
-    if availableFn then
-        availabilityRefs[#availabilityRefs+1] = renderAvailability
-        renderAvailability()
-    end
-
-    b.MouseEnter:Connect(function()
-        tween(b,.12,{BackgroundColor3=COLORS.Panel3})
-        tween(stroke,.12,{Transparency=.12})
-        tween(accent,.12,{Size=UDim2.fromOffset(5,38),Position=UDim2.fromOffset(8,11)})
+    if availableFn then availabilityRefs[#availabilityRefs + 1] = renderAvailability end
+    b.MouseEnter:Connect(function() tween(b, .16, {BackgroundColor3 = COLORS.Panel3}); tween(stroke, .16, {Transparency = .15}) end)
+    b.MouseLeave:Connect(function() tween(b, .2, {BackgroundColor3 = COLORS.Panel2}); tween(stroke, .2, {Transparency = .7}) end)
+    b.Activated:Connect(function()
+        if not isAvailable() then setHubStatus(titleText .. " indisponível nesta sessão"); return end
+        tween(stroke, .1, {Transparency = 0})
+        task.delay(.2, function() if b.Parent then tween(stroke, .2, {Transparency = .7}) end end)
+        if callback then task.spawn(callback, b, t, d) end
     end)
-    b.MouseLeave:Connect(function()
-        tween(b,.12,{BackgroundColor3=COLORS.Panel2})
-        tween(stroke,.12,{Transparency=.62})
-        tween(accent,.12,{Size=UDim2.fromOffset(3,34),Position=UDim2.fromOffset(9,13)})
-    end)
-    b.MouseButton1Down:Connect(function()
-        tween(b,.07,{Size=UDim2.new(1,-10,0,58)})
-    end)
-    b.MouseButton1Up:Connect(function()
-        tween(b,.09,{Size=UDim2.new(1,-6,0,60)})
-    end)
-    b.MouseButton1Click:Connect(function()
-        if not isAvailable() then
-            setHubStatus(titleText.." indisponível nesta sessão")
-            renderAvailability()
-            return
-        end
-        if callback then task.spawn(callback,b,t,d) end
-    end)
-
-    return b,t,d,stroke,renderAvailability
+    return b, t, d, stroke, renderAvailability
 end
+-- END MAINTENANCE MENU
 
 local toggleRefs = {}
 
@@ -2907,94 +2765,39 @@ local function resolveToggleConflicts(key)
 end
 
 local function toggle(titleText, description, key, availableFn)
-    local b,t,d = card(titleText, description, nil, COLORS.Green)
-    local baseDescription = description or ""
-
-    local pill = Instance.new("Frame")
-    pill.Size = UDim2.fromOffset(66,28)
-    pill.Position = UDim2.new(1,-77,.5,-14)
-    pill.BackgroundColor3 = Color3.fromRGB(26,34,28)
-    pill.BorderSizePixel = 0
-    pill.Parent = b
-    addCorner(pill,14)
-    local pillStroke = addStroke(pill,COLORS.Green,1,.7)
-
-    local dot = Instance.new("Frame")
-    dot.Size = UDim2.fromOffset(20,20)
-    dot.Position = UDim2.fromOffset(4,4)
-    dot.BackgroundColor3 = COLORS.Off
-    dot.BorderSizePixel = 0
-    dot.Parent = pill
-    addCorner(dot,10)
-
-    local state = Instance.new("TextLabel")
-    state.Size = UDim2.new(1,-28,1,0)
-    state.Position = UDim2.fromOffset(27,0)
-    state.BackgroundTransparency = 1
-    state.Text = "OFF"
-    state.TextColor3 = COLORS.Muted
-    state.Font = Enum.Font.GothamBlack
-    state.TextSize = 9
-    state.Parent = pill
-
-    t.Size = UDim2.new(1,-120,0,21)
-    d.Size = UDim2.new(1,-120,0,17)
-
+    local b, t, d = card(titleText, description, nil, COLORS.Green)
+    b:SetAttribute("IsToggle", true)
+    local pill = Instance.new("TextLabel")
+    pill.Size = UDim2.fromOffset(96, 30); pill.Position = UDim2.new(1, -110, 0, 11)
+    pill.BorderSizePixel = 0; pill.Font = Enum.Font.GothamBold; pill.TextSize = 13
+    pill.Parent = b; addCorner(pill, 9)
     local function isAvailable()
         if not availableFn then return true end
-        local ok, result = pcall(availableFn)
-        return ok and result == true
+        local ok, available = pcall(availableFn); return ok and available == true
     end
-
     local function render()
         local available = isAvailable()
-        -- Availability may disappear during respawn; preserve the user's choice.
-        local matches = true
         for _, entry in ipairs(searchEntries) do
             if entry.Object == b then
                 entry.Available = available
-                matches = searchQuery == "" or string.find(entry.Text, searchQuery, 1, true) ~= nil
+                b.Visible = available and UI:matches(entry)
                 break
             end
         end
-        b.Visible = available and matches
-
-        local on = available and S[key]
-        state.Text = on and "ON" or "OFF"
-        state.TextColor3 = on and COLORS.Black or COLORS.Muted
-        d.Text = baseDescription
-
-        tween(pill,.15,{
-            BackgroundColor3=on and COLORS.Yellow or Color3.fromRGB(26,34,28)
-        })
-        tween(pillStroke,.15,{
-            Color=on and COLORS.YellowSoft or COLORS.Green,
-            Transparency=on and .12 or .72
-        })
-        tween(dot,.15,{
-            Position=on and UDim2.fromOffset(42,4) or UDim2.fromOffset(4,4),
-            BackgroundColor3=on and COLORS.Green or COLORS.Off
+        local enabled = S[key] == true
+        pill.Text = enabled and "Ligado" or "Desligado"
+        tween(pill, .18, {
+            BackgroundColor3 = enabled and COLORS.GreenDark or COLORS.Black2,
+            TextColor3 = enabled and COLORS.GreenBright or COLORS.Muted,
         })
     end
-
-    b.MouseButton1Click:Connect(function()
-        if not isAvailable() then
-            S[key] = false
-            setHubStatus(titleText.." indisponível nesta sessão")
-            render()
-            return
-        end
-
-        if M.Comparing then
-            M:cancelComparison()
-            M:clearAutomation()
-            M.ComparisonStatus = "Comparacao cancelada por alteracao manual"
-        end
+    b.Activated:Connect(function()
+        if not isAvailable() then setHubStatus(titleText .. " indisponível nesta sessão"); return end
+        if M.Comparing then M:cancelComparison(); M:clearAutomation(); M.ComparisonStatus = "Comparação cancelada por alteração manual" end
         S[key] = not S[key]
         resolveToggleConflicts(key)
         renderAllToggles()
     end)
-
     toggleRefs[key] = render
     render()
     return b
@@ -3006,87 +2809,27 @@ task.spawn(function()
         for _, render in ipairs(availabilityRefs) do
             pcall(render)
         end
+        UI:refresh(false, false)
     end
 end)
 
--- ícone permanente / reabrir
+-- Botão compacto para reabrir o painel.
 local mini = Instance.new("TextButton")
-mini.Name = "710Hub_Mini"
-mini.Size = UDim2.fromOffset(66,66)
-mini.Position = UDim2.new(0,20,.5,-33)
-mini.BackgroundColor3 = COLORS.Black2
-mini.BorderSizePixel = 0
-mini.Text = ""
-mini.Visible = false
-mini.Active = true
-mini.Draggable = true
-mini.Parent = gui
-addCorner(mini,18)
-addGradient(mini, COLORS.GreenDark, COLORS.Black2, 45)
-addNeonStroke(mini,COLORS.Green)
-
-local miniLogo = Instance.new("TextLabel")
-miniLogo.Size = UDim2.new(1,0,.62,0)
-miniLogo.BackgroundTransparency = 1
-miniLogo.Text = "710"
-miniLogo.TextColor3 = COLORS.Yellow
-miniLogo.Font = Enum.Font.GothamBlack
-miniLogo.TextSize = 19
-miniLogo.Parent = mini
-
-drawCannabisLeaf(
-    mini,
-    UDim2.new(.5,0,.72,0),
-    .31,
-    COLORS.GreenBright,
-    0,
-    0
-)
-
+mini.Name = "710Hub_Mini"; mini.Size = UDim2.fromOffset(58, 48)
+mini.Position = UDim2.new(0, 16, .5, -24); mini.BackgroundColor3 = COLORS.Black2
+mini.BorderSizePixel = 0; mini.Text = "710"; mini.TextColor3 = COLORS.Green
+mini.TextSize = 18; mini.Font = Enum.Font.GothamBlack; mini.Visible = false; mini.Parent = gui
+addCorner(mini, 13); addStroke(mini, COLORS.Cyan, 1.5, .15)
 local menuOpen = true
 local function hideMenu()
-    if not menuOpen then return end
-    menuOpen = false
-    tween(main,.13,{Size=UDim2.fromOffset(440,540),BackgroundTransparency=.05})
-    task.wait(.13)
-    main.Visible = false
-    shadow.Visible = false
-    mini.Visible = true
+    menuOpen = false; main.Visible = false; shadow.Visible = false; mini.Visible = true
 end
-
 local function showMenu()
-    if menuOpen then return end
-    menuOpen = true
-    mini.Visible = false
-    main.Visible = true
-    shadow.Visible = true
-    main.Size = UDim2.fromOffset(440,540)
-    tween(main,.18,{Size=UDim2.fromOffset(470,580),BackgroundTransparency=0})
+    menuOpen = true; mini.Visible = false; main.Visible = true; shadow.Visible = true
+    UI:refresh(false, true)
 end
-
-minimize.MouseButton1Click:Connect(hideMenu)
-mini.MouseButton1Click:Connect(showMenu)
-
-task.spawn(function()
-    while SESSION.Alive and task.wait(1.8) do
-        if main and main.Parent then
-            local strokes = main:GetChildren()
-            for _, child in ipairs(strokes) do
-                if child:IsA("UIStroke") then
-                    tween(child,.8,{Transparency=math.min(.82, child.Transparency + .10)})
-                end
-            end
-            task.wait(.8)
-            if main and main.Parent then
-                for _, child in ipairs(main:GetChildren()) do
-                    if child:IsA("UIStroke") then
-                        tween(child,.8,{Transparency=math.max(.08, child.Transparency - .10)})
-                    end
-                end
-            end
-        end
-    end
-end)
+minimize.Activated:Connect(hideMenu)
+mini.Activated:Connect(showMenu)
 
 trackConnection(UIS.InputBegan:Connect(function(input, processed)
     if not SESSION.Alive or processed then return end
@@ -3391,7 +3134,7 @@ local smartFarmButton = toggle(
     function() return canTrain() or canMachineFarm() or canRockFarm() or canAgilityFarm() or canRebirth() end
 )
 
-smartFarmButton.MouseButton1Click:Connect(function()
+smartFarmButton.Activated:Connect(function()
     if S.SmartFarm then
         applySmartObjective()
         renderAllToggles()
@@ -3847,7 +3590,7 @@ local lockButton = toggle(
     hasCharacter
 )
 
-lockButton.MouseButton1Click:Connect(function()
+lockButton.Activated:Connect(function()
     if S.LockPosition then
         captureLockPosition()
     else
@@ -3872,7 +3615,7 @@ local stabilityButton = toggle(
     "StabilityMode"
 )
 
-stabilityButton.MouseButton1Click:Connect(function()
+stabilityButton.Activated:Connect(function()
     -- O toggle altera S.StabilityMode antes deste callback. Reaplicamos pelo
     -- controlador para salvar/restaurar os valores corretamente.
     local desired = S.StabilityMode
@@ -3954,6 +3697,7 @@ footer.TextColor3 = COLORS.Muted
 footer.Font = Enum.Font.Gotham
 footer.TextSize = 9
 footer.Parent = scroll
+footer.Visible = false
 
 setHubStatus("Pronto • "..SESSION.Version)
 print("[710Hub] Muscle Legends carregado • stability build • "..SESSION.Version)
@@ -4047,6 +3791,8 @@ local function maintenanceUI()
         addCorner(frame, 12)
         local close = Instance.new("TextButton")
         close.Text = title .. "  |  Fechar"
+        close.TextSize = 15
+        close.Font = Enum.Font.GothamBold
         close.Size = UDim2.new(1, 0, 0, 36)
         close.TextColor3 = COLORS.White
         close.BackgroundColor3 = COLORS.GreenDark
@@ -4073,7 +3819,7 @@ local function maintenanceUI()
         text.TextYAlignment = Enum.TextYAlignment.Top
         text.TextColor3 = COLORS.White
         text.BackgroundTransparency = 1
-        text.TextSize = 14
+        text.TextSize = 16
         text.Font = Enum.Font.Code
         text.ZIndex = 22
         text.Parent = reportScroll
@@ -4084,24 +3830,40 @@ local function maintenanceUI()
         frame.BackgroundColor3 = COLORS.Panel2
         frame.Parent = scroll
         addCorner(frame, 10)
-        searchEntries[#searchEntries + 1] = {Object = frame, Text = string.lower(currentSection .. " " .. title)}
+        local entry = UI:addEntry(frame, currentSection .. " " .. title)
         local label = Instance.new("TextLabel")
         label.Size = UDim2.new(1, -20, 0, 25)
         label.Position = UDim2.fromOffset(10, 0)
         label.Text = title
         label.TextColor3 = COLORS.White
         label.BackgroundTransparency = 1
-        label.TextSize = 12
+        label.TextSize = 14
+        label.Font = Enum.Font.GothamMedium
+        label.TextWrapped = true
+        label.TextXAlignment = Enum.TextXAlignment.Left
         label.Parent = frame
         local input = Instance.new("TextBox")
         input.Size = UDim2.new(1, -20, 0, 30)
         input.Position = UDim2.fromOffset(10, 29)
         input.Text = tostring(value or "")
         input.ClearTextOnFocus = false
-        input.TextSize = 14
+        input.TextSize = 16
+        input.Font = Enum.Font.Gotham
+        input.BorderSizePixel = 0
         input.TextColor3 = COLORS.White
         input.BackgroundColor3 = COLORS.Black2
         input.Parent = frame
+        addCorner(input, 8)
+        entry.Resize = function()
+            label.TextSize = UI.LargeText and 16 or 14
+            local height = game:GetService("TextService"):GetTextSize(label.Text, label.TextSize, label.Font, Vector2.new(math.max(100, UI.Width - 66), 10000)).Y + 8
+            label.Position = UDim2.fromOffset(12, 9)
+            label.Size = UDim2.new(1, -24, 0, height)
+            input.Position = UDim2.fromOffset(12, height + 15)
+            input.Size = UDim2.new(1, -24, 0, 38)
+            frame.Size = UDim2.new(1, -9, 0, height + 65)
+        end
+        entry.Resize()
         input.FocusLost:Connect(function()
             local ok, message = callback(input.Text)
             input.TextColor3 = ok and COLORS.White or COLORS.Red
@@ -4217,36 +3979,41 @@ end
 maintenanceUI()
 -- END MAINTENANCE UI
 
--- Pesquisa local, sem bibliotecas ou downloads adicionais.
+-- Busca global: ignora acentos e procura em todas as categorias.
 do
     local search = Instance.new("TextBox")
-    search.Name = "Pesquisar"
-    search.Size = UDim2.new(1, -26, 0, 30)
-    search.Position = UDim2.fromOffset(13, 89)
-    search.BackgroundColor3 = COLORS.Panel2
-    search.TextColor3 = COLORS.White
-    search.PlaceholderText = "Buscar funcao ou categoria..."
-    search.PlaceholderColor3 = COLORS.Muted
-    search.Text = ""
-    search.ClearTextOnFocus = false
-    search.TextSize = 14
-    search.Font = Enum.Font.Gotham
-    search.Parent = main
-    addCorner(search, 8)
+    search.Name = "Pesquisar"; search.Size = UDim2.new(1, -91, 0, 40)
+    search.Position = UDim2.fromOffset(16, 75); search.BackgroundColor3 = COLORS.Panel2
+    search.BorderSizePixel = 0; search.TextColor3 = COLORS.White; search.PlaceholderColor3 = COLORS.Muted
+    search.PlaceholderText = "Buscar função em todas as categorias..."
+    search.Text = ""; search.ClearTextOnFocus = false; search.TextSize = 15; search.Font = Enum.Font.Gotham
+    search.TextXAlignment = Enum.TextXAlignment.Left; search.Parent = main; addCorner(search, 10)
+    local padding = Instance.new("UIPadding"); padding.PaddingLeft = UDim.new(0, 12); padding.PaddingRight = UDim.new(0, 12); padding.Parent = search
+    UI.Search = search
     trackConnection(search:GetPropertyChangedSignal("Text"):Connect(function()
-        local query = string.lower(search.Text):match("^%s*(.-)%s*$")
-        searchQuery = query
-        for _, entry in ipairs(searchEntries) do
-            entry.Object.Visible = entry.Available ~= false and (query == "" or string.find(entry.Text, query, 1, true) ~= nil)
-        end
-        scroll.CanvasPosition = Vector2.new()
+        searchQuery = UI:normalize(search.Text):match("^%s*(.-)%s*$")
+        UI:refresh(true, false)
     end))
+    local larger = Instance.new("TextButton")
+    larger.Size = UDim2.fromOffset(51, 40); larger.Position = UDim2.new(1, -67, 0, 75)
+    larger.BackgroundColor3 = COLORS.Panel2; larger.TextColor3 = COLORS.Cyan
+    larger.Text = "A+"; larger.TextSize = 18; larger.Font = Enum.Font.GothamBold
+    larger.BorderSizePixel = 0; larger.Parent = main; addCorner(larger, 10)
+    larger.Activated:Connect(function()
+        UI.LargeText = not UI.LargeText
+        larger.Text = UI.LargeText and "A−" or "A+"
+        UI:resize()
+    end)
 end
+UI.CurrentCategory = "Ajustes"
+currentSection = "Encerrar"
 
 card("Encerrar 710Hub", "Desliga as automacoes, restaura os efeitos e remove o painel.", function()
     stopAllAutomations()
     SESSION.Cleanup()
 end, COLORS.Red)
+UI:resize()
+UI:refresh(true, false)
 end
 initializeUI()
 

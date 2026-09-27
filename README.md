@@ -6,7 +6,20 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/Kamoviich/710hub/main
 
 Abra Muscle Legends, execute o comando e aguarde o painel. RightShift abre/fecha o menu; End para as automacoes.
 
-## Versao 2026.09-stable.12
+## Versao 2026.09-neon.13
+
+### Menu neon e leitura
+
+- Tema escuro com verde neon e ciano, linha animada no cabecalho, destaque ao passar o mouse e transicoes suaves entre categorias.
+- Navegacao por **Farm, Bosses, Pets, Metas, Perfis, Sessao e Ajustes**. Em telas estreitas, deslize a barra de categorias horizontalmente.
+- Titulos de funcoes em 16px e descricoes em 14px, com quebra de linha e altura automatica. O botao **A+** aumenta para 18px/16px; **A−** restaura o tamanho padrao.
+- Busca global que ignora acentos. Clicar numa categoria limpa a busca.
+- Painel ajustado ao tamanho da tela, arrastavel pelo cabecalho com mouse ou toque.
+- **Pausar/Retomar** e **Parar tudo** sempre acessiveis na barra inferior. O botao **−** minimiza; **710** reabre.
+
+O layout compila, mas a aparencia final ainda deve ser conferida no Roblox na resolucao usada pelo jogador.
+
+### Manutencao e automacoes
 
 Novas categorias: CONTROLE E PERFIS, PROTECAO E BOSSES, METAS E COMPARACAO, HISTORICO E COMPATIBILIDADE.
 
@@ -44,7 +57,7 @@ Compilado com Luau 0.740. `Maintenance.test.luau` cobre pausas independentes, pe
 
 ### Desenvolvimento
 
-O arquivo `710Hub.lua` e autocontido: o comando de carregamento nao faz novos downloads de modulos. `Maintenance.lua` e os dois arquivos `.fragment.lua` sao fontes de manutencao incorporadas por `build.ps1`. Depois de editar essas fontes, reconstrua o arquivo principal e execute:
+O arquivo `710Hub.lua` e autocontido: o comando de carregamento nao faz novos downloads de modulos. `Maintenance.lua` e os arquivos `.fragment.lua` sao fontes incorporadas por `build.ps1`; `MenuShell.fragment.lua` contem o tema, a navegacao e os componentes visuais. Depois de editar essas fontes, reconstrua o arquivo principal e execute:
 
 ```text
 luau Maintenance.test.luau
