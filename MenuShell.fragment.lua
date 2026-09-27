@@ -23,6 +23,33 @@ local function addGradient(obj, first, second, rotation)
     item.Color = ColorSequence.new(first, second); item.Rotation = rotation or 0
     item.Parent = obj; return item
 end
+-- Small line illustrations drawn with native UI, without external image assets.
+local function drawIcon(parent, category, size, color)
+    local canvas = Instance.new("Frame")
+    canvas.Name = "CategoryIcon"; canvas.Size = UDim2.fromOffset(size, size)
+    canvas.BackgroundTransparency = 1; canvas.Parent = parent
+    local function line(x1, y1, x2, y2)
+        local dx, dy = x2-x1, y2-y1
+        local part = Instance.new("Frame")
+        part.AnchorPoint = Vector2.new(.5, .5)
+        part.Position = UDim2.fromScale((x1+x2)/48, (y1+y2)/48)
+        part.Size = UDim2.fromOffset(math.sqrt(dx*dx+dy*dy)*size/24, 1.5)
+        part.Rotation = math.deg(math.atan2(dy, dx))
+        part.BackgroundColor3 = color; part.BorderSizePixel = 0; part.Parent = canvas
+        addCorner(part, 2)
+    end
+    local paths = {
+        Farm = {{3,8,3,16},{6,5,6,19},{6,12,18,12},{18,5,18,19},{21,8,21,16}},
+        Bosses = {{3,7,6,18},{6,18,18,18},{18,18,21,7},{21,7,16,11},{16,11,12,4},{12,4,8,11},{8,11,3,7}},
+        Pets = {{4,9,8,5},{8,5,12,9},{12,9,16,5},{16,5,20,9},{20,9,20,17},{20,17,12,21},{12,21,4,17},{4,17,4,9}},
+        Metas = {{4,19,19,4},{11,4,19,4},{19,4,19,12},{4,12,4,20},{4,20,12,20}},
+        Perfis = {{5,4,19,4},{19,4,19,20},{19,20,5,20},{5,20,5,4},{9,9,15,9},{9,14,15,14}},
+        Ajustes = {{4,6,20,6},{4,12,20,12},{4,18,20,18},{8,3,8,9},{16,9,16,15},{10,15,10,21}},
+    }
+    local segments = paths[category] or {{4,19,4,13},{9,19,9,8},{14,19,14,11},{19,19,19,4}}
+    for _, points in ipairs(segments) do line(table.unpack(points)) end
+    return canvas
+end
 local function tween(obj, duration, goal)
     TweenService:Create(obj, TweenInfo.new(duration or .16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), goal):Play()
 end
@@ -43,7 +70,7 @@ shadow.BorderSizePixel = 0; shadow.Parent = gui; addCorner(shadow, 22)
 local main = Instance.new("Frame")
 main.Name = "Main"; main.BackgroundColor3 = COLORS.Black; main.BorderSizePixel = 0
 main.Active = true; main.Parent = gui; addCorner(main, 18)
-addStroke(main, COLORS.Cyan, 1.5, .3)
+addStroke(main, COLORS.Cyan, 1, .48)
 addGradient(main, COLORS.Black, Color3.fromRGB(17, 16, 7), 70)
 local header = Instance.new("Frame")
 header.Size = UDim2.new(1, -32, 0, 58); header.Position = UDim2.fromOffset(16, 8)
@@ -144,7 +171,7 @@ do
     local logo = Instance.new("TextLabel")
     logo.Size = UDim2.fromOffset(56, 56); logo.Position = UDim2.fromOffset(0, 0)
     logo.Text = "710"; logo.Font = Enum.Font.GothamBlack; logo.TextSize = 18
-    logo.TextColor3 = COLORS.Green; logo.BackgroundColor3 = COLORS.GreenDark
+    logo.TextColor3 = COLORS.Green; logo.BackgroundColor3 = COLORS.Black2
     logo.BorderSizePixel = 0; logo.Parent = header; addCorner(logo, 12)
     addStroke(logo, COLORS.Green, 1, .3)
     attachBrandLogo(logo)
@@ -173,8 +200,22 @@ scroll.BorderSizePixel = 0; scroll.ScrollBarThickness = 5
 scroll.ScrollBarImageColor3 = COLORS.Green; scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
 scroll.CanvasSize = UDim2.new(); scroll.ScrollingDirection = Enum.ScrollingDirection.Y
 scroll.ClipsDescendants = true; scroll.Parent = main
+do
+    local ornament = Instance.new("Frame")
+    ornament.Name = "HeaderArt"; ornament.BackgroundTransparency = 1
+    ornament.Size = UDim2.fromOffset(64, 40); ornament.Position = UDim2.new(1, -116, 0, 6)
+    ornament.Parent = header
+    local emblem = drawIcon(ornament, "Farm", 36, COLORS.NeonDim)
+    emblem.Position = UDim2.fromOffset(13, 2); emblem.Rotation = -18
+    for i = 1, 3 do
+        local dash = Instance.new("Frame")
+        dash.Size = UDim2.fromOffset(2, 3+i*3); dash.Position = UDim2.fromOffset(i*5, 25)
+        dash.BackgroundColor3 = COLORS.NeonDim; dash.BackgroundTransparency = .5
+        dash.BorderSizePixel = 0; dash.Rotation = 25; dash.Parent = ornament
+    end
+end
 local list = Instance.new("UIListLayout")
-list.Padding = UDim.new(0, 10); list.SortOrder = Enum.SortOrder.LayoutOrder; list.Parent = scroll
+list.Padding = UDim.new(0, 12); list.SortOrder = Enum.SortOrder.LayoutOrder; list.Parent = scroll
 local searchQuery, currentSection = "", ""
 local searchEntries = {}
 local UI = {Category = "Farm", CurrentCategory = "Farm", Order = 0, Tabs = {}, Width = 650, LargeText = false}
@@ -223,6 +264,7 @@ function UI:refresh(resetScroll, animate)
     end
     for category, tab in pairs(self.Tabs) do
         local selected = searchQuery == "" and category == self.Category
+        if tab:FindFirstChild("SelectedLine") then tab.SelectedLine.Visible = selected end
         tween(tab, .14, {BackgroundColor3 = selected and COLORS.GreenDark or COLORS.Panel2,
             TextColor3 = selected and COLORS.GreenBright or COLORS.Muted})
     end
@@ -234,6 +276,7 @@ function UI:resize()
     self.Width = math.max(280, math.min(740, viewport.X - 28))
     local height = math.max(280, math.min(690, viewport.Y - 60))
     main.Size = UDim2.fromOffset(self.Width, height)
+    if header:FindFirstChild("HeaderArt") then header.HeaderArt.Visible = self.Width >= 500 end
     main.Position = UDim2.new(.5, -self.Width / 2, .5, -height / 2)
     shadow.Size = UDim2.fromOffset(self.Width + 10, height + 10)
     shadow.Position = UDim2.new(.5, -self.Width / 2 - 5, .5, -height / 2 + 1)
@@ -251,9 +294,16 @@ do
     layout.SortOrder = Enum.SortOrder.LayoutOrder; layout.Parent = nav
     for index, category in ipairs({"Farm", "Bosses", "Pets", "Metas", "Perfis", "Sessão", "Ajustes"}) do
         local tab = Instance.new("TextButton")
-        tab.Size = UDim2.fromOffset(87, 34); tab.Text = category; tab.Font = Enum.Font.GothamBold
+        tab.Size = UDim2.fromOffset(94, 36); tab.Text = "   " .. category; tab.Font = Enum.Font.GothamBold
         tab.TextSize = 14; tab.TextColor3 = COLORS.Muted; tab.BackgroundColor3 = COLORS.Panel2
         tab.BorderSizePixel = 0; tab.LayoutOrder = index; tab.Parent = nav; addCorner(tab, 9)
+        local icon = drawIcon(tab, category, 15, COLORS.YellowSoft)
+        icon.Position = UDim2.fromOffset(8, 10)
+        local indicator = Instance.new("Frame")
+        indicator.Name = "SelectedLine"; indicator.Size = UDim2.new(1, -24, 0, 2)
+        indicator.Position = UDim2.new(0, 12, 1, -2); indicator.BorderSizePixel = 0
+        indicator.BackgroundColor3 = COLORS.Green; indicator.Visible = false; indicator.Parent = tab; addCorner(indicator, 2)
+        addStroke(tab, COLORS.NeonDim, 1, .85)
         UI.Tabs[category] = tab
         tab.Activated:Connect(function()
             UI.Category = category
@@ -330,8 +380,14 @@ local function section(name, desc)
     holder.Size = UDim2.new(1, -9, 0, 70); holder.BackgroundTransparency = 1
     holder.BorderSizePixel = 0; holder.Parent = scroll
     local entry = UI:addEntry(holder, currentSection, true)
+    local badge = Instance.new("Frame")
+    badge.Size = UDim2.fromOffset(32, 32); badge.Position = UDim2.fromOffset(0, 6)
+    badge.BackgroundColor3 = COLORS.Panel2; badge.BorderSizePixel = 0; badge.Parent = holder
+    addCorner(badge, 9); addStroke(badge, COLORS.NeonDim, 1, .6)
+    local symbol = drawIcon(badge, UI.CurrentCategory, 22, COLORS.Green)
+    symbol.Position = UDim2.fromOffset(5, 5)
     local title = Instance.new("TextLabel")
-    title.Position = UDim2.fromOffset(2, 8); title.Size = UDim2.new(1, -4, 0, 24)
+    title.Position = UDim2.fromOffset(44, 8); title.Size = UDim2.new(1, -4, 0, 24)
     title.BackgroundTransparency = 1; title.Text = name; title.TextSize = 17
     title.TextColor3 = COLORS.Green; title.Font = Enum.Font.GothamBold
     title.TextXAlignment = Enum.TextXAlignment.Left; title.TextWrapped = true; title.Parent = holder
@@ -341,13 +397,13 @@ local function section(name, desc)
     detail.Font = Enum.Font.Gotham; detail.BackgroundTransparency = 1; detail.TextWrapped = true
     detail.TextXAlignment = Enum.TextXAlignment.Left; detail.TextYAlignment = Enum.TextYAlignment.Top; detail.Parent = holder
     entry.Resize = function()
-        local width = math.max(100, UI.Width - 48)
+        local width = math.max(100, UI.Width - 92)
         title.TextSize = UI.LargeText and 19 or 17; detail.TextSize = UI.LargeText and 16 or 14
         local service = game:GetService("TextService")
         local th = service:GetTextSize(title.Text, title.TextSize, title.Font, Vector2.new(width, 10000)).Y + 4
         local dh = service:GetTextSize(detail.Text, detail.TextSize, detail.Font, Vector2.new(width, 10000)).Y + 4
-        title.Size = UDim2.new(1, -4, 0, th); detail.Position = UDim2.fromOffset(2, th + 12)
-        detail.Size = UDim2.new(1, -4, 0, dh); holder.Size = UDim2.new(1, -9, 0, th + dh + 20)
+        title.Size = UDim2.new(1, -48, 0, th); detail.Position = UDim2.fromOffset(44, th + 12)
+        detail.Size = UDim2.new(1, -48, 0, dh); holder.Size = UDim2.new(1, -9, 0, th + dh + 20)
     end
     entry.Resize()
 end
@@ -358,9 +414,10 @@ local function card(titleText, description, callback, accentColor, availableFn)
     b.BackgroundColor3 = COLORS.Panel2; b.BorderSizePixel = 0; b.AutoButtonColor = false
     b.Text = ""; b.Parent = scroll; addCorner(b, 12)
     local entry = UI:addEntry(b, currentSection .. " " .. titleText .. " " .. (description or ""))
-    local stroke = addStroke(b, accentColorFinal, 1, .7)
+    local stroke = addStroke(b, COLORS.NeonDim, 1, .82)
+    addGradient(b, Color3.fromRGB(255,255,255), Color3.fromRGB(205,205,195), 80)
     local accent = Instance.new("Frame")
-    accent.Size = UDim2.fromOffset(3, 24); accent.Position = UDim2.fromOffset(0, 16)
+    accent.Size = UDim2.fromOffset(2, 18); accent.Position = UDim2.fromOffset(0, 18)
     accent.BackgroundColor3 = accentColorFinal; accent.BorderSizePixel = 0; accent.Parent = b; addCorner(accent, 2)
     local t = Instance.new("TextLabel")
     t.Name = "Titre"; t.Position = UDim2.fromOffset(16, 13); t.BackgroundTransparency = 1
@@ -399,11 +456,11 @@ local function card(titleText, description, callback, accentColor, availableFn)
     end
     if availableFn then availabilityRefs[#availabilityRefs + 1] = renderAvailability end
     b.MouseEnter:Connect(function() tween(b, .16, {BackgroundColor3 = COLORS.Panel3}); tween(stroke, .16, {Transparency = .15}) end)
-    b.MouseLeave:Connect(function() tween(b, .2, {BackgroundColor3 = COLORS.Panel2}); tween(stroke, .2, {Transparency = .7}) end)
+    b.MouseLeave:Connect(function() tween(b, .2, {BackgroundColor3 = COLORS.Panel2}); tween(stroke, .2, {Transparency = .82}) end)
     b.Activated:Connect(function()
         if not isAvailable() then setHubStatus(titleText .. " indisponível nesta sessão"); return end
         tween(stroke, .1, {Transparency = 0})
-        task.delay(.2, function() if b.Parent then tween(stroke, .2, {Transparency = .7}) end end)
+        task.delay(.2, function() if b.Parent then tween(stroke, .2, {Transparency = .82}) end end)
         if callback then task.spawn(callback, b, t, d) end
     end)
     return b, t, d, stroke, renderAvailability
