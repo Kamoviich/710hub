@@ -54,29 +54,46 @@ minimize.Position = UDim2.new(1, 0, 0, 7); minimize.AnchorPoint = Vector2.new(1,
 minimize.Text = "−"; minimize.TextSize = 26; minimize.Font = Enum.Font.GothamBold
 minimize.TextColor3 = COLORS.Cyan; minimize.BackgroundColor3 = COLORS.Panel2
 minimize.BorderSizePixel = 0; minimize.Parent = header; addCorner(minimize, 10)
-do
-    local logo = Instance.new("TextLabel")
-    logo.Size = UDim2.fromOffset(56, 56); logo.Position = UDim2.fromOffset(0, 0)
-    logo.Text = "710"; logo.Font = Enum.Font.GothamBlack; logo.TextSize = 18
-    logo.TextColor3 = COLORS.Green; logo.BackgroundColor3 = COLORS.GreenDark
-    logo.BorderSizePixel = 0; logo.Parent = header; addCorner(logo, 12)
-    addStroke(logo, COLORS.Green, 1, .3)
+-- Shared image source for the header and reopen button.
+local brandViews, brandAsset, brandLoading = {}, nil, false
+local function attachBrandLogo(holder)
     local artwork = Instance.new("ImageLabel")
     artwork.Name = "710HubLogo"
-    artwork.Size = UDim2.fromScale(1, 1)
+    artwork.Size = UDim2.new(1, -4, 1, -4)
+    artwork.Position = UDim2.fromOffset(2, 2)
     artwork.BackgroundTransparency = 1
     artwork.ScaleType = Enum.ScaleType.Fit
-    artwork.ImageTransparency = 1
-    artwork.Parent = logo
-    addCorner(artwork, 12)
-    -- Optional local image support: never block the menu on download or loading.
-    task.spawn(function()
-        local asset = getcustomasset or getsynasset
-        if type(asset) ~= "function" or type(writefile) ~= "function" then return end
-        local path = "710hub_logo_neon_v1.png"
+    -- Display the image while fetching: fully transparent images may not load.
+    artwork.ImageTransparency = 0
+    artwork.ImageRectOffset = Vector2.new(40, 170)
+    artwork.ImageRectSize = Vector2.new(1170, 875)
+    artwork.Parent = holder
+    brandViews[#brandViews + 1] = {Holder = holder, Image = artwork}
+    local function loaded()
+        if artwork.IsLoaded and holder.Parent then
+            holder.TextTransparency = 1
+            holder.BackgroundColor3 = COLORS.Black2
+            M.LogoStatus = "Logo neon carregada"
+        end
+    end
+    artwork:GetPropertyChangedSignal("IsLoaded"):Connect(loaded)
+    if brandAsset then artwork.Image = brandAsset; loaded(); return end
+    if brandLoading then return end
+    brandLoading = true
+    M.LogoStatus = "Carregando logo neon..."
+    task.defer(function()
+        local asset = type(getcustomasset) == "function" and getcustomasset
+            or (type(getsynasset) == "function" and getsynasset)
+            or (type(ENV.getcustomasset) == "function" and ENV.getcustomasset)
+        if not asset or type(writefile) ~= "function" then
+            M.LogoStatus = "Imagem indisponivel: ambiente sem getcustomasset/writefile"
+            M:log("Logo", M.LogoStatus)
+            return
+        end
+        local path = "710hub_logo_neon_v2.png"
         local signature = string.char(137, 80, 78, 71, 13, 10, 26, 10)
-        local function valid(data)
-            return type(data) == "string" and #data == 899743 and data:sub(1, 8) == signature
+        local function valid(bytes)
+            return type(bytes) == "string" and #bytes == 899743 and bytes:sub(1, 8) == signature
         end
         local ok, err = pcall(function()
             local cached = false
@@ -85,22 +102,52 @@ do
                 cached = readOK and valid(bytes)
             end
             if not cached then
-                local bytes = game:HttpGet("https://raw.githubusercontent.com/Kamoviich/710hub/main/assets/710hub-neon-yellow.png", true)
-                assert(valid(bytes), "Arquivo da logo invalido")
-                if not SESSION.Alive or not artwork.Parent then return end
+                local bytes
+                for _, url in ipairs({
+                    "https://710hub-keys.710hub-key-server.workers.dev/icon.png",
+                    "https://raw.githubusercontent.com/Kamoviich/710hub/main/assets/710hub-neon-yellow.png",
+                }) do
+                    local fetched, data = pcall(function() return game:HttpGet(url, true) end)
+                    if fetched and valid(data) then bytes = data; break end
+                    if not SESSION.Alive then return end
+                end
+                assert(bytes, "Nao foi possivel baixar o PNG")
+                if not SESSION.Alive then return end
                 writefile(path, bytes)
             end
-            if not SESSION.Alive or not artwork.Parent then return end
-            artwork.Image = asset(path)
-            local deadline = os.clock() + 12
-            while SESSION.Alive and artwork.Parent and not artwork.IsLoaded and os.clock() < deadline do task.wait(.1) end
-            if SESSION.Alive and artwork.Parent and artwork.IsLoaded then
-                logo.TextTransparency = 1
-                tween(artwork, .3, {ImageTransparency = 0})
+            if not SESSION.Alive then return end
+            brandAsset = asset(path)
+            assert(type(brandAsset) == "string" and #brandAsset > 0, "Endereco de imagem local invalido")
+            for _, view in ipairs(brandViews) do
+                if view.Image.Parent then view.Image.Image = brandAsset end
             end
+            task.delay(15, function()
+                if not SESSION.Alive then return end
+                local anyLoaded = false
+                for _, view in ipairs(brandViews) do
+                    if view.Image.Parent and view.Image.IsLoaded then
+                        view.Holder.TextTransparency = 1
+                        anyLoaded = true
+                    end
+                end
+                M.LogoStatus = anyLoaded and "Logo neon carregada" or "PNG baixado; o ambiente nao renderizou a imagem local"
+                M:log("Logo", M.LogoStatus)
+            end)
         end)
-        if not ok then warn("[710Hub] Logo: " .. tostring(err)) end
+        if not ok then
+            M.LogoStatus = "Falha na logo: " .. tostring(err)
+            M:log("Logo", M.LogoStatus)
+        end
     end)
+end
+do
+    local logo = Instance.new("TextLabel")
+    logo.Size = UDim2.fromOffset(56, 56); logo.Position = UDim2.fromOffset(0, 0)
+    logo.Text = "710"; logo.Font = Enum.Font.GothamBlack; logo.TextSize = 18
+    logo.TextColor3 = COLORS.Green; logo.BackgroundColor3 = COLORS.GreenDark
+    logo.BorderSizePixel = 0; logo.Parent = header; addCorner(logo, 12)
+    addStroke(logo, COLORS.Green, 1, .3)
+    attachBrandLogo(logo)
     local title = Instance.new("TextLabel")
     title.Position = UDim2.fromOffset(68, 4); title.Size = UDim2.new(1, -122, 0, 29)
     title.BackgroundTransparency = 1; title.Text = "710Hub"; title.TextSize = 25

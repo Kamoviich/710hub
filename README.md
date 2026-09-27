@@ -18,9 +18,9 @@ As versoes antigas ja publicadas continuam no historico e nao sao bloqueadas ret
 
 **Manutencao:** a copia local completa do menu permanece em `710hub/710Hub.lua`; atualize o Worker usando `key-server/prepare.mjs` e Wrangler. Nao sobrescreva o carregador publico com essa copia completa. O modelo publico fica em `key-server/KeyLoader.template.lua` localmente.
 
-## Versao 2026.09-neon.16
+## Versao 2026.09-neon.17
 
-A logo original preta e amarela agora aparece no cabecalho. O script baixa o PNG do repositorio e guarda em `710hub_logo_neon_v1.png`. Requer `writefile` e `getcustomasset` ou `getsynasset`; sem suporte, ou se a imagem nao carregar, permanece o texto 710. O carregamento da logo nao bloqueia a abertura do menu. A imagem nao foi enviada ao catalogo Roblox.
+A logo original preta e amarela e usada no cabecalho e no botao de reabrir. A versao 17 remove a transparencia durante carregamento, recorta as margens pela interface, renova o cache e inclui Diagnostico da logo na categoria Sessao. O PNG pode ser baixado do Worker ou do GitHub. O script baixa o PNG do repositorio e guarda em `710hub_logo_neon_v2.png`. Requer `writefile` e `getcustomasset` ou `getsynasset`; sem suporte, ou se a imagem nao carregar, permanece o texto 710. O carregamento da logo nao bloqueia a abertura do menu. A imagem nao foi enviada ao catalogo Roblox.
 
 
 ### Rendimento, rebirth e planejamento
