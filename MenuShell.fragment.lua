@@ -56,18 +56,58 @@ minimize.TextColor3 = COLORS.Cyan; minimize.BackgroundColor3 = COLORS.Panel2
 minimize.BorderSizePixel = 0; minimize.Parent = header; addCorner(minimize, 10)
 do
     local logo = Instance.new("TextLabel")
-    logo.Size = UDim2.fromOffset(48, 44); logo.Position = UDim2.fromOffset(0, 6)
+    logo.Size = UDim2.fromOffset(56, 56); logo.Position = UDim2.fromOffset(0, 0)
     logo.Text = "710"; logo.Font = Enum.Font.GothamBlack; logo.TextSize = 18
     logo.TextColor3 = COLORS.Green; logo.BackgroundColor3 = COLORS.GreenDark
     logo.BorderSizePixel = 0; logo.Parent = header; addCorner(logo, 12)
     addStroke(logo, COLORS.Green, 1, .3)
+    local artwork = Instance.new("ImageLabel")
+    artwork.Name = "710HubLogo"
+    artwork.Size = UDim2.fromScale(1, 1)
+    artwork.BackgroundTransparency = 1
+    artwork.ScaleType = Enum.ScaleType.Fit
+    artwork.ImageTransparency = 1
+    artwork.Parent = logo
+    addCorner(artwork, 12)
+    -- Optional local image support: never block the menu on download or loading.
+    task.spawn(function()
+        local asset = getcustomasset or getsynasset
+        if type(asset) ~= "function" or type(writefile) ~= "function" then return end
+        local path = "710hub_logo_neon_v1.png"
+        local signature = string.char(137, 80, 78, 71, 13, 10, 26, 10)
+        local function valid(data)
+            return type(data) == "string" and #data == 899743 and data:sub(1, 8) == signature
+        end
+        local ok, err = pcall(function()
+            local cached = false
+            if type(readfile) == "function" then
+                local readOK, bytes = pcall(readfile, path)
+                cached = readOK and valid(bytes)
+            end
+            if not cached then
+                local bytes = game:HttpGet("https://raw.githubusercontent.com/Kamoviich/710hub/main/assets/710hub-neon-yellow.png", true)
+                assert(valid(bytes), "Arquivo da logo invalido")
+                if not SESSION.Alive or not artwork.Parent then return end
+                writefile(path, bytes)
+            end
+            if not SESSION.Alive or not artwork.Parent then return end
+            artwork.Image = asset(path)
+            local deadline = os.clock() + 12
+            while SESSION.Alive and artwork.Parent and not artwork.IsLoaded and os.clock() < deadline do task.wait(.1) end
+            if SESSION.Alive and artwork.Parent and artwork.IsLoaded then
+                logo.TextTransparency = 1
+                tween(artwork, .3, {ImageTransparency = 0})
+            end
+        end)
+        if not ok then warn("[710Hub] Logo: " .. tostring(err)) end
+    end)
     local title = Instance.new("TextLabel")
-    title.Position = UDim2.fromOffset(60, 4); title.Size = UDim2.new(1, -114, 0, 29)
+    title.Position = UDim2.fromOffset(68, 4); title.Size = UDim2.new(1, -122, 0, 29)
     title.BackgroundTransparency = 1; title.Text = "710Hub"; title.TextSize = 25
     title.Font = Enum.Font.GothamBlack; title.TextColor3 = COLORS.White
     title.TextXAlignment = Enum.TextXAlignment.Left; title.Parent = header
     local subtitle = Instance.new("TextLabel")
-    subtitle.Position = UDim2.fromOffset(61, 34); subtitle.Size = UDim2.new(1, -115, 0, 19)
+    subtitle.Position = UDim2.fromOffset(69, 34); subtitle.Size = UDim2.new(1, -123, 0, 19)
     subtitle.BackgroundTransparency = 1; subtitle.Text = "MUSCLE LEGENDS"; subtitle.TextSize = 12
     subtitle.Font = Enum.Font.GothamMedium; subtitle.TextColor3 = COLORS.Cyan
     subtitle.TextXAlignment = Enum.TextXAlignment.Left; subtitle.Parent = header

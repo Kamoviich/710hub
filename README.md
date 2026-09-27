@@ -6,7 +6,10 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/Kamoviich/710hub/main
 
 Abra Muscle Legends, execute o comando e aguarde o painel. RightShift abre/fecha o menu; End para as automacoes.
 
-## Versao 2026.09-neon.15
+## Versao 2026.09-neon.16
+
+A logo original preta e amarela agora aparece no cabecalho. O script baixa o PNG do repositorio e guarda em `710hub_logo_neon_v1.png`. Requer `writefile` e `getcustomasset` ou `getsynasset`; sem suporte, ou se a imagem nao carregar, permanece o texto 710. O carregamento da logo nao bloqueia a abertura do menu. A imagem nao foi enviada ao catalogo Roblox.
+
 
 ### Rendimento, rebirth e planejamento
 
@@ -73,7 +76,7 @@ Compilado com Luau 0.740. `Maintenance.test.luau` cobre pausas independentes, pe
 
 ### Desenvolvimento
 
-O arquivo `710Hub.lua` e autocontido: o comando de carregamento nao faz novos downloads de modulos. `Maintenance.lua` e os arquivos `.fragment.lua` sao fontes incorporadas por `build.ps1`; `MenuShell.fragment.lua` contem o tema, a navegacao e os componentes visuais. Depois de editar essas fontes, reconstrua o arquivo principal e execute:
+O arquivo `710Hub.lua` e autocontido: o comando de carregamento nao faz novos downloads de modulos Lua; a logo PNG e baixada separadamente quando nao esta no cache. `Maintenance.lua` e os arquivos `.fragment.lua` sao fontes incorporadas por `build.ps1`; `MenuShell.fragment.lua` contem o tema, a navegacao e os componentes visuais. Depois de editar essas fontes, reconstrua o arquivo principal e execute:
 
 ```text
 luau Maintenance.test.luau
