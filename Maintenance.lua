@@ -9,13 +9,13 @@ return function(settings, clock)
         BossCounts = {}, BossObservations = 0, BossRecent = {},
     }
     M.AutoKeys = {"Train", "Rebirth", "Chests", "Hatch", "Brawl", "AutoPunch",
-        "TrainWeight", "TrainPushups", "TrainSitups", "TrainHandstands",
+        "TrainWeight", "TrainPushups", "TrainSitups", "TrainHandstands", "PvpGood", "PvpEvil",
         "SmartRock", "LockPosition", "AutoMachine", "AutoBestMachine", "StrengthRebirth",
         "TurboStrength", "MaxStrengthF2P", "AutoBoss", "AutoAgility", "SmartFarm",
         "AutoEquipAfterHatch", "AutoEvolveAfterHatch", "GoalEnabled"}
     local booleans = {"BossReturn", "BossDefense", "ResumeAfterDeath", "HealthGuard", "StallAlerts", "PerformanceMode", "StabilityMode", "RebirthGuard", "BreakEnabled"}
     local numbers = {
-        RepDelay = {.05, 5}, HatchDelay = {.1, 30}, BossDistance = {2, 12},
+        PvpRadius = {10, 150}, RepDelay = {.05, 5}, HatchDelay = {.1, 30}, BossDistance = {2, 12},
         HealthLow = {5, 60}, HealthResume = {65, 100}, StallSeconds = {30, 600},
         GoalValue = {1, 1e15}, RebirthTarget = {1, 1e15}, ProgressionTarget = {1, 1e15},
         RebirthFloor = {0, 1e15}, RebirthInterval = {.5, 30}, BreakEvery = {1, 240}, BreakMinutes = {1, 60},
@@ -32,32 +32,81 @@ return function(settings, clock)
         return next(self.Reasons) == nil
     end
     M.Movements = {{"TrainWeight", "Weight"}, {"TrainPushups", "Pushups"}, {"TrainSitups", "Situps"}, {"TrainHandstands", "Handstands"}}
-    M.MovementConflicts = {"Train", "TurboStrength", "MaxStrengthF2P", "AutoMachine", "AutoBestMachine", "StrengthRebirth", "AutoAgility", "SmartRock", "AutoPunch", "SmartFarm", "LockPosition"}
+    M.Conflicts = {}
+    local function conflict(a, b)
+        M.Conflicts[a] = M.Conflicts[a] or {}
+        M.Conflicts[b] = M.Conflicts[b] or {}
+        M.Conflicts[a][b], M.Conflicts[b][a] = true, true
+    end
+    -- Only competing tool/position owners. Selection and passive helpers stay on.
+    local trainers = {"Train", "TrainWeight", "TrainPushups", "TrainSitups", "TrainHandstands", "TurboStrength", "MaxStrengthF2P", "AutoMachine", "AutoAgility"}
+    for i, a in ipairs(trainers) do
+        for j = i + 1, #trainers do conflict(a, trainers[j]) end
+        conflict(a, "AutoPunch"); conflict(a, "SmartRock")
+    end
+    for _, key in ipairs({"AutoMachine", "AutoAgility", "SmartRock"}) do conflict(key, "LockPosition") end
+    for _, key in ipairs({"TurboStrength", "MaxStrengthF2P", "AutoAgility", "SmartRock", "AutoPunch"}) do conflict(key, "StrengthRebirth") end
+    for _, key in ipairs({"Train", "TrainWeight", "TrainPushups", "TrainSitups", "TrainHandstands", "TurboStrength", "MaxStrengthF2P", "AutoMachine", "AutoBestMachine", "AutoAgility", "SmartRock", "AutoPunch", "StrengthRebirth", "Rebirth", "LockPosition"}) do conflict("SmartFarm", key) end
+    for _, mode in ipairs({"PvpGood", "PvpEvil"}) do
+        for _, key in ipairs(trainers) do conflict(mode, key) end
+        for _, key in ipairs({"AutoBoss", "Brawl", "SmartRock", "AutoPunch", "LockPosition", "SmartFarm", "Rebirth", "StrengthRebirth"}) do conflict(mode, key) end
+    end
+    conflict("PvpGood", "PvpEvil")
+    function M:pvpEligible(good, evil)
+        if type(good) ~= "number" or type(evil) ~= "number" or good ~= good or evil ~= evil or good < 0 or evil < 0 then return false end
+        if settings.PvpGood then return evil > good end
+        if settings.PvpEvil then return good > evil end
+        return false
+    end
     function M:trainingMovement()
         for _, pair in ipairs(self.Movements) do if settings[pair[1]] then return pair[2] end end
     end
     function M:clearMovements()
         for _, pair in ipairs(self.Movements) do settings[pair[1]] = false end
     end
+    function M:resetBossDefense()
+        self.BossLastHealth, self.BossRetreatUntil, self.BossRecovering = nil, nil, false
+        self.BossRetreatCFrame = nil
+        self:pause("Vida baixa", false)
+    end
+    function M:bossMayMove()
+        for reason in pairs(self.Reasons) do if reason ~= "Vida baixa" then return false end end
+        return true
+    end
     function M:bossRetreat(health, maxHealth)
         local previous = self.BossLastHealth
         self.BossLastHealth = health
-        if not settings.BossDefense then self.BossRetreatUntil = nil; return false end
-        if previous and health < previous then self.BossRetreatUntil = clock() + 2.5 end
-        if maxHealth > 0 and health / maxHealth <= .55 then self.BossRetreatUntil = clock() + 2.5 end
-        return self.BossRetreatUntil ~= nil and clock() < self.BossRetreatUntil
+        if settings.HealthGuard and maxHealth > 0 then
+            local percent = health * 100 / maxHealth
+            if percent <= (settings.HealthLow or 55) then self.BossRecovering = true
+            elseif percent >= (settings.HealthResume or 85) then self.BossRecovering = false end
+        else self.BossRecovering = false end
+        self:pause("Vida baixa", self.BossRecovering == true)
+        if not settings.BossDefense then self.BossRetreatUntil = nil
+        elseif previous and health < previous then self.BossRetreatUntil = clock() + 2.5 end
+        local retreat = self.BossRecovering or (self.BossRetreatUntil ~= nil and clock() < self.BossRetreatUntil)
+        if not retreat then self.BossRetreatCFrame = nil end
+        return retreat == true
     end
-    function M:resolveMovement(key)
-        if not settings[key] then return end
-        for _, pair in ipairs(self.Movements) do
-            if pair[1] == key then
-                self:clearMovements()
-                settings[key] = true
-                for _, conflict in ipairs(self.MovementConflicts) do settings[conflict] = false end
-                return
-            end
+    function M:resolveConflicts(key)
+        local disabled = {}
+        if not settings[key] then return disabled end
+        for other in pairs(self.Conflicts[key] or {}) do
+            if settings[other] then settings[other] = false; disabled[#disabled + 1] = other end
         end
-        if table.find(self.MovementConflicts, key) then self:clearMovements() end
+        table.sort(disabled)
+        return disabled
+    end
+    function M:resolveMovement(key) return self:resolveConflicts(key) end
+    function M:normalizeConflicts()
+        -- SmartFarm owns its generated child flags; its next tick rebuilds them.
+        if settings.SmartFarm then self:resolveConflicts("SmartFarm") end
+        for _, pair in ipairs(self.Movements) do
+            if settings[pair[1]] then self:resolveConflicts(pair[1]); break end
+        end
+        for _, key in ipairs(self.AutoKeys) do
+            if key ~= "SmartFarm" then self:resolveConflicts(key) end
+        end
     end
     function M:pause(reason, enabled)
         if (self.Reasons[reason] == true) == enabled then return end
@@ -135,9 +184,8 @@ return function(settings, clock)
         settings.GoalValue, settings.RebirthTarget, settings.ProgressionTarget, settings.SelectedMachine = nil, nil, nil, nil
         settings.StopAt = nil
         for key, value in pairs(validated) do settings[key] = value end
-        for _, pair in ipairs(self.Movements) do
-            if settings[pair[1]] then self:resolveMovement(pair[1]); break end
-        end
+        settings.PvpGood, settings.PvpEvil = false, false
+        self:normalizeConflicts()
         self:pause("Manual", true)
         self:resetBreak()
         self:log("Perfil", "Configuracao restaurada; use Retomar para iniciar")

@@ -220,6 +220,7 @@ local searchQuery, currentSection = "", ""
 local searchEntries = {}
 local UI = {Category = "Farm", CurrentCategory = "Farm", Order = 0, Tabs = {}, Width = 650, LargeText = false}
 UI.Groups = {
+    ["PVP E KARMA"] = "PvP",
     ["RENDIMENTO E PLANEJAMENTO"] = "Metas", ["BONUS OFICIAIS"] = "Farm",
     ["FARM"] = "Farm", ["MÁQUINAS"] = "Farm", ["AGILIDADE"] = "Farm", ["FARM INTELIGENTE"] = "Farm",
     ["BOSSES"] = "Bosses", ["PROTECAO E BOSSES"] = "Bosses", ["PETS E CRISTAIS"] = "Pets",
@@ -292,7 +293,7 @@ do
     local layout = Instance.new("UIListLayout")
     layout.FillDirection = Enum.FillDirection.Horizontal; layout.Padding = UDim.new(0, 7)
     layout.SortOrder = Enum.SortOrder.LayoutOrder; layout.Parent = nav
-    for index, category in ipairs({"Farm", "Bosses", "Pets", "Metas", "Perfis", "Sessão", "Ajustes"}) do
+    for index, category in ipairs({"Farm", "Bosses", "PvP", "Pets", "Metas", "Perfis", "Sessão", "Ajustes"}) do
         local tab = Instance.new("TextButton")
         tab.Size = UDim2.fromOffset(94, 36); tab.Text = "   " .. category; tab.Font = Enum.Font.GothamBold
         tab.TextSize = 14; tab.TextColor3 = COLORS.Muted; tab.BackgroundColor3 = COLORS.Panel2

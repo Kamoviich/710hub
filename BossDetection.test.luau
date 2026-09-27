@@ -52,7 +52,7 @@ check(detector.matches(boss), "attribute marker")
 boss.Attributes = {}
 check(not detector.matches(boss), "unmarked NPC rejected")
 settings.BossPreference = "BlueGolem"
-check(detector.matches(boss), "explicit name selection")
+check(not detector.matches(boss), "preference cannot authorize arbitrary NPC")
 settings.BossPreference = "Qualquer"
 hum.Health = 0; boss.Tags = {"Boss"}
 check(not detector.matches(boss), "dead boss rejected")
@@ -70,6 +70,14 @@ object("Part", "Body", custom)
 check(detector.matches(custom) and detector.health(custom).Health == 100, "custom health and mesh body")
 custom.Attributes.Health = 0
 check(not detector.matches(custom), "custom dead boss rejected")
+local pet = rig("RareBossPet")
+check(not detector.matches(pet), "boss pet excluded")
+local pets = object("Folder", "Pets", world)
+local petInFolder = rig("MythicBoss", pets)
+check(not detector.matches(petInFolder), "pet container excluded")
+local arena = object("Model", "BossArena", world)
+rig("CommonBoss", arena); rig("RareBoss", arena)
+check(not detector.matches(arena), "multiple NPC container not an individual target")
 local m = require("./Maintenance")({}, function() return 0 end)
 for _, name in ipairs({"Common Boss", "Rare Boss", "Epic Boss", "Legendary Boss", "Mythic Boss", "Rainbow Boss"}) do
     check(m:bossRarity(name) ~= "Desconhecido", "classify category")

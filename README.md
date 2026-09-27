@@ -18,7 +18,21 @@ As versoes antigas ja publicadas continuam no historico e nao sao bloqueadas ret
 
 **Manutencao:** a copia local completa do menu permanece em `710hub/710Hub.lua`; atualize o Worker usando `key-server/prepare.mjs` e Wrangler. Nao sobrescreva o carregador publico com essa copia completa. O modelo publico fica em `key-server/KeyLoader.template.lua` localmente.
 
-## Versao 2026.09-neon.21
+## Versao 2026.09-neon.22
+
+Revisao do combate:
+
+- Bosses: exclui pets de chefe e grupos com varios Humanoids, reaproveita a varredura por 2s e revalida o alvo antes de usar. Preferencia por nome apenas ordena bosses ja reconhecidos.
+- Recuo: escolhe um ponto fixo com piso, em vez de perseguir o boss durante a recuperacao. Sem local adequado, interrompe o Auto Boss e informa o erro. Defesa reativa, sem promessa de evitar ataque em area.
+- Recuperacao: usa os mesmos limites de pausa e retomada configurados. Padrao em perfis novos: 55% / 85%. Perfis antigos preservam os limites salvos. Pausa manual e respawn bloqueiam movimentacao.
+- Parar tudo e desligar Auto Boss liberam o estado de combate mesmo em pausa. Soco automatico e outras rotinas de combate nao disputam o boss. Falhas de execucao interrompem o modo e entram no historico.
+- Interface: removidos botoes redundantes de procurar/listar/monitorar e o preset duplicado de protecao. Mantidos estado ao vivo, diagnostico, chances/historico e configuracoes.
+- PvP: nova categoria com **karma bom** e **karma ruim**, mutuamente exclusivos. Usa aproximacao normal e Punch nos alvos proximos visiveis; ignora neutros, karma desconhecido e protecao de spawn. Comeca desligado; carregar perfil nao inicia PvP. Ligar outro modo automatico encerra PvP. Parar tudo cancela a aproximacao.
+- Karma bom seleciona jogadores com evilKarma maior que goodKarma; karma ruim faz o inverso. Ganhos e dano dependem do servidor. [Light Ranks](https://muscle-legends.fandom.com/wiki/Light_Ranks) e [Dark Ranks](https://muscle-legends.fandom.com/wiki/Dark_Ranks) descrevem a regra; nao ha garantia de kill ou recompensa.
+
+Validacao: compilacao Luau e 142 verificacoes automatizadas. O combate real, a leitura das estatisticas de outros jogadores e os pisos da arena precisam ser conferidos no Roblox.
+
+
 
 Auto Boss agora inclui movimentacao defensiva: deslocamento lateral, recuo de 2,5s apos perda de vida e suspensao de golpes enquanto a vida estiver em 55% ou menos. Verifica piso antes de reposicionar. A opcao Aplicar protecao reforcada configura pausa em 55% e retomada em 85%; inicie o combate fora do alcance para que o ponto de retorno seja adequado. A defesa e reativa, nao le ataques futuros, nao concede invulnerabilidade e pode nao evitar ataques em area.
 
@@ -34,7 +48,7 @@ Atualizacao exclusivamente visual: icones de linha nas categorias e secoes (halt
 ### Bosses: deteccao e chances
 
 - Reconhece marcadores Boss/Chefe, tags, atributos, DisplayName e rigs aninhados. Tambem le vida numerica Health/HP e partes principais ou corpos simples. Exclui jogadores, seus descendentes e modelos que envolvam personagens de jogadores.
-- **Monitorar todos os bosses** remove a preferencia por nome. **Diagnosticar boss proximo** mostra NPCs reconheciveis ate 150 studs. Um nome exato no campo Boss preferido autoriza aquele NPC como alvo; confirme pelo diagnostico antes de usar.
+- **Monitorar todos os bosses** remove a preferencia por nome. **Diagnosticar boss proximo** mostra NPCs reconheciveis ate 150 studs. Um nome exato no campo Boss preferido prioriza apenas bosses ja reconhecidos.
 - **Chances e historico dos bosses** mostra as taxas do print fornecido pelo proprietario: Comum 50%, Raro 30%, Epico 15%, Lendario 4%, Mitico 1%; Arco-iris somente administradores. Essas taxas nao foram inferidas do historico e podem mudar com atualizacoes do jogo.
 - Monitora aparicoes a cada 5 segundos e avisa ao detectar Lendario, Mitico ou Arco-iris, mesmo com Auto Boss desligado. Historico limitado aos 30 encontros mais recentes, apenas nesta sessao. Um mesmo objeto e contado uma vez; objetos reutilizados, streaming e bosses fora do alcance tornam os dados incompletos.
 - Nao ha previsao deterministica de raridade nem horario de spawn. A chance de ao menos um Lendario/Mitico em 20 sorteios e aproximadamente 64,2%, **somente se** forem independentes com taxa constante de 5%. Sequencias anteriores nao provam que um raro esteja devido.
@@ -119,3 +133,6 @@ luau-compile --null 710Hub.lua
 ```
 
 `Maintenance.lua` contem o controlador testavel sem Roblox; os fragmentos fazem a integracao com jogo e interface. Execute `build.ps1` em um ambiente PowerShell que permita os seus scripts locais.
+
+### Compatibilidade de op??es
+A ?ltima op??o ligada tem prioridade apenas sobre rotinas incompat?veis. O menu e o hist?rico indicam o que foi desligado. Treino + rebirth, m?quina + sele??o autom?tica e socos + pedras permanecem dispon?veis. Perfis carregados s?o normalizados em pausa. Rotinas desligadas n?o s?o reativadas sozinhas. Auto Boss suspende temporariamente o farm durante o combate.

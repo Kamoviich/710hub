@@ -154,7 +154,7 @@ function M:bossDiagnostic()
         end
     end
     table.sort(rows, function(a, b) return a.Distance < b.Distance end)
-    local lines = {"710Hub " .. SESSION.Version .. " | NPCs com vida legivel ate 150 studs", "Se o boss aparecer como nao detectado, copie seu Nome para Boss preferido. Isso autoriza esse nome como alvo; confira antes de ligar Auto Boss."}
+    local lines = {"710Hub " .. SESSION.Version .. " | NPCs com vida legivel ate 150 studs", "Preferencia por nome nao transforma pets ou NPCs comuns em bosses. Envie este diagnostico se o alvo nao for reconhecido."}
     for i = 1, math.min(20, #rows) do lines[#lines + 1] = rows[i].Text end
     if #rows == 0 then lines[#lines + 1] = "Nenhum NPC com vida e raiz legiveis. A estrutura deste boss ainda precisa ser identificada." end
     return table.concat(lines, "\n\n")
@@ -239,6 +239,7 @@ do
         M:pause("Respawn", true)
         M:pause("Vida baixa", false)
         HubRuntime.BossActive, HubRuntime.BossModel, HubRuntime.BossReturnCFrame = false, nil, nil
+        M:resetBossDefense()
         lockedCFrame = nil
         agilityOriginalWalkSpeed, agilityLastTeleport = nil, 0
         task.spawn(function()
@@ -303,18 +304,6 @@ task.spawn(function()
         if (not M:canAct() or M.Comparing) and S.StopAt then S.StopAt += elapsed end
         local character = LP.Character
         local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-        if S.HealthGuard and S.AutoBoss and humanoid and humanoid.MaxHealth > 0 and humanoid.Health > 0 then
-            local percent = humanoid.Health * 100 / humanoid.MaxHealth
-            if percent <= S.HealthLow and not M.Reasons["Vida baixa"] then
-                M:pause("Vida baixa", true)
-                finishBossFight(true)
-                M:log("Boss", "Combate suspenso por vida baixa")
-            elseif percent >= S.HealthResume then
-                M:pause("Vida baixa", false)
-            end
-        else
-            M:pause("Vida baixa", false)
-        end
         if now - lastSample >= 1 then
             lastSample = now
             local training = not HubRuntime.BossActive and (S.Train or M:trainingMovement() ~= nil or S.Rebirth or S.StrengthRebirth
@@ -332,4 +321,74 @@ task.spawn(function()
             if not ok then setHubError("Diagnostico: " .. tostring(err)) end
         end
     end
+end)
+
+-- Separate opt-in PvP loop. No boss targeting, remote damage spoofing or hidden mode.
+function M:stopPvp()
+    if self.PvpTarget then
+        local character = LP.Character
+        local root = character and character:FindFirstChild("HumanoidRootPart")
+        local hum = character and character:FindFirstChildOfClass("Humanoid")
+        if root and hum then hum:MoveTo(root.Position) end
+    end
+    self.PvpTarget = nil
+end
+function M:playerKarma(player, names)
+    for _, container in ipairs({player, player:FindFirstChild("leaderstats") or player, player:FindFirstChild("Stats") or player}) do
+        for _, name in ipairs(names) do
+            local value = container:FindFirstChild(name)
+            if value and (value:IsA("IntValue") or value:IsA("NumberValue")) then return value.Value end
+            local attribute = container:GetAttribute(name)
+            if type(attribute) == "number" then return attribute end
+        end
+    end
+end
+task.spawn(function()
+    while SESSION.Alive and task.wait(.35) do
+        local ok, failure = pcall(function()
+            if not (S.PvpGood or S.PvpEvil) then M:stopPvp(); M.PvpStatus = "Desligado"; return end
+            if not M:canAct() or HubRuntime.BossActive then M:stopPvp(); M.PvpStatus = "Pausado"; return end
+            local character = LP.Character
+            local root = character and character:FindFirstChild("HumanoidRootPart")
+            local hum = character and character:FindFirstChildOfClass("Humanoid")
+            if not root or not hum or hum.Health <= 0 then M:stopPvp(); M.PvpStatus = "Aguardando personagem"; return end
+            if hum.MaxHealth > 0 and hum.Health / hum.MaxHealth <= (S.HealthLow / 100) then
+                S.PvpGood, S.PvpEvil = false, false; M:stopPvp()
+                M.PvpStatus = "Parado por vida baixa; recupere antes de ligar novamente"; return
+            end
+            local target, targetRoot, distance = nil, nil, S.PvpRadius
+            for _, player in ipairs(Players:GetPlayers()) do
+                if player ~= LP then
+                    local model = player.Character
+                    local otherRoot = model and model:FindFirstChild("HumanoidRootPart")
+                    local otherHum = model and model:FindFirstChildOfClass("Humanoid")
+                    local good = M:playerKarma(player, {"goodKarma", "GoodKarma", "LightKarma"})
+                    local evil = M:playerKarma(player, {"evilKarma", "EvilKarma", "DarkKarma"})
+                    if otherRoot and otherHum and otherHum.Health > 0 and not model:FindFirstChildOfClass("ForceField") and M:pvpEligible(good, evil) then
+                        local d = (root.Position - otherRoot.Position).Magnitude
+                        if d < distance then
+                            local params = RaycastParams.new(); params.FilterType = Enum.RaycastFilterType.Exclude
+                            params.FilterDescendantsInstances = {character, model}; params.RespectCanCollide = true
+                            if not workspace:Raycast(root.Position, otherRoot.Position - root.Position, params) then
+                                target, targetRoot, distance = player, otherRoot, d
+                            end
+                        end
+                    end
+                end
+            end
+            if not target then M:stopPvp(); M.PvpStatus = "Sem alvo elegivel perto: neutros ou karma ilegivel sao ignorados"; return end
+            M.PvpTarget = target
+            if not findPunchTool() then M:stopPvp(); M.PvpStatus = "Ferramenta Punch indisponivel"; return end
+            if distance > 5 then
+                hum:MoveTo(targetRoot.Position)
+                M.PvpStatus = "Aproximando: " .. target.Name
+            else
+                hum:MoveTo(root.Position)
+                if S.PvpGood or S.PvpEvil then doAnimatedPunch() end
+                M.PvpStatus = "Atacando: " .. target.Name
+            end
+        end)
+        if not ok then S.PvpGood, S.PvpEvil = false, false; M:stopPvp(); M.PvpStatus = "Erro: " .. tostring(failure); M:log("PvP", M.PvpStatus) end
+    end
+    M:stopPvp()
 end)

@@ -1,7 +1,18 @@
 return function(workspace, Players, S)
+local function uniqueHumanoid(model)
+    local found
+    for _, item in ipairs(model:GetDescendants()) do
+        if item:IsA("Humanoid") then
+            if found then return nil, true end
+            found = item
+        end
+    end
+    return found, false
+end
 local function bossRoot(model)
     if not model then return nil end
-    local hum = model:FindFirstChildWhichIsA("Humanoid", true)
+    local hum, ambiguous = uniqueHumanoid(model)
+    if ambiguous then return nil end
     local rig = hum and hum.Parent or model
     for _, name in ipairs({"HumanoidRootPart", "UpperTorso", "Torso", "Head"}) do
         local part = rig:FindFirstChild(name)
@@ -14,7 +25,8 @@ end
 
 local function bossHumanoid(model)
     if not model then return nil end
-    local humanoid = model:FindFirstChildWhichIsA("Humanoid", true)
+    local humanoid, ambiguous = uniqueHumanoid(model)
+    if ambiguous then return nil end
     if humanoid then return humanoid end
     -- Some NPCs expose numeric health instead of a Humanoid.
     for _, owner in ipairs({model, model:FindFirstChild("Stats") or model}) do
@@ -34,6 +46,16 @@ end
 
 local function modelHasBossMarker(model)
     if not model or not model:IsA("Model") then return false end
+    local ancestor = model
+    while ancestor and ancestor ~= workspace do
+        local name = string.lower(ancestor.Name)
+        if name:find("pet", 1, true) or name:find("mascote", 1, true) or ancestor:GetAttribute("IsPet") == true then return false end
+        for _, tag in ipairs(ancestor:GetTags()) do
+            local lower = string.lower(tag)
+            if lower:find("pet", 1, true) or lower:find("mascote", 1, true) then return false end
+        end
+        ancestor = ancestor.Parent
+    end
     -- Never classify a player, a part of their character, or an enclosing arena as a boss.
     for _, player in ipairs(Players:GetPlayers()) do
         local character = player.Character
@@ -45,7 +67,6 @@ local function modelHasBossMarker(model)
         local lower = string.lower(tostring(text or ""))
         return lower:find("boss", 1, true) ~= nil or lower:find("chefe", 1, true) ~= nil
     end
-    if S.BossPreference and S.BossPreference ~= "Qualquer" and string.lower(model.Name) == string.lower(S.BossPreference) then return true end
     local parent = model
     while parent and parent ~= workspace do
         if marked(parent.Name) then return true end

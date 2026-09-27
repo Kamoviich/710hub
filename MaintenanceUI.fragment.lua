@@ -116,18 +116,7 @@ local function maintenanceUI()
     toggle("Retomar depois de morrer", "Espera Humanoid e personagem prontos; desligado exige Retomar manualmente.", "ResumeAfterDeath")
 
     section("PROTECAO E BOSSES", "Prioridade de alvo e espera por recuperacao de vida.")
-    toggle("Movimentacao defensiva no boss", "Muda a posicao lateral, recua por 2.5s apos perder vida e so ataca novamente acima de 55% de vida. Nao garante esquiva de ataques em area.", "BossDefense")
-    card("Aplicar protecao reforcada", "Liga defesa e protecao de vida: pausa em 55%, retoma em 85%. O retorno usa o ponto onde voce iniciou o combate; comece fora do alcance do boss.", function()
-        S.BossDefense, S.HealthGuard = true, true
-        S.HealthLow, S.HealthResume = 55, 85
-        renderAllToggles()
-        setHubStatus("Defesa reforcada aplicada: 55% / 85%")
-    end, COLORS.Yellow)
-    card("Monitorar todos os bosses", "Remove a preferencia por nome e atualiza a lista de todas as categorias reconhecidas.", function()
-        S.BossPreference = "Qualquer"
-        M:observeBosses()
-        showReport("Bosses no mapa", M.VisibleBossText)
-    end, COLORS.Green)
+    toggle("Movimentacao defensiva no boss", "Recua apos perder vida e aguarda no ponto escolhido. Vida baixa usa os limites configurados abaixo. Nao preve ataques.", "BossDefense")
     card("Chances e historico dos bosses", "Comum 50%, Raro 30%, Epico 15%, Lendario 4%, Mitico 1%. Mostra historico observado; nao preve o sorteio.", function()
         showReport("Chances dos bosses", M:bossOddsReport())
     end, COLORS.Yellow)
@@ -143,11 +132,8 @@ local function maintenanceUI()
         if #value < 1 or #value > 150 then return false, "Nome precisa ter entre 1 e 150 caracteres" end
         S.BossPreference = value
         M:log("Boss", "Preferencia: " .. value)
-        return true, "Nome autorizado como boss; aplicado na proxima escolha de alvo"
+        return true, "Preferencia aplicada somente aos bosses reconhecidos"
     end)
-    card("Listar bosses detectados", "Mostra nomes dos bosses vivos visiveis ao cliente para copiar no campo acima.", function()
-        showReport("Bosses detectados", table.concat(M:bossNames(), "\n"))
-    end, COLORS.Green)
     toggle("Protecao de vida baixa", "Pausa o combate abaixo do limite e espera recuperar. Retorna ao ponto inicial se o retorno estiver ligado.", "HealthGuard")
     field("Pausar boss abaixo de vida (%)", S.HealthLow, function(value)
         local n = tonumber(value)
@@ -165,6 +151,18 @@ local function maintenanceUI()
         if not n or n ~= n or n < 30 or n > 600 then return false, "Use de 30 a 600 segundos" end
         S.StallSeconds = n; return true
     end)
+
+    section("PVP E KARMA", "Combate contra jogadores proximos; o jogo decide o dano e os ganhos.")
+    toggle("PvP: karma bom", "Busca jogadores com mais karma ruim que bom. Desliga apenas rotinas incompat?veis; ignora karma desconhecido e neutros.", "PvpGood")
+    toggle("PvP: karma ruim", "Busca jogadores com mais karma bom que ruim. Desliga apenas rotinas incompat?veis; ignora karma desconhecido e neutros.", "PvpEvil")
+    field("Raio de busca PvP (studs)", S.PvpRadius, function(value)
+        local number = tonumber(value)
+        if not number or number ~= number or number < 10 or number > 150 then return false, "Use de 10 a 150 studs" end
+        S.PvpRadius = number; return true
+    end)
+    local _, _, pvpStatus = card("Estado do PvP", "Desligado", function()
+        showReport("PvP e karma", (M.PvpStatus or "Desligado") .. "\nNao garante kills ou karma. Use Parar tudo para encerrar. Perfis carregados nao iniciam PvP automaticamente.")
+    end, COLORS.Yellow)
 
     section("METAS E COMPARACAO", "Metas digitadas e recomendacao baseada em treino observado.")
     field("Meta absoluta da estatistica selecionada em METAS", S.GoalValue, function(value)
@@ -215,16 +213,15 @@ local function maintenanceUI()
         if not n or n ~= n or n < .5 or n > 30 then return false, "Use de 0.5 a 30 segundos" end
         S.RebirthInterval = n; return true
     end)
-    card("Aplicar melhor treino medido", "Usa o resultado da ultima comparacao concluida. Para outras rotinas antes de iniciar o treino escolhido.", function()
+    card("Aplicar melhor treino medido", "Usa o resultado da ultima comparacao concluida. Desliga somente rotinas incompat?veis com o treino escolhido.", function()
         local key = ({Ferramenta = "Train", Rajada = "TurboStrength", Maquina = "AutoMachine"})[M.BestTraining]
         if not key or M.Comparing then setHubStatus("Conclua uma comparacao valida primeiro"); return end
         if not (key == "AutoMachine" and canMachineFarm() or key ~= "AutoMachine" and canTrain()) then
             setHubStatus("O metodo medido nao esta disponivel agora"); return
         end
-        stopAllAutomations()
-        finishBossFight(true)
         if key == "AutoMachine" then selectBestMachine() end
         S[key] = true
+        resolveToggleConflicts(key)
         renderAllToggles()
         setHubStatus("Treino aplicado: " .. M.BestTraining)
     end, COLORS.Green)
@@ -279,6 +276,7 @@ local function maintenanceUI()
             stateDesc.Text = M.Comparing and (M.ComparisonStatus or "Medindo...")
                 or (M.Stalled and "ALERTA: farm sem progresso. Abra o diagnostico." or HubRuntime.Status)
             profileTitle.Text = "Perfil: slot " .. M.ProfileSlot
+            pvpStatus.Text = M.PvpStatus or "Desligado"
             observedBossDesc.Text = M.VisibleBossText or "Procurando..."
             local rate = M:strengthRate()
             local target = M.PlanningTarget or 1000000
