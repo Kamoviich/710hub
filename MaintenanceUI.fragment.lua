@@ -153,15 +153,15 @@ local function maintenanceUI()
     end)
 
     section("PVP E KARMA", "Combate contra jogadores proximos; o jogo decide o dano e os ganhos.")
-    toggle("PvP: karma bom", "Busca jogadores com mais karma ruim que bom. Desliga apenas rotinas incompat?veis; ignora karma desconhecido e neutros.", "PvpGood")
-    toggle("PvP: karma ruim", "Busca jogadores com mais karma bom que ruim. Desliga apenas rotinas incompat?veis; ignora karma desconhecido e neutros.", "PvpEvil")
+    toggle("PvP: karma bom", "Busca jogadores com mais karma ruim que bom. Desliga apenas rotinas incompativeis; ignora karma desconhecido e neutros.", "PvpGood")
+    toggle("PvP: karma ruim", "Busca jogadores com mais karma bom que ruim. Desliga apenas rotinas incompativeis; ignora karma desconhecido e neutros.", "PvpEvil")
     field("Raio de busca PvP (studs)", S.PvpRadius, function(value)
         local number = tonumber(value)
         if not number or number ~= number or number < 10 or number > 150 then return false, "Use de 10 a 150 studs" end
         S.PvpRadius = number; return true
     end)
     local _, _, pvpStatus = card("Estado do PvP", "Desligado", function()
-        showReport("PvP e karma", (M.PvpStatus or "Desligado") .. "\nNao garante kills ou karma. Use Parar tudo para encerrar. Perfis carregados nao iniciam PvP automaticamente.")
+        showReport("PvP e karma", (M.PvpStatus or "Desligado") .. "\n\n" .. (M.PvpDiagnostic or "Ligue um modo para analisar os jogadores.") .. "\n\nNao garante kills ou karma. Use Parar tudo para encerrar. Perfis carregados nao iniciam PvP automaticamente.")
     end, COLORS.Yellow)
 
     section("METAS E COMPARACAO", "Metas digitadas e recomendacao baseada em treino observado.")
@@ -213,7 +213,7 @@ local function maintenanceUI()
         if not n or n ~= n or n < .5 or n > 30 then return false, "Use de 0.5 a 30 segundos" end
         S.RebirthInterval = n; return true
     end)
-    card("Aplicar melhor treino medido", "Usa o resultado da ultima comparacao concluida. Desliga somente rotinas incompat?veis com o treino escolhido.", function()
+    card("Aplicar melhor treino medido", "Usa o resultado da ultima comparacao concluida. Desliga somente rotinas incompativeis com o treino escolhido.", function()
         local key = ({Ferramenta = "Train", Rajada = "TurboStrength", Maquina = "AutoMachine"})[M.BestTraining]
         if not key or M.Comparing then setHubStatus("Conclua uma comparacao valida primeiro"); return end
         if not (key == "AutoMachine" and canMachineFarm() or key ~= "AutoMachine" and canTrain()) then
