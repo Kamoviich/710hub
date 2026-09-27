@@ -4,7 +4,19 @@
 loadstring(game:HttpGet("https://raw.githubusercontent.com/Kamoviich/710hub/main/710Hub.lua", true))()
 ```
 
-Abra Muscle Legends, execute o comando e aguarde o painel. RightShift abre/fecha o menu; End para as automacoes.
+Abra Muscle Legends, execute o comando e informe sua key para liberar o painel. RightShift abre/fecha o menu; End para as automacoes.
+
+## Acesso por key
+
+Painel do proprietario: https://710hub-keys.710hub-key-server.workers.dev
+
+A credencial administrativa esta apenas no computador do proprietario, em `710hub/key-server/private/admin-token.txt`. Use-a no painel para gerar keys, definir validade e revogar acessos. Entregue aos jogadores somente as keys geradas, nunca a credencial administrativa.
+
+O arquivo publico `710Hub.lua` agora e um carregador: valida a key e baixa o menu pelo servidor autenticado. Requer suporte a `request` ou `http_request` com cabecalhos. Revogacao encerra a sessao na proxima verificacao, em ate aproximadamente 60 segundos; uma falha de rede tambem bloqueia a sessao. Uma key permite uma sessao atual de ate 8 horas.
+
+As versoes antigas ja publicadas continuam no historico e nao sao bloqueadas retroativamente. As keys controlam o carregamento atual, sem impedir copias feitas pelo cliente.
+
+**Manutencao:** a copia local completa do menu permanece em `710hub/710Hub.lua`; atualize o Worker usando `key-server/prepare.mjs` e Wrangler. Nao sobrescreva o carregador publico com essa copia completa. O modelo publico fica em `key-server/KeyLoader.template.lua` localmente.
 
 ## Versao 2026.09-neon.16
 
@@ -76,7 +88,7 @@ Compilado com Luau 0.740. `Maintenance.test.luau` cobre pausas independentes, pe
 
 ### Desenvolvimento
 
-O arquivo `710Hub.lua` e autocontido: o comando de carregamento nao faz novos downloads de modulos Lua; a logo PNG e baixada separadamente quando nao esta no cache. `Maintenance.lua` e os arquivos `.fragment.lua` sao fontes incorporadas por `build.ps1`; `MenuShell.fragment.lua` contem o tema, a navegacao e os componentes visuais. Depois de editar essas fontes, reconstrua o arquivo principal e execute:
+A implementacao local completa e autocontida: o comando de carregamento nao faz novos downloads de modulos Lua; a logo PNG e baixada separadamente quando nao esta no cache. `Maintenance.lua` e os arquivos `.fragment.lua` sao fontes incorporadas por `build.ps1`; `MenuShell.fragment.lua` contem o tema, a navegacao e os componentes visuais. Depois de editar essas fontes, reconstrua o arquivo principal e execute:
 
 ```text
 luau Maintenance.test.luau
