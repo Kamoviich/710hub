@@ -317,7 +317,7 @@ task.spawn(function()
         end
         if now - lastSample >= 1 then
             lastSample = now
-            local training = not HubRuntime.BossActive and (S.Train or S.Rebirth or S.StrengthRebirth
+            local training = not HubRuntime.BossActive and (S.Train or M:trainingMovement() ~= nil or S.Rebirth or S.StrengthRebirth
                 or S.MaxStrengthF2P or S.TurboStrength or S.AutoMachine)
             if M:sample(numberStat("Strength"), currentRebirths(), training == true) then
                 setHubError("Farm sem progresso; consulte o diagnostico")

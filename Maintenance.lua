@@ -9,6 +9,7 @@ return function(settings, clock)
         BossCounts = {}, BossObservations = 0, BossRecent = {},
     }
     M.AutoKeys = {"Train", "Rebirth", "Chests", "Hatch", "Brawl", "AutoPunch",
+        "TrainWeight", "TrainPushups", "TrainSitups", "TrainHandstands",
         "SmartRock", "LockPosition", "AutoMachine", "AutoBestMachine", "StrengthRebirth",
         "TurboStrength", "MaxStrengthF2P", "AutoBoss", "AutoAgility", "SmartFarm",
         "AutoEquipAfterHatch", "AutoEvolveAfterHatch", "GoalEnabled"}
@@ -29,6 +30,26 @@ return function(settings, clock)
     end
     function M:canAct()
         return next(self.Reasons) == nil
+    end
+    M.Movements = {{"TrainWeight", "Weight"}, {"TrainPushups", "Pushups"}, {"TrainSitups", "Situps"}, {"TrainHandstands", "Handstands"}}
+    M.MovementConflicts = {"Train", "TurboStrength", "MaxStrengthF2P", "AutoMachine", "AutoBestMachine", "StrengthRebirth", "AutoAgility", "SmartRock", "AutoPunch", "SmartFarm", "LockPosition"}
+    function M:trainingMovement()
+        for _, pair in ipairs(self.Movements) do if settings[pair[1]] then return pair[2] end end
+    end
+    function M:clearMovements()
+        for _, pair in ipairs(self.Movements) do settings[pair[1]] = false end
+    end
+    function M:resolveMovement(key)
+        if not settings[key] then return end
+        for _, pair in ipairs(self.Movements) do
+            if pair[1] == key then
+                self:clearMovements()
+                settings[key] = true
+                for _, conflict in ipairs(self.MovementConflicts) do settings[conflict] = false end
+                return
+            end
+        end
+        if table.find(self.MovementConflicts, key) then self:clearMovements() end
     end
     function M:pause(reason, enabled)
         if (self.Reasons[reason] == true) == enabled then return end
@@ -106,6 +127,9 @@ return function(settings, clock)
         settings.GoalValue, settings.RebirthTarget, settings.ProgressionTarget, settings.SelectedMachine = nil, nil, nil, nil
         settings.StopAt = nil
         for key, value in pairs(validated) do settings[key] = value end
+        for _, pair in ipairs(self.Movements) do
+            if settings[pair[1]] then self:resolveMovement(pair[1]); break end
+        end
         self:pause("Manual", true)
         self:resetBreak()
         self:log("Perfil", "Configuracao restaurada; use Retomar para iniciar")

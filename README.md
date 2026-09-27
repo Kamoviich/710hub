@@ -18,7 +18,12 @@ As versoes antigas ja publicadas continuam no historico e nao sao bloqueadas ret
 
 **Manutencao:** a copia local completa do menu permanece em `710hub/710Hub.lua`; atualize o Worker usando `key-server/prepare.mjs` e Wrangler. Nao sobrescreva o carregador publico com essa copia completa. O modelo publico fica em `key-server/KeyLoader.template.lua` localmente.
 
-## Versao 2026.09-neon.19
+## Versao 2026.09-neon.20
+
+Treinos individuais em Farm: Peso (Weight), Flexoes (Pushups), Abdominais (Situps) e Parada de maos (Handstands). Um movimento por vez: ligar um desliga os outros e as rotinas que disputam ferramentas. Os treinos respeitam pausa, morte, comparacao, parada global e perfis salvos. Se a ferramenta faltar, aguardam sem usar outro movimento ou enviar treino generico. Auto Boss continua tendo prioridade temporaria; rebirth independente e preservado.
+
+Validacao: compilacao Luau e 115 verificacoes automatizadas, incluindo 17 para escolha exclusiva, conflitos e restauracao de perfis de movimentos. Animacoes e ganhos precisam ser conferidos no jogo.
+
 
 Atualizacao exclusivamente visual: icones de linha nas categorias e secoes (halteres, coroa, pet, meta, perfil, grafico e ajustes), haltere decorativo no cabecalho, indicador da aba ativa, bordas mais finas, gradientes discretos e maior espaco entre cartoes. Desenhos nativos da interface, sem downloads adicionais. Preserva os botoes, recursos e tema preto/amarelo. O enfeite do cabecalho e ocultado em telas estreitas para preservar a leitura.
 
