@@ -22,7 +22,7 @@ local startupOK, startupError = xpcall(function()
     startupLabel = Instance.new("TextLabel")
     startupLabel.Size = UDim2.new(0.8, 0, 0, 180)
     startupLabel.Position = UDim2.new(0.1, 0, 0.15, 0)
-    startupLabel.BackgroundColor3 = Color3.fromRGB(12, 23, 16)
+    startupLabel.BackgroundColor3 = Color3.fromRGB(12, 12, 10)
     startupLabel.TextColor3 = Color3.new(1, 1, 1)
     startupLabel.TextSize = 16
     startupLabel.TextWrapped = true
@@ -60,7 +60,7 @@ end
 
 local SESSION = {
     Alive = true,
-    Version = "2026.09-neon.13",
+    Version = "2026.09-neon.14",
     Connections = {},
 }
 
@@ -2379,16 +2379,16 @@ local TweenService = game:GetService("TweenService")
 local UIS = game:GetService("UserInputService")
 
 -- BEGIN MAINTENANCE MENU
--- Neon interface with responsive layout and shared category/search filtering.
+-- Black/yellow neon theme. Legacy color keys keep existing widgets compatible.
 local COLORS = {
-    Black = Color3.fromRGB(8, 11, 20), Black2 = Color3.fromRGB(13, 18, 30),
-    Panel = Color3.fromRGB(16, 23, 38), Panel2 = Color3.fromRGB(20, 29, 46),
-    Panel3 = Color3.fromRGB(28, 43, 60), Green = Color3.fromRGB(51, 255, 163),
-    GreenBright = Color3.fromRGB(107, 255, 201), GreenDark = Color3.fromRGB(15, 67, 58),
-    Yellow = Color3.fromRGB(255, 215, 102), YellowSoft = Color3.fromRGB(255, 235, 170),
-    White = Color3.fromRGB(242, 248, 255), Muted = Color3.fromRGB(181, 197, 218),
-    Off = Color3.fromRGB(101, 119, 143), Red = Color3.fromRGB(255, 105, 137),
-    NeonDim = Color3.fromRGB(36, 110, 95), Cyan = Color3.fromRGB(76, 218, 255),
+    Black = Color3.fromRGB(5, 5, 5), Black2 = Color3.fromRGB(12, 12, 12),
+    Panel = Color3.fromRGB(17, 17, 15), Panel2 = Color3.fromRGB(23, 23, 20),
+    Panel3 = Color3.fromRGB(37, 36, 21), Green = Color3.fromRGB(255, 238, 0),
+    GreenBright = Color3.fromRGB(255, 250, 115), GreenDark = Color3.fromRGB(61, 54, 5),
+    Yellow = Color3.fromRGB(255, 238, 0), YellowSoft = Color3.fromRGB(255, 248, 155),
+    White = Color3.fromRGB(250, 249, 239), Muted = Color3.fromRGB(205, 204, 190),
+    Off = Color3.fromRGB(125, 124, 112), Red = Color3.fromRGB(255, 184, 42),
+    NeonDim = Color3.fromRGB(116, 103, 10), Cyan = Color3.fromRGB(255, 211, 0),
 }
 local function addCorner(obj, radius)
     local item = Instance.new("UICorner")
@@ -2425,7 +2425,7 @@ local main = Instance.new("Frame")
 main.Name = "Main"; main.BackgroundColor3 = COLORS.Black; main.BorderSizePixel = 0
 main.Active = true; main.Parent = gui; addCorner(main, 18)
 addStroke(main, COLORS.Cyan, 1.5, .3)
-addGradient(main, COLORS.Black, Color3.fromRGB(11, 24, 32), 70)
+addGradient(main, COLORS.Black, Color3.fromRGB(17, 16, 7), 70)
 local header = Instance.new("Frame")
 header.Size = UDim2.new(1, -32, 0, 58); header.Position = UDim2.fromOffset(16, 8)
 header.BackgroundTransparency = 1; header.Active = true; header.Parent = main
@@ -2570,7 +2570,7 @@ do
     local stop = Instance.new("TextButton")
     stop.Size = UDim2.fromOffset(96, 32); stop.Position = UDim2.new(1, -102, 0, 5)
     stop.Text = "Parar tudo"; stop.TextSize = 13; stop.Font = Enum.Font.GothamBold
-    stop.TextColor3 = COLORS.Red; stop.BackgroundColor3 = Color3.fromRGB(54, 28, 42)
+    stop.TextColor3 = COLORS.Red; stop.BackgroundColor3 = Color3.fromRGB(49, 35, 8)
     stop.BorderSizePixel = 0; stop.Parent = bottom; addCorner(stop, 8)
     stop.Activated:Connect(stopAllAutomations)
     local status = Instance.new("TextLabel")

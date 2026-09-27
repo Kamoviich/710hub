@@ -6,11 +6,11 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/Kamoviich/710hub/main
 
 Abra Muscle Legends, execute o comando e aguarde o painel. RightShift abre/fecha o menu; End para as automacoes.
 
-## Versao 2026.09-neon.13
+## Versao 2026.09-neon.14
 
 ### Menu neon e leitura
 
-- Tema escuro com verde neon e ciano, linha animada no cabecalho, destaque ao passar o mouse e transicoes suaves entre categorias.
+- Tema preto com amarelo neon e dourado, linha animada no cabecalho, destaque ao passar o mouse e transicoes suaves entre categorias. Textos claros e alertas em ambar mantem o contraste.
 - Navegacao por **Farm, Bosses, Pets, Metas, Perfis, Sessao e Ajustes**. Em telas estreitas, deslize a barra de categorias horizontalmente.
 - Titulos de funcoes em 16px e descricoes em 14px, com quebra de linha e altura automatica. O botao **A+** aumenta para 18px/16px; **A−** restaura o tamanho padrao.
 - Busca global que ignora acentos. Clicar numa categoria limpa a busca.
