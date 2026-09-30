@@ -46,53 +46,6 @@ local function maintenanceUI()
         text.ZIndex = 22
         text.Parent = reportScroll
     end
-    local function field(title, value, callback)
-        local frame = Instance.new("Frame")
-        frame.Size = UDim2.new(1, -6, 0, 68)
-        frame.BackgroundColor3 = COLORS.Panel2
-        frame.Parent = scroll
-        addCorner(frame, 10)
-        local entry = UI:addEntry(frame, currentSection .. " " .. title)
-        local label = Instance.new("TextLabel")
-        label.Size = UDim2.new(1, -20, 0, 25)
-        label.Position = UDim2.fromOffset(10, 0)
-        label.Text = title
-        label.TextColor3 = COLORS.White
-        label.BackgroundTransparency = 1
-        label.TextSize = 14
-        label.Font = Enum.Font.GothamMedium
-        label.TextWrapped = true
-        label.TextXAlignment = Enum.TextXAlignment.Left
-        label.Parent = frame
-        local input = Instance.new("TextBox")
-        input.Size = UDim2.new(1, -20, 0, 30)
-        input.Position = UDim2.fromOffset(10, 29)
-        input.Text = tostring(value or "")
-        input.ClearTextOnFocus = false
-        input.TextSize = 16
-        input.Font = Enum.Font.Gotham
-        input.BorderSizePixel = 0
-        input.TextColor3 = COLORS.White
-        input.BackgroundColor3 = COLORS.Black2
-        input.Parent = frame
-        addCorner(input, 8)
-        entry.Resize = function()
-            label.TextSize = UI.LargeText and 16 or 14
-            local height = game:GetService("TextService"):GetTextSize(label.Text, label.TextSize, label.Font, Vector2.new(math.max(100, UI.Width - 66), 10000)).Y + 8
-            label.Position = UDim2.fromOffset(12, 9)
-            label.Size = UDim2.new(1, -24, 0, height)
-            input.Position = UDim2.fromOffset(12, height + 15)
-            input.Size = UDim2.new(1, -24, 0, 38)
-            frame.Size = UDim2.new(1, -9, 0, height + 65)
-        end
-        entry.Resize()
-        input.FocusLost:Connect(function()
-            local ok, message = callback(input.Text)
-            input.TextColor3 = ok and COLORS.White or COLORS.Red
-            setHubStatus(message or (ok and "Configurado" or "Valor invalido"))
-        end)
-        return input
-    end
     section("CONTROLE E PERFIS", "Salve configuracoes e suspenda o farm sem perder suas escolhas.")
     local _, stateTitle, stateDesc = card("Estado da sessao", "", function() end, COLORS.Yellow)
     card("Pausar / Retomar", "Mantem as opcoes. Pausas por morte ou vida baixa terminam quando o personagem estiver pronto.", function()

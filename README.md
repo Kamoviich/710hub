@@ -136,3 +136,6 @@ luau-compile --null 710Hub.lua
 
 ### Compatibilidade de op??es
 A ?ltima op??o ligada tem prioridade apenas sobre rotinas incompat?veis. O menu e o hist?rico indicam o que foi desligado. Treino + rebirth, m?quina + sele??o autom?tica e socos + pedras permanecem dispon?veis. Perfis carregados s?o normalizados em pausa. Rotinas desligadas n?o s?o reativadas sozinhas. Auto Boss suspende temporariamente o farm durante o combate.
+
+### Evento Overcharged ? Nova Phoenix
+A categoria Pets inclui uma op??o para abrir o cristal do evento at? obter Nova Phoenix ou atingir um limite configur?vel (padr?o: 100 solicita??es). O nome inicial do cristal ? `Charged Crystal`, inferido da tela; ? edit?vel no painel e precisa corresponder ao identificador aceito pelo jogo. A rotina usa a mesma abertura normal de cristais, desliga a abertura autom?tica comum por conflito e observa o invent?rio para parar quando o pet aparecer. O cart?o registra solicita??es, n?o confirma cobran?a nem pr?mio. A chance exibida no jogo ? 1%, sem garantia de resultado.

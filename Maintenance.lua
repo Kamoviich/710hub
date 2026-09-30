@@ -8,21 +8,21 @@ return function(settings, clock)
         Stalled = false, WasTraining = false, Samples = {}, ActiveSeconds = 0,
         BossCounts = {}, BossObservations = 0, BossRecent = {},
     }
-    M.AutoKeys = {"Train", "Rebirth", "Chests", "Hatch", "Brawl", "AutoPunch",
+    M.AutoKeys = {"Train", "Rebirth", "Chests", "Hatch", "AutoNovaPhoenix", "Brawl", "AutoPunch",
         "TrainWeight", "TrainPushups", "TrainSitups", "TrainHandstands", "PvpGood", "PvpEvil",
         "SmartRock", "LockPosition", "AutoMachine", "AutoBestMachine", "StrengthRebirth",
         "TurboStrength", "MaxStrengthF2P", "AutoBoss", "AutoAgility", "SmartFarm",
         "AutoEquipAfterHatch", "AutoEvolveAfterHatch", "GoalEnabled"}
     local booleans = {"BossReturn", "BossDefense", "ResumeAfterDeath", "HealthGuard", "StallAlerts", "PerformanceMode", "StabilityMode", "RebirthGuard", "BreakEnabled"}
     local numbers = {
-        PvpRadius = {10, 150}, RepDelay = {.05, 5}, HatchDelay = {.1, 30}, BossDistance = {2, 12},
+        NovaMaxOpens = {1, 1000}, PvpRadius = {10, 150}, RepDelay = {.05, 5}, HatchDelay = {.1, 30}, BossDistance = {2, 12},
         HealthLow = {5, 60}, HealthResume = {65, 100}, StallSeconds = {30, 600},
         GoalValue = {1, 1e15}, RebirthTarget = {1, 1e15}, ProgressionTarget = {1, 1e15},
         RebirthFloor = {0, 1e15}, RebirthInterval = {.5, 30}, BreakEvery = {1, 240}, BreakMinutes = {1, 60},
     }
     local choices = {SmartObjective = {"Força", "Durabilidade", "Agilidade", "Rebirths"},
         GoalStat = {"Strength", "Agility", "Durability", "Rebirths"}}
-    local strings = {"HatchCrystal", "SelectedMachine", "BossPreference"}
+    local strings = {"HatchCrystal", "NovaCrystal", "SelectedMachine", "BossPreference"}
 
     function M:log(kind, message)
         self.History[#self.History + 1] = {Time = math.floor(clock() - self.Started), Kind = kind, Message = tostring(message)}
@@ -51,6 +51,7 @@ return function(settings, clock)
         for _, key in ipairs(trainers) do conflict(mode, key) end
         for _, key in ipairs({"AutoBoss", "Brawl", "SmartRock", "AutoPunch", "LockPosition", "SmartFarm", "Rebirth", "StrengthRebirth"}) do conflict(mode, key) end
     end
+    conflict("Hatch", "AutoNovaPhoenix")
     conflict("PvpGood", "PvpEvil")
     function M:pvpEligible(good, evil)
         if type(good) ~= "number" or type(evil) ~= "number" or good ~= good or evil ~= evil or good < 0 or evil < 0 then return false end

@@ -12,7 +12,7 @@ for a, others in pairs(m.Conflicts) do
         local disabled = m:resolveConflicts(a)
         check(settings[a] and not settings[b], a .. " must win over " .. b)
         check(m.Conflicts[b][a], "symmetric rule")
-        check(settings.Hatch and settings.Chests and settings.GoalEnabled, "preserve independent helpers")
+        check((a == "AutoNovaPhoenix" or b == "AutoNovaPhoenix" or settings.Hatch) and settings.Chests and settings.GoalEnabled, "preserve independent helpers")
         check(table.find(disabled,b) ~= nil, "report disabled option")
         settings[a] = false; m:resolveConflicts(a)
         check(not settings[b], "do not secretly restart old mode")
