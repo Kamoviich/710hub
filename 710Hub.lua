@@ -66,7 +66,7 @@ end
 
 local SESSION = {
     Alive = true,
-    Version = "2026.10-daily.27",
+    Version = "2026.10-daily.28",
     Connections = {},
 }
 
@@ -145,7 +145,7 @@ local S = {
     AutoEquipAfterHatch=false, AutoEvolveAfterHatch=false,
     PerformanceMode=false, StabilityMode=false, GoalEnabled=false,
     SmartObjective="Força", GoalStat="Strength", GoalValue=nil,
-    HatchCrystal="Blue Crystal", NovaCrystal="Charged Crystal", NovaMaxOpens=100, RepDelay=.065, HatchDelay=.45,
+    HatchCrystal="Blue Crystal", NovaCrystal="Charged Crystal", NovaMaxOpens=100, FarmSpeed=2, RepDelay=.065, HatchDelay=.45,
     RebirthTarget=nil, SelectedMachine=nil,
     LastRebirthAttempt=0,
     RebirthGuard=false, RebirthFloor=0, RebirthInterval=1,
@@ -196,7 +196,7 @@ return function(settings, clock)
         "AutoEquipAfterHatch", "AutoEvolveAfterHatch", "GoalEnabled"}
     local booleans = {"BossAutoLoot", "BossReturn", "BossDefense", "ResumeAfterDeath", "HealthGuard", "StallAlerts", "PerformanceMode", "StabilityMode", "RebirthGuard", "BreakEnabled"}
     local numbers = {
-        NovaMaxOpens = {1, 1000}, PvpRadius = {10, 500}, PvpAttackRange = {1.5, 5}, RepDelay = {.05, 5}, HatchDelay = {.1, 30}, BossDistance = {2, 12},
+        FarmSpeed = {1, 3}, NovaMaxOpens = {1, 1000}, PvpRadius = {10, 500}, PvpAttackRange = {1.5, 5}, RepDelay = {.05, 5}, HatchDelay = {.1, 30}, BossDistance = {2, 12},
         HealthLow = {5, 60}, HealthResume = {65, 100}, StallSeconds = {30, 600},
         GoalValue = {1, 1e15}, RebirthTarget = {1, 1e15}, ProgressionTarget = {1, 1e15},
         RebirthFloor = {0, 1e15}, RebirthInterval = {.5, 30}, BreakEvery = {1, 240}, BreakMinutes = {1, 60},
@@ -208,6 +208,14 @@ return function(settings, clock)
     function M:log(kind, message)
         self.History[#self.History + 1] = {Time = math.floor(clock() - self.Started), Kind = kind, Message = tostring(message)}
         if #self.History > 150 then table.remove(self.History, 1) end
+    end
+    function M:farmPace()
+        local levels = {{.2, 1}, {.1, 4}, {.06, 8}}
+        local index = math.clamp(math.floor(tonumber(settings.FarmSpeed) or 2), 1, 3)
+        local pace = levels[index]
+        local delay, burst = pace[1], pace[2]
+        if settings.StabilityMode then delay, burst = math.max(delay, .14), math.min(burst, 3) end
+        return delay, burst
     end
     function M:canAct()
         return next(self.Reasons) == nil
@@ -625,7 +633,7 @@ end
 
 
 task.spawn(function()
-    while SESSION.Alive and task.wait(S.StabilityMode and .14 or .08) do
+    while SESSION.Alive and task.wait((M:farmPace())) do
         if M:canAct() and S.LockPosition and not HubRuntime.BossActive then
             local character = LP.Character
             local root = character and character:FindFirstChild("HumanoidRootPart")
@@ -1564,7 +1572,7 @@ local function equipStrengthTool()
 end
 
 local function fastStrengthBurst()
-    if not SESSION.Alive or not M:canAct() then return false end
+    if not SESSION.Alive or not M:canAct() or HubRuntime.BossActive then return false end
     local character = LP.Character
     local humanoid = character and character:FindFirstChildOfClass("Humanoid")
     if not character or not humanoid or humanoid.Health <= 0 then
@@ -1575,6 +1583,8 @@ local function fastStrengthBurst()
     if not event then return false end
 
     local tool = equipStrengthTool()
+    if not SESSION.Alive or not M:canAct() or HubRuntime.BossActive or LP.Character ~= character
+        or not (S.TurboStrength or S.MaxStrengthF2P) then return false end
     if tool and tool.Parent == character then
         pcall(function()
             tool:Activate()
@@ -1583,9 +1593,9 @@ local function fastStrengthBurst()
 
     -- Muscle Legends aceita "rep" como a ação de treino. Em vez de depender
     -- de uma máquina específica, enviamos uma rajada curta e limitada.
-    local burst = S.StabilityMode and 3 or 8
+    local _, burst = M:farmPace()
     for _ = 1, burst do
-        if not SESSION.Alive or not M:canAct() or not (S.TurboStrength or S.MaxStrengthF2P) then break end
+        if not SESSION.Alive or not M:canAct() or HubRuntime.BossActive or not (S.TurboStrength or S.MaxStrengthF2P) then break end
         safeFire(event, "rep")
     end
 
@@ -1597,8 +1607,9 @@ task.spawn(function()
     local windowStart = os.clock()
     local windowStrength = numberStat("Strength")
     local noGainWindows = 0
+    local windowRebirths = currentRebirths()
 
-    while SESSION.Alive and task.wait(S.StabilityMode and .14 or .08) do
+    while SESSION.Alive and task.wait((M:farmPace())) do
         if M:canAct() and S.TurboStrength and not HubRuntime.BossActive then
             if fastStrengthBurst() then
                 failures = 0
@@ -1610,7 +1621,10 @@ task.spawn(function()
                 local now = numberStat("Strength")
                 local gained = math.max(0, now - windowStrength)
 
-                if gained > 0 then
+                local rebirths = currentRebirths()
+                if rebirths ~= windowRebirths then
+                    noGainWindows = 0
+                elseif gained > 0 then
                     noGainWindows = 0
                     setHubStatus("Força Rápida • +"..math.floor(gained).." em 2.5s")
                 else
@@ -1618,10 +1632,11 @@ task.spawn(function()
                     setHubStatus("Força Rápida • aguardando ganho...")
                 end
 
+                windowRebirths = rebirths
                 windowStrength = now
                 windowStart = os.clock()
 
-                if noGainWindows >= 2 or failures >= 10 then
+                if noGainWindows >= 6 or failures >= 20 then
                     S.TurboStrength = false
                     noGainWindows = 0
                     failures = 0
@@ -2194,7 +2209,7 @@ task.spawn(function()
     local lastMeasure = os.clock()
     local failures = 0
 
-    while SESSION.Alive and task.wait(S.StabilityMode and .18 or .10) do
+    while SESSION.Alive and task.wait((M:farmPace())) do
         if M:canAct() and S.MaxStrengthF2P then
             if os.clock() - lastPetRefresh >= 10 then
                 pcall(equipBestStrengthOwned)
@@ -3247,6 +3262,7 @@ for sectionName, category in pairs(UI.Groups) do
     elseif category == "Perfis" or category == "Sessão" then UI.Groups[sectionName] = "Ajustes" end
 end
 UI.DailyTitles = {
+    ["Velocidade do farm"] = true,
     ["Rebirths adicionais no ciclo personalizado"] = true,
     ["Iniciar ciclo personalizado"] = true,
     ["Comparar metodos de treino"] = true,
@@ -4797,6 +4813,15 @@ local function maintenanceUI()
         showReport("Comparacao", table.concat(lines, "\n"))
     end, COLORS.Yellow)
     section("RENDIMENTO E PLANEJAMENTO", "Acompanhe ganhos reais e organize os ciclos de treino.")
+    card("Velocidade do farm", "Clique: Normal / Rapido / Turbo. Ajusta Forca Rapida e o treino em rajada do F2P; nao multiplica a forca concedida pelo servidor.", function(_, title, detail)
+        S.FarmSpeed = math.floor(S.FarmSpeed or 2) % 3 + 1
+        local names = {"Normal", "Rapido", "Turbo"}
+        local delay, burst = M:farmPace()
+        title.Text = "Velocidade do farm: " .. names[S.FarmSpeed]
+        detail.Text = string.format("Ate %d tentativas de rep por ciclo de %.2fs. Modo Estavel reduz o ritmo. Compare o rendimento real abaixo.", burst, delay)
+        setHubStatus("Velocidade: " .. names[S.FarmSpeed])
+    end, COLORS.Green)
+
     local _, rateTitle, rateDesc = card("Rendimento recente", "Aguardando pelo menos 10 segundos de treino.", function()
         showReport("Rendimento", "A taxa usa ate 60 segundos de observacoes. Pausas, rebirth e quedas de forca reiniciam a janela.\nA previsao depende de manter o mesmo ritmo; nao e garantia de ganho.")
     end, COLORS.Yellow)
