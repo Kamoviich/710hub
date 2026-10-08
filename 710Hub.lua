@@ -66,7 +66,7 @@ end
 
 local SESSION = {
     Alive = true,
-    Version = "2026.10-daily.29",
+    Version = "2026.10-daily.30",
     Connections = {},
 }
 
@@ -145,7 +145,7 @@ local S = {
     AutoEquipAfterHatch=false, AutoEvolveAfterHatch=false,
     PerformanceMode=false, StabilityMode=false, GoalEnabled=false,
     SmartObjective="Força", GoalStat="Strength", GoalValue=nil,
-    HatchCrystal="Blue Crystal", NovaCrystal="Charged Crystal", NovaMaxOpens=100, FarmSpeed=2, FarmCustom=false, FarmIntervalMs=100, FarmReps=4, RepDelay=.065, HatchDelay=.45,
+    HatchCrystal="Blue Crystal", NovaCrystal="Charged Crystal", NovaMaxOpens=100, FarmSpeed=2, PreserveFarmPets=false, FarmCustom=false, FarmIntervalMs=100, FarmReps=4, RepDelay=.065, HatchDelay=.45,
     RebirthTarget=nil, SelectedMachine=nil,
     LastRebirthAttempt=0,
     RebirthGuard=false, RebirthFloor=0, RebirthInterval=1,
@@ -194,7 +194,7 @@ return function(settings, clock)
         "SmartRock", "LockPosition", "AutoMachine", "AutoBestMachine", "StrengthRebirth",
         "TurboStrength", "MaxStrengthF2P", "AutoBoss", "AutoAgility", "SmartFarm",
         "AutoEquipAfterHatch", "AutoEvolveAfterHatch", "GoalEnabled"}
-    local booleans = {"FarmCustom", "BossAutoLoot", "BossReturn", "BossDefense", "ResumeAfterDeath", "HealthGuard", "StallAlerts", "PerformanceMode", "StabilityMode", "RebirthGuard", "BreakEnabled"}
+    local booleans = {"PreserveFarmPets", "FarmCustom", "BossAutoLoot", "BossReturn", "BossDefense", "ResumeAfterDeath", "HealthGuard", "StallAlerts", "PerformanceMode", "StabilityMode", "RebirthGuard", "BreakEnabled"}
     local numbers = {
         FarmIntervalMs = {1, 5000}, FarmReps = {1, 160}, FarmSpeed = {1, 3}, NovaMaxOpens = {1, 1000}, PvpRadius = {10, 500}, PvpAttackRange = {1.5, 5}, RepDelay = {.05, 5}, HatchDelay = {.1, 30}, BossDistance = {2, 12},
         HealthLow = {5, 60}, HealthResume = {65, 100}, StallSeconds = {30, 600},
@@ -1883,31 +1883,43 @@ local function equipBestOwned()
 end
 
 local function equipBestStrengthOwned()
-    if not SESSION.Alive or not M:canAct() then return false end
+    if not SESSION.Alive or not M:canAct() or M.PetEquipBusy then return false end
     refreshRemotes()
     if not R.EquipPet then return false end
-
     local pets = allOwnedPets()
     if #pets == 0 then return false end
-
-    table.sort(pets, function(a,b)
-        return petStrengthScore(a) > petStrengthScore(b)
-    end)
-
     local equipped, slots = equippedPets()
-    if slots <= 0 then slots = 3 end
-
-    for pet in pairs(equipped) do
-        safeFire(R.EquipPet, "unequipPet", pet)
-        task.wait(S.StabilityMode and .18 or .10)
-    end
-
-    for i = 1, math.min(slots, #pets) do
-        safeFire(R.EquipPet, "equipPet", pets[i].pet)
-        task.wait(S.StabilityMode and .22 or .12)
-    end
-
-    return true
+    if slots <= 0 then return false end
+    table.sort(pets, function(a,b)
+        local sa, sb = petStrengthScore(a), petStrengthScore(b)
+        if sa ~= sb then return sa > sb end
+        if equipped[a.pet] ~= equipped[b.pet] then return equipped[a.pet] == true end
+        return tostring(a.pet) < tostring(b.pet)
+    end)
+    local desired = {}
+    for i = 1, math.min(slots, #pets) do desired[pets[i].pet] = true end
+    M.PetEquipBusy = true
+    local ok, result = pcall(function()
+        for pet in pairs(equipped) do
+            if not desired[pet] then
+                if not SESSION.Alive or not M:canAct() then return false end
+                if not safeFire(R.EquipPet, "unequipPet", pet) then return false end
+                task.wait(S.StabilityMode and .18 or .10)
+            end
+        end
+        for i = 1, math.min(slots, #pets) do
+            local pet = pets[i].pet
+            if not equipped[pet] then
+                if not SESSION.Alive or not M:canAct() then return false end
+                if not safeFire(R.EquipPet, "equipPet", pet) then return false end
+                task.wait(S.StabilityMode and .22 or .12)
+            end
+        end
+        return true
+    end)
+    M.PetEquipBusy = false
+    if not ok then setHubError(tostring(result)); return false end
+    return result
 end
 
 local function evolveReadyOwned()
@@ -2227,7 +2239,7 @@ task.spawn(function()
 
     while SESSION.Alive and task.wait((M:farmPace())) do
         if M:canAct() and S.MaxStrengthF2P then
-            if os.clock() - lastPetRefresh >= 10 then
+            if not S.PreserveFarmPets and os.clock() - lastPetRefresh >= 10 and not HubRuntime.BossActive then
                 pcall(equipBestStrengthOwned)
                 lastPetRefresh = os.clock()
             end
@@ -3278,6 +3290,7 @@ for sectionName, category in pairs(UI.Groups) do
     elseif category == "Perfis" or category == "Sessão" then UI.Groups[sectionName] = "Ajustes" end
 end
 UI.DailyTitles = {
+    ["Preservar meus pets no F2P"] = true,
     ["Intervalo do farm (ms)"] = true,
     ["Repeticoes por ciclo"] = true,
     ["Ritmo aplicado"] = true,
@@ -4831,6 +4844,7 @@ local function maintenanceUI()
         end
         showReport("Comparacao", table.concat(lines, "\n"))
     end, COLORS.Yellow)
+    toggle("Preservar meus pets no F2P", "Impede a troca periodica de pets pelo farm F2P Maximo. Equipar pets manualmente pelo menu continua disponivel.", "PreserveFarmPets")
     section("RENDIMENTO E PLANEJAMENTO", "Acompanhe ganhos reais e organize os ciclos de treino.")
     card("Velocidade do farm", "Clique: Normal / Rapido / Turbo. Ajusta Forca Rapida e o treino em rajada do F2P; nao multiplica a forca concedida pelo servidor.", function(_, title, detail)
         if M.Comparing then setHubStatus("Aguarde a comparacao terminar"); return end
