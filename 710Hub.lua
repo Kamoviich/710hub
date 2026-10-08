@@ -66,7 +66,7 @@ end
 
 local SESSION = {
     Alive = true,
-    Version = "2026.10-daily.26",
+    Version = "2026.10-daily.27",
     Connections = {},
 }
 
@@ -866,11 +866,11 @@ return function(workspace, players)
         return seen
     end
     function Loot:candidates(origin, baseline, attempted)
-        local result = {}
+        local result, grouped = {}, {}
         for _, item in ipairs(workspace:GetDescendants()) do
             if item:IsA("BasePart") and not baseline[item] and not attempted[item]
                 and (item.Position - origin).Magnitude <= 35 then
-                local excluded, marked, ancestor = false, false, item
+                local excluded, marked, ancestor, owner = false, false, item, item
                 for _, player in ipairs(players:GetPlayers()) do
                     if player.Character and item:IsDescendantOf(player.Character) then excluded = true end
                 end
@@ -878,15 +878,59 @@ return function(workspace, players)
                     local name = string.lower(ancestor.Name)
                     if ancestor:GetAttribute("BossReward") == true or ancestor:GetAttribute("IsLoot") == true
                         or name:find("reward", 1, true) or name:find("recompensa", 1, true)
-                        or name:find("drop", 1, true) or name:find("loot", 1, true) then marked = true end
+                        or name:find("drop", 1, true) or name:find("loot", 1, true)
+                        or name:find("chest", 1, true) or name:find("bau", 1, true) then
+                        marked = true
+                        if ancestor:IsA("Model") then owner = ancestor end
+                        if ancestor:IsA("Model") and baseline[ancestor] then excluded = true end
+                    end
                     if ancestor:FindFirstChildOfClass("Humanoid") or ancestor:GetAttribute("IsPet") == true then excluded = true end
                     ancestor = ancestor.Parent
                 end
-                if marked and not excluded then result[#result + 1] = item end
+                if marked and not excluded and not attempted[owner] then
+                    local previous = grouped[owner]
+                    if not previous or (item.Position - origin).Magnitude < (previous.Position - origin).Magnitude then
+                        grouped[owner] = item
+                    end
+                end
             end
         end
+        self.Owners = {}
+        for owner, item in pairs(grouped) do result[#result + 1] = item; self.Owners[item] = owner end
         table.sort(result, function(a, b) return (a.Position - origin).Magnitude < (b.Position - origin).Magnitude end)
         return result
+    end
+    function Loot:prompt(owner)
+        local prompts = {}
+        for _, item in ipairs(owner:GetDescendants()) do
+            if item:IsA("ProximityPrompt") and item.Enabled then prompts[#prompts + 1] = item end
+        end
+        -- Ambiguous interactions need identification instead of choosing randomly.
+        if #prompts ~= 1 then return nil end
+        local prompt = prompts[1]
+        local text = string.lower(prompt.ActionText .. " " .. prompt.ObjectText)
+        if text:find("buy",1,true) or text:find("purchase",1,true) or text:find("compr",1,true)
+            or text:find("robux",1,true) then return nil end
+        if text:find("open",1,true) or text:find("claim",1,true) or text:find("collect",1,true)
+            or text:find("abrir",1,true) or text:find("colet",1,true) or text:find("resgat",1,true) then return prompt end
+    end
+    function Loot:rewardText(playerGui)
+        if not playerGui then return nil end
+        for _, item in ipairs(playerGui:GetDescendants()) do
+            if item:IsA("TextLabel") or item:IsA("TextButton") then
+                local text = string.upper(item.Text:gsub("<[^>]+>", ""))
+                if text:find("CHEST REWARDS", 1, true) or text:find("RECOMPENSAS DO BA", 1, true) then
+                    local current, visible = item, true
+                    while current and current ~= playerGui do
+                        if current.Name:find("710", 1, true) then visible = false; break end
+                        if current:IsA("GuiObject") and not current.Visible then visible = false; break end
+                        if current:IsA("ScreenGui") and not current.Enabled then visible = false; break end
+                        current = current.Parent
+                    end
+                    if visible then return item.Text end
+                end
+            end
+        end
     end
     return Loot
 end
@@ -903,6 +947,8 @@ local function beginBossFight(target)
     end
 
     M.BossLootBaseline = BossLoot:snapshot()
+    M.BossRewardWasVisible = BossLoot:rewardText(LP:FindFirstChildOfClass("PlayerGui")) ~= nil
+    M.BossLootResult = "Aguardando fim do combate"
     M.BossLastPosition = bossRoot(target) and bossRoot(target).Position
     HubRuntime.BossActive = true
     HubRuntime.BossModel = target
@@ -966,6 +1012,7 @@ task.spawn(function()
             if not M:bossMayMove() then M:setBossState("Pausado: " .. M:reasonText()); return end
             if M.BossLootUntil then
                 if not S.BossAutoLoot or os.clock() >= M.BossLootUntil then
+                    M.BossLootResult = "Coleta encerrada sem nova tela de recompensa observada"
                     finishBossFight(true); currentBoss, blockedSince = nil, nil
                     return
                 end
@@ -976,14 +1023,39 @@ task.spawn(function()
                 if not root or not hum or hum.Health <= 0 then finishBossFight(false); currentBoss = nil; return end
                 if os.clock() < (M.BossLootNextScan or 0) then return end
                 M.BossLootNextScan = os.clock() + .5
+                local reward = BossLoot:rewardText(LP:FindFirstChildOfClass("PlayerGui"))
+                if reward and not M.BossRewardWasVisible then
+                    M.BossLootResult = "Nova tela de recompensa observada"
+                    M:log("Recompensa", M.BossLootResult)
+                    finishBossFight(true); currentBoss, blockedSince = nil, nil
+                    return
+                end
+                M.BossRewardWasVisible = reward ~= nil
                 local drops = BossLoot:candidates(M.BossLastPosition, M.BossLootBaseline or {}, M.BossLootAttempted)
                 local drop = drops[1]
                 if drop and drop.Parent then
-                    M.BossLootAttempted[drop] = true
-                    M:setBossState("Coletando por contato: " .. drop.Name)
+                    local owner = BossLoot.Owners[drop] or drop
+                    M.BossLootAttempted[owner] = true
+                    M:setBossState("Tentando coletar: " .. owner.Name)
                     root.CFrame = CFrame.new(drop.Position + Vector3.new(0, 1, 0))
                     root.AssemblyLinearVelocity = Vector3.zero
-                    M:log("Drop", "Contato tentado: " .. drop.Name .. "; concessao depende do servidor")
+                    local prompt = BossLoot:prompt(owner)
+                    if prompt then
+                        local anchor = prompt.Parent
+                        local position = anchor:IsA("Attachment") and anchor.WorldPosition
+                            or anchor:IsA("BasePart") and anchor.Position or drop.Position
+                        if (root.Position - position).Magnitude <= prompt.MaxActivationDistance then
+                            local begun = pcall(function() prompt:InputHoldBegin() end)
+                            if begun then
+                                local deadline = os.clock() + math.min(prompt.HoldDuration, 5) + .1
+                                repeat task.wait(.05) until os.clock() >= deadline or not SESSION.Alive
+                                    or not S.AutoBoss or not S.BossAutoLoot or not M:canAct()
+                                    or LP.Character ~= character or not prompt.Parent or hum.Health <= 0
+                                pcall(function() prompt:InputHoldEnd() end)
+                            end
+                        end
+                    end
+                    M:log("Drop", "Interacao tentada: " .. owner.Name .. "; aguardando resposta do jogo")
                 else M:setBossState("Aguardando drops reconhecidos (ate 10s)") end
                 return
             end
@@ -1923,9 +1995,9 @@ end)
 
 task.spawn(function()
     while SESSION.Alive and task.wait(2) do
-        if M:canAct() and S.Chests then
+        if M:canAct() and S.Chests and not HubRuntime.BossActive then
             for _,name in ipairs(CHESTS) do
-                if not SESSION.Alive or not M:canAct() or not S.Chests then break end
+                if not SESSION.Alive or not M:canAct() or not S.Chests or HubRuntime.BossActive then break end
                 safeInvoke(R.Chest, name)
                 task.wait(.12)
             end
@@ -3174,7 +3246,13 @@ for sectionName, category in pairs(UI.Groups) do
     if category == "Metas" then UI.Groups[sectionName] = "Farm"
     elseif category == "Perfis" or category == "Sessão" then UI.Groups[sectionName] = "Ajustes" end
 end
-UI.DailyTitles = {}
+UI.DailyTitles = {
+    ["Rebirths adicionais no ciclo personalizado"] = true,
+    ["Iniciar ciclo personalizado"] = true,
+    ["Comparar metodos de treino"] = true,
+    ["Resultado da comparacao"] = true,
+    ["Aplicar melhor treino medido"] = true,
+}
 for _, title in ipairs({"Força Rápida", "Rebirth automático", "Meta de rebirth: sem limite",
     "Ciclo Força + Rebirth", "Rendimento recente", "Retomar depois de morrer",
     "Auto Kill Boss / farm de boss", "Boss: aguardando spawn", "Retornar depois do boss", "Coletar drops do boss",
@@ -3633,7 +3711,7 @@ toggle(
     canAutoBoss
 )
 
-toggle("Coletar drops do boss", "Apos o combate, procura drops novos identificados perto do boss por 10 segundos e tenta coleta por contato antes de retornar.", "BossAutoLoot")
+toggle("Coletar drops do boss", "Procura novos baus e drops perto do boss; tenta contato ou interacao de coleta disponivel, e observa a tela de recompensa antes de retornar.", "BossAutoLoot")
 
 local _, bossStatusTitle, bossStatusDesc = card(
     "Boss: aguardando spawn",
@@ -3653,7 +3731,7 @@ task.spawn(function()
                 or "Vida indisponivel")
         elseif S.AutoBoss then
             bossStatusTitle.Text = "Boss: " .. (M.BossState or "aguardando spawn")
-            bossStatusDesc.Text = "Aguardando spawn. Mortes observadas: " .. HubRuntime.BossDeathsObserved
+            bossStatusDesc.Text = "Mortes observadas: " .. HubRuntime.BossDeathsObserved .. " | " .. (M.BossLootResult or "Aguardando spawn")
         else
             bossStatusTitle.Text = "Boss: Auto Boss desligado"
             bossStatusDesc.Text = "Ative a opção acima para começar a monitorar os spawns."
