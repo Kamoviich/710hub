@@ -66,7 +66,7 @@ end
 
 local SESSION = {
     Alive = true,
-    Version = "2026.10-daily.28",
+    Version = "2026.10-daily.29",
     Connections = {},
 }
 
@@ -145,7 +145,7 @@ local S = {
     AutoEquipAfterHatch=false, AutoEvolveAfterHatch=false,
     PerformanceMode=false, StabilityMode=false, GoalEnabled=false,
     SmartObjective="Força", GoalStat="Strength", GoalValue=nil,
-    HatchCrystal="Blue Crystal", NovaCrystal="Charged Crystal", NovaMaxOpens=100, FarmSpeed=2, RepDelay=.065, HatchDelay=.45,
+    HatchCrystal="Blue Crystal", NovaCrystal="Charged Crystal", NovaMaxOpens=100, FarmSpeed=2, FarmCustom=false, FarmIntervalMs=100, FarmReps=4, RepDelay=.065, HatchDelay=.45,
     RebirthTarget=nil, SelectedMachine=nil,
     LastRebirthAttempt=0,
     RebirthGuard=false, RebirthFloor=0, RebirthInterval=1,
@@ -194,9 +194,9 @@ return function(settings, clock)
         "SmartRock", "LockPosition", "AutoMachine", "AutoBestMachine", "StrengthRebirth",
         "TurboStrength", "MaxStrengthF2P", "AutoBoss", "AutoAgility", "SmartFarm",
         "AutoEquipAfterHatch", "AutoEvolveAfterHatch", "GoalEnabled"}
-    local booleans = {"BossAutoLoot", "BossReturn", "BossDefense", "ResumeAfterDeath", "HealthGuard", "StallAlerts", "PerformanceMode", "StabilityMode", "RebirthGuard", "BreakEnabled"}
+    local booleans = {"FarmCustom", "BossAutoLoot", "BossReturn", "BossDefense", "ResumeAfterDeath", "HealthGuard", "StallAlerts", "PerformanceMode", "StabilityMode", "RebirthGuard", "BreakEnabled"}
     local numbers = {
-        FarmSpeed = {1, 3}, NovaMaxOpens = {1, 1000}, PvpRadius = {10, 500}, PvpAttackRange = {1.5, 5}, RepDelay = {.05, 5}, HatchDelay = {.1, 30}, BossDistance = {2, 12},
+        FarmIntervalMs = {1, 5000}, FarmReps = {1, 160}, FarmSpeed = {1, 3}, NovaMaxOpens = {1, 1000}, PvpRadius = {10, 500}, PvpAttackRange = {1.5, 5}, RepDelay = {.05, 5}, HatchDelay = {.1, 30}, BossDistance = {2, 12},
         HealthLow = {5, 60}, HealthResume = {65, 100}, StallSeconds = {30, 600},
         GoalValue = {1, 1e15}, RebirthTarget = {1, 1e15}, ProgressionTarget = {1, 1e15},
         RebirthFloor = {0, 1e15}, RebirthInterval = {.5, 30}, BreakEvery = {1, 240}, BreakMinutes = {1, 60},
@@ -214,8 +214,24 @@ return function(settings, clock)
         local index = math.clamp(math.floor(tonumber(settings.FarmSpeed) or 2), 1, 3)
         local pace = levels[index]
         local delay, burst = pace[1], pace[2]
+        if settings.FarmCustom then
+            delay = math.clamp(settings.FarmIntervalMs or 100, 1, 5000) / 1000
+            burst = math.clamp(math.floor(settings.FarmReps or 4), 1, 160)
+        end
         if settings.StabilityMode then delay, burst = math.max(delay, .14), math.min(burst, 3) end
         return delay, burst
+    end
+    function M:setFarmTiming(key, value)
+        if self.Comparing then return false, "Aguarde a comparacao terminar" end
+        if key ~= "FarmIntervalMs" and key ~= "FarmReps" then return false, "Campo invalido" end
+        local n = tonumber(value)
+        local upper = key == "FarmReps" and 160 or 5000
+        if not n or n ~= n or n % 1 ~= 0 or n < 1 or n > upper then
+            return false, "Use um inteiro de 1 a " .. upper
+        end
+        settings[key], settings.FarmCustom = n, true
+        self.BestTraining = nil
+        return true, "Ritmo personalizado aplicado; ative Forca Rapida para usar"
     end
     function M:canAct()
         return next(self.Reasons) == nil
@@ -633,7 +649,7 @@ end
 
 
 task.spawn(function()
-    while SESSION.Alive and task.wait((M:farmPace())) do
+    while SESSION.Alive and task.wait(S.StabilityMode and .14 or .08) do
         if M:canAct() and S.LockPosition and not HubRuntime.BossActive then
             local character = LP.Character
             local root = character and character:FindFirstChild("HumanoidRootPart")
@@ -3262,6 +3278,9 @@ for sectionName, category in pairs(UI.Groups) do
     elseif category == "Perfis" or category == "Sessão" then UI.Groups[sectionName] = "Ajustes" end
 end
 UI.DailyTitles = {
+    ["Intervalo do farm (ms)"] = true,
+    ["Repeticoes por ciclo"] = true,
+    ["Ritmo aplicado"] = true,
     ["Velocidade do farm"] = true,
     ["Rebirths adicionais no ciclo personalizado"] = true,
     ["Iniciar ciclo personalizado"] = true,
@@ -4814,6 +4833,8 @@ local function maintenanceUI()
     end, COLORS.Yellow)
     section("RENDIMENTO E PLANEJAMENTO", "Acompanhe ganhos reais e organize os ciclos de treino.")
     card("Velocidade do farm", "Clique: Normal / Rapido / Turbo. Ajusta Forca Rapida e o treino em rajada do F2P; nao multiplica a forca concedida pelo servidor.", function(_, title, detail)
+        if M.Comparing then setHubStatus("Aguarde a comparacao terminar"); return end
+        S.FarmCustom, M.BestTraining = false, nil
         S.FarmSpeed = math.floor(S.FarmSpeed or 2) % 3 + 1
         local names = {"Normal", "Rapido", "Turbo"}
         local delay, burst = M:farmPace()
@@ -4821,6 +4842,14 @@ local function maintenanceUI()
         detail.Text = string.format("Ate %d tentativas de rep por ciclo de %.2fs. Modo Estavel reduz o ritmo. Compare o rendimento real abaixo.", burst, delay)
         setHubStatus("Velocidade: " .. names[S.FarmSpeed])
     end, COLORS.Green)
+
+    field("Intervalo do farm (ms)", S.FarmIntervalMs, function(value)
+        return M:setFarmTiming("FarmIntervalMs", value)
+    end)
+    field("Repeticoes por ciclo", S.FarmReps, function(value)
+        return M:setFarmTiming("FarmReps", value)
+    end)
+    local _, paceTitle, paceDesc = card("Ritmo aplicado", "", function() end, COLORS.Yellow)
 
     local _, rateTitle, rateDesc = card("Rendimento recente", "Aguardando pelo menos 10 segundos de treino.", function()
         showReport("Rendimento", "A taxa usa ate 60 segundos de observacoes. Pausas, rebirth e quedas de forca reiniciam a janela.\nA previsao depende de manter o mesmo ritmo; nao e garantia de ganho.")
@@ -4906,6 +4935,11 @@ local function maintenanceUI()
                 or (M.Stalled and "ALERTA: farm sem progresso. Abra o diagnostico." or HubRuntime.Status)
             profileTitle.Text = "Perfil: slot " .. M.ProfileSlot
             pvpStatus.Text = M.PvpStatus or "Desligado"
+            local interval, reps = M:farmPace()
+            paceTitle.Text = string.format("%d reps por ciclo | intervalo %.0f ms", reps, interval * 1000)
+            paceDesc.Text = (S.FarmCustom and "Personalizado" or "Preset")
+                .. string.format(" | teto geral: %d chamadas/s | chamadas cortadas: %d", S.StabilityMode and 45 or 160, HubRuntime.SkippedRemoteCalls)
+                .. "\nAplica-se a Forca Rapida e a rajada F2P. Modo Estavel pode reduzir os valores. Intervalos dependem dos frames; reps aceitas dependem do servidor."
             observedBossDesc.Text = M.VisibleBossText or "Procurando..."
             local rate = M:strengthRate()
             local target = M.PlanningTarget or 1000000
