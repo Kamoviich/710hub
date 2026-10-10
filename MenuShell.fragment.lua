@@ -221,7 +221,7 @@ list.Padding = UDim.new(0, 12); list.SortOrder = Enum.SortOrder.LayoutOrder; lis
 local searchQuery, currentSection = "", ""
 local searchEntries = {}
 local UI = {Category = "Farm", CurrentCategory = "Farm", Order = 0, Tabs = {}, Width = 980,
-    ContentWidth = 730, LargeText = false, Stats = {}, TabBadges = {}, TabLabels = {}}
+    ContentWidth = 730, LargeText = false, Stats = {}, TabBadges = {}, TabLabels = {}, DailyTitles = {}}
 UI.Descriptions = {
     Farm = "Treino, equipamentos e ganho de força.", Bosses = "Encontros, defesa e recompensas.",
     PvP = "Jogadores, combate e filtros de karma.", Pets = "Sua coleção, cristais e evolução.",
