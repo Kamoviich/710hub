@@ -32,7 +32,16 @@ local function maintenanceUI()
         local text = Instance.new("TextBox")
         text.Size = UDim2.new(1, -12, 0, 0)
         text.AutomaticSize = Enum.AutomaticSize.Y
-        text.Text = body
+        text.Text = type(body) == "function" and body() or body
+        if type(body) == "function" then
+            task.spawn(function()
+                while SESSION.Alive and frame.Parent do
+                    local ok, value = pcall(body)
+                    if ok then text.Text = value end
+                    task.wait(.5)
+                end
+            end)
+        end
         text.TextEditable = false
         text.ClearTextOnFocus = false
         text.MultiLine = true
@@ -80,7 +89,7 @@ local function maintenanceUI()
     card("Diagnosticar boss proximo", "Mostra nomes, vida e motivo de reconhecimento dos NPCs ate 150 studs. Abra perto do boss.", function()
         showReport("Diagnostico de bosses", M:bossDiagnostic())
     end, COLORS.Yellow)
-    field("Boss preferido (Qualquer ou nome exato)", S.BossPreference, function(value)
+    field("Boss preferido (desempate por nome)", S.BossPreference, function(value)
         value = value:match("^%s*(.-)%s*$")
         if #value < 1 or #value > 150 then return false, "Nome precisa ter entre 1 e 150 caracteres" end
         S.BossPreference = value
@@ -106,15 +115,21 @@ local function maintenanceUI()
     end)
 
     section("PVP E KARMA", "Combate contra jogadores proximos; o jogo decide o dano e os ganhos.")
+    toggle("PvP: qualquer jogador", "Aproxima e usa Punch no jogador vivo mais proximo, sem filtro de karma. Ignora protecao de spawn.", "PvpAny")
     toggle("PvP: karma bom", "Busca jogadores com mais karma ruim que bom. Desliga apenas rotinas incompativeis; ignora karma desconhecido e neutros.", "PvpGood")
     toggle("PvP: karma ruim", "Busca jogadores com mais karma bom que ruim. Desliga apenas rotinas incompativeis; ignora karma desconhecido e neutros.", "PvpEvil")
     field("Raio de busca PvP (studs)", S.PvpRadius, function(value)
         local number = tonumber(value)
-        if not number or number ~= number or number < 10 or number > 150 then return false, "Use de 10 a 150 studs" end
+        if not number or number ~= number or number < 10 or number > 500 then return false, "Use de 10 a 500 studs" end
         S.PvpRadius = number; return true
     end)
+    field("Distancia do soco (studs)", S.PvpAttackRange, function(value)
+        local number = tonumber(value)
+        if not number or number ~= number or number < 1.5 or number > 5 then return false, "Use de 1.5 a 5 studs" end
+        S.PvpAttackRange = number; return true
+    end)
     local _, _, pvpStatus = card("Estado do PvP", "Desligado", function()
-        showReport("PvP e karma", (M.PvpStatus or "Desligado") .. "\n\n" .. (M.PvpDiagnostic or "Ligue um modo para analisar os jogadores.") .. "\n\nNao garante kills ou karma. Use Parar tudo para encerrar. Perfis carregados nao iniciam PvP automaticamente.")
+        showReport("PvP ao vivo", function() return (M.PvpStatus or "Desligado") .. "\n\n" .. (M.PvpDiagnostic or "Ligue um modo para analisar os jogadores.") .. "\n\nNao garante kills ou karma. Use Parar tudo para encerrar. Perfis carregados nao iniciam PvP automaticamente." end)
     end, COLORS.Yellow)
 
     section("METAS E COMPARACAO", "Metas digitadas e recomendacao baseada em treino observado.")
@@ -145,7 +160,27 @@ local function maintenanceUI()
         end
         showReport("Comparacao", table.concat(lines, "\n"))
     end, COLORS.Yellow)
+    toggle("Preservar meus pets no F2P", "Impede a troca periodica de pets pelo farm F2P Maximo. Equipar pets manualmente pelo menu continua disponivel.", "PreserveFarmPets")
     section("RENDIMENTO E PLANEJAMENTO", "Acompanhe ganhos reais e organize os ciclos de treino.")
+    card("Velocidade do farm", "Clique: Normal / Rapido / Turbo. Ajusta Forca Rapida e o treino em rajada do F2P; nao multiplica a forca concedida pelo servidor.", function(_, title, detail)
+        if M.Comparing then setHubStatus("Aguarde a comparacao terminar"); return end
+        S.FarmCustom, M.BestTraining = false, nil
+        S.FarmSpeed = math.floor(S.FarmSpeed or 2) % 3 + 1
+        local names = {"Normal", "Rapido", "Turbo"}
+        local delay, burst = M:farmPace()
+        title.Text = "Velocidade do farm: " .. names[S.FarmSpeed]
+        detail.Text = string.format("Ate %d tentativas de rep por ciclo de %.2fs. Modo Estavel reduz o ritmo. Compare o rendimento real abaixo.", burst, delay)
+        setHubStatus("Velocidade: " .. names[S.FarmSpeed])
+    end, COLORS.Green)
+
+    field("Intervalo do farm (ms)", S.FarmIntervalMs, function(value)
+        return M:setFarmTiming("FarmIntervalMs", value)
+    end)
+    field("Repeticoes por ciclo", S.FarmReps, function(value)
+        return M:setFarmTiming("FarmReps", value)
+    end)
+    local _, paceTitle, paceDesc = card("Ritmo aplicado", "", function() end, COLORS.Yellow)
+
     local _, rateTitle, rateDesc = card("Rendimento recente", "Aguardando pelo menos 10 segundos de treino.", function()
         showReport("Rendimento", "A taxa usa ate 60 segundos de observacoes. Pausas, rebirth e quedas de forca reiniciam a janela.\nA previsao depende de manter o mesmo ritmo; nao e garantia de ganho.")
     end, COLORS.Yellow)
@@ -230,6 +265,11 @@ local function maintenanceUI()
                 or (M.Stalled and "ALERTA: farm sem progresso. Abra o diagnostico." or HubRuntime.Status)
             profileTitle.Text = "Perfil: slot " .. M.ProfileSlot
             pvpStatus.Text = M.PvpStatus or "Desligado"
+            local interval, reps = M:farmPace()
+            paceTitle.Text = string.format("%d reps por ciclo | intervalo %.0f ms", reps, interval * 1000)
+            paceDesc.Text = (S.FarmCustom and "Personalizado" or "Preset")
+                .. string.format(" | teto geral: %d chamadas/s | chamadas cortadas: %d", S.StabilityMode and 45 or 160, HubRuntime.SkippedRemoteCalls)
+                .. "\nAplica-se a Forca Rapida e a rajada F2P. Modo Estavel pode reduzir os valores. Intervalos dependem dos frames; reps aceitas dependem do servidor."
             observedBossDesc.Text = M.VisibleBossText or "Procurando..."
             local rate = M:strengthRate()
             local target = M.PlanningTarget or 1000000
