@@ -66,7 +66,7 @@ end
 
 local SESSION = {
     Alive = true,
-    Version = "2026.10-daily.31",
+    Version = "2026.10-daily.32",
     Connections = {},
 }
 
@@ -478,8 +478,9 @@ return function(settings, clock)
     function M:bossRarity(text)
         local value = string.lower(tostring(text or ""))
         for a, b in pairs({["é"]="e", ["É"]="e", ["í"]="i", ["Í"]="i", ["á"]="a", ["Á"]="a"}) do value = value:gsub(a, b) end
+        value = value:gsub("[%s_%-]", "")
         for _, group in ipairs({
-            {"Arco-iris", "rainbow", "arco"}, {"Mitico", "mythic", "mitico"},
+            {"Arco-iris", "rainbow", "arcoiris"}, {"Mitico", "mythic", "mitico"},
             {"Lendario", "legendary", "lendario"}, {"Epico", "epic", "epico"},
             {"Raro", "rare", "raro"}, {"Comum", "common", "comum"},
         }) do
@@ -825,14 +826,106 @@ local function modelHasBossMarker(model)
     return false
 end
 
-return {root = bossRoot, health = bossHumanoid, matches = modelHasBossMarker}
+local priorities = {["Arco-iris"]=6, Mitico=5, Lendario=4, Epico=3, Raro=2, Comum=1, Desconhecido=0}
+local rarityKeys = {"Rarity", "rarity", "BossRarity", "bossRarity", "BossType", "bossType", "Tier", "tier", "Raridade", "raridade"}
+local function bossInfo(model, classify)
+    if not model then return "Desconhecido", 0 end
+    local function known(value)
+        if type(value) ~= "string" or value == "" then return nil end
+        local rarity = classify(value)
+        return priorities[rarity] and priorities[rarity] > 0 and rarity or nil
+    end
+    -- Explicit metadata wins over names and reward text in a billboard.
+    local ancestor = model
+    while ancestor and ancestor ~= workspace do
+        for _, key in ipairs(rarityKeys) do
+            local rarity = known(ancestor:GetAttribute(key))
+            local field = ancestor:FindFirstChild(key)
+            if not rarity and field and field:IsA("StringValue") then rarity = known(field.Value) end
+            if rarity then return rarity, priorities[rarity] end
+        end
+        ancestor = ancestor.Parent
+    end
+    for _, item in ipairs(model:GetDescendants()) do
+        local node, excluded = item, false
+        while node and node ~= model do
+            local name = string.lower(node.Name)
+            for _, word in ipairs({"pet", "mascote", "loot", "drop", "reward", "recompensa"}) do
+                if name:find(word,1,true) then excluded = true; break end
+            end
+            node = node.Parent
+        end
+        if not excluded and (item:IsA("Model") or item:IsA("Humanoid") or item:IsA("Folder")) then
+            for _, key in ipairs(rarityKeys) do
+                local rarity = known(item:GetAttribute(key))
+                local field = item:FindFirstChild(key)
+                if not rarity and field and field:IsA("StringValue") then rarity = known(field.Value) end
+                if rarity then return rarity, priorities[rarity] end
+            end
+        end
+    end
+    local texts = {model.Name}
+    local humanoid = model:FindFirstChildWhichIsA("Humanoid", true)
+    if humanoid and type(humanoid.DisplayName) == "string" then texts[#texts+1] = humanoid.DisplayName end
+    ancestor = model.Parent
+    while ancestor and ancestor ~= workspace do texts[#texts+1] = ancestor.Name; ancestor = ancestor.Parent end
+    local named = known(table.concat(texts, " "))
+    if named then return named, priorities[named] end
+    for _, item in ipairs(model:GetDescendants()) do
+        if item:IsA("TextLabel") or item:IsA("TextButton") then
+            local node, excluded = item, false
+            while node and node ~= model do
+                local name = string.lower(node.Name)
+                for _, word in ipairs({"drop", "loot", "reward", "recompensa", "pet", "mascote"}) do
+                    if name:find(word,1,true) then excluded = true; break end
+                end
+                node = node.Parent
+            end
+            if not excluded then texts[#texts+1] = item.Text end
+        end
+    end
+    local rarity = classify(table.concat(texts, " "))
+    return rarity, priorities[rarity] or 0
+end
+
+local function chooseBoss(candidates, classify, distance, current)
+    local best, bestRank, bestPreferred, bestCurrent, bestDistance
+    local preference = string.lower(tostring(S.BossPreference or "Qualquer"))
+    for _, model in ipairs(candidates) do
+        if model.Parent and modelHasBossMarker(model) then
+            local _, rank = bossInfo(model, classify)
+            local preferred = preference ~= "qualquer" and string.lower(model.Name) == preference and 1 or 0
+            local selected = model == current and 1 or 0
+            local range = distance and distance(model) or math.huge
+            if not best or rank > bestRank
+                or rank == bestRank and preferred > bestPreferred
+                or rank == bestRank and preferred == bestPreferred and selected > bestCurrent
+                or rank == bestRank and preferred == bestPreferred and selected == bestCurrent and range < bestDistance then
+                best, bestRank, bestPreferred, bestCurrent, bestDistance = model, rank, preferred, selected, range
+            end
+        end
+    end
+    return best
+end
+
+local function shouldSwitch(current, candidate, classify)
+    if not candidate or candidate == current then return false end
+    if not current or not current.Parent or not modelHasBossMarker(current) then return true end
+    local _, oldRank = bossInfo(current, classify)
+    local _, newRank = bossInfo(candidate, classify)
+    return newRank > oldRank
+end
+
+return {root = bossRoot, health = bossHumanoid, matches = modelHasBossMarker,
+    info = bossInfo, choose = chooseBoss, shouldSwitch = shouldSwitch, priorities = priorities}
 end
 end)()(workspace, Players, S)
 -- END MAINTENANCE DETECTOR
 local bossRoot, bossHumanoid, modelHasBossMarker = BossDetector.root, BossDetector.health, BossDetector.matches
 
 function M:scanBosses(force)
-    if not force and self.BossScanAt and os.clock() - self.BossScanAt < 2 then return self.BossScanCache end
+    local interval = S.AutoBoss and .5 or 2
+    if not force and self.BossScanAt and os.clock() - self.BossScanAt < interval then return self.BossScanCache end
     local candidates = {}
 
     local seen = {}
@@ -850,33 +943,28 @@ function M:scanBosses(force)
     return candidates
 end
 
-local function findAliveBoss()
+function M:bossInfo(model)
+    return BossDetector.info(model, function(text) return self:bossRarity(text) end)
+end
+
+trackConnection(workspace.DescendantAdded:Connect(function(item)
+    if item:IsA("Model") or item:IsA("Humanoid") or item:IsA("TextLabel") or item:IsA("StringValue") then
+        M.BossScanAt = nil
+    end
+end))
+
+local function findAliveBoss(current)
     local candidates = {}
     for _, candidate in ipairs(M:scanBosses()) do
-        if candidate.Parent and modelHasBossMarker(candidate) then candidates[#candidates + 1] = candidate end
+        if candidate.Parent and modelHasBossMarker(candidate)
+            and os.clock() >= ((M.BossBlocked or {})[candidate] or 0) then candidates[#candidates + 1] = candidate end
     end
-
-    if S.BossPreference ~= "Qualquer" then
-        local preferred = {}
-        for _, candidate in ipairs(candidates) do
-            if string.lower(candidate.Name) == string.lower(S.BossPreference) then preferred[#preferred + 1] = candidate end
-        end
-        if #preferred > 0 then candidates = preferred end
-    end
-    if #candidates == 0 then return nil end
-
     local character = LP.Character
     local root = character and character:FindFirstChild("HumanoidRootPart")
-    if not root then return candidates[1] end
-
-    table.sort(candidates, function(a,b)
-        local ar, br = bossRoot(a), bossRoot(b)
-        if not ar then return false end
-        if not br then return true end
-        return (ar.Position-root.Position).Magnitude < (br.Position-root.Position).Magnitude
-    end)
-
-    return candidates[1]
+    return BossDetector.choose(candidates, function(text) return M:bossRarity(text) end, function(model)
+        local targetRoot = bossRoot(model)
+        return root and targetRoot and (targetRoot.Position-root.Position).Magnitude or math.huge
+    end, current)
 end
 
 -- BEGIN MAINTENANCE LOOT
@@ -966,9 +1054,12 @@ local function beginBossFight(target)
     if not root or not target then return false end
 
     if not HubRuntime.BossActive then
-        M:resetBossDefense()
         HubRuntime.BossReturnCFrame = root.CFrame
+        HubRuntime.BossReturnCharacter = character
     end
+    M:resetBossDefense()
+    M.BossGeneration = (M.BossGeneration or 0) + 1
+    M.BossDamageModel, M.BossObservedHealth, M.BossLastDamageAt = nil, nil, nil
 
     M.BossLootBaseline = BossLoot:snapshot()
     M.BossRewardWasVisible = BossLoot:rewardText(LP:FindFirstChildOfClass("PlayerGui")) ~= nil
@@ -976,11 +1067,13 @@ local function beginBossFight(target)
     M.BossLastPosition = bossRoot(target) and bossRoot(target).Position
     HubRuntime.BossActive = true
     HubRuntime.BossModel = target
-    HubRuntime.BossTarget = target.Name
+    local rarity = M:bossInfo(target)
+    HubRuntime.BossTarget = rarity .. " • " .. target.Name
     return true
 end
 
 local function finishBossFight(returnToStart)
+    M.BossGeneration = (M.BossGeneration or 0) + 1
     M.BossLootUntil, M.BossLootAttempted = nil, nil
     M:resetBossDefense()
     HubRuntime.BossModel = nil
@@ -991,7 +1084,7 @@ local function finishBossFight(returnToStart)
     if wasActive and returnToStart and S.BossReturn and HubRuntime.BossReturnCFrame then
         local character = LP.Character
         local root = character and character:FindFirstChild("HumanoidRootPart")
-        if root then
+        if root and character == HubRuntime.BossReturnCharacter then
             pcall(function()
                 root.CFrame = HubRuntime.BossReturnCFrame
                 root.AssemblyLinearVelocity = Vector3.zero
@@ -1000,12 +1093,25 @@ local function finishBossFight(returnToStart)
     end
 
     HubRuntime.BossReturnCFrame = nil
+    HubRuntime.BossReturnCharacter = nil
 end
 HubRuntime.StopBoss = function() finishBossFight(false) end
 
 
 function M:setBossState(value)
     self.BossState = value
+end
+function M:requestBossArea(target)
+    local root = bossRoot(target)
+    if not root or not workspace.StreamingEnabled or self.BossStreamPending then return end
+    if self.BossStreamRoot == root and os.clock() < (self.BossStreamRetryAt or 0) then return end
+    self.BossStreamRoot, self.BossStreamRetryAt, self.BossStreamPending = root, os.clock()+5, true
+    local position = root.Position
+    task.spawn(function()
+        if SESSION.Alive then pcall(function() LP:RequestStreamAroundAsync(position, 1.5) end) end
+        self.BossStreamPending = false
+        self.BossScanAt = nil
+    end)
 end
 function M:bossPosition(root, humanoid, target, character, distance, lateral)
     local params = RaycastParams.new()
@@ -1015,9 +1121,8 @@ function M:bossPosition(root, humanoid, target, character, distance, lateral)
     local targetRoot = bossRoot(target)
     if not targetRoot then return nil end
     local desired = targetRoot.Position - targetRoot.CFrame.LookVector * distance + targetRoot.CFrame.RightVector * lateral
-    local hit = workspace:Raycast(desired + Vector3.new(0, 10, 0), Vector3.new(0, -35, 0), params)
+    local hit = workspace:Raycast(desired + Vector3.new(0, 20, 0), Vector3.new(0, -512, 0), params)
     if not hit or hit.Normal.Y < .65 or hit.Material == Enum.Material.Water then return nil end
-    if math.abs(hit.Position.Y - root.Position.Y) > 14 then return nil end
     local position = hit.Position + Vector3.new(0, humanoid.HipHeight + root.Size.Y / 2, 0)
     return CFrame.lookAt(position, Vector3.new(targetRoot.Position.X, position.Y, targetRoot.Position.Z))
 end
@@ -1029,11 +1134,34 @@ task.spawn(function()
             -- Always process stop, even during manual pause or recovery.
             if not S.AutoBoss then
                 if HubRuntime.BossActive then finishBossFight(false) else M:resetBossDefense() end
-                currentBoss, blockedSince = nil, nil
+                currentBoss, blockedSince, nextScan = nil, nil, 0
                 M:setBossState("Desligado")
                 return
             end
             if not M:bossMayMove() then M:setBossState("Pausado: " .. M:reasonText()); return end
+            if not findPunchTool() then
+                if HubRuntime.BossActive then finishBossFight(true) end
+                currentBoss, blockedSince = nil, nil
+                M:setBossState("Aguardando ferramenta Punch • retoma automaticamente")
+                return
+            end
+            if os.clock() >= nextScan then
+                nextScan = os.clock()+.5
+                local candidate = findAliveBoss(currentBoss)
+                local currentHealth = currentBoss and bossHumanoid(currentBoss)
+                local _, candidateRank = M:bossInfo(candidate)
+                local interruptLoot = M.BossLootUntil and candidate
+                    and (candidateRank >= 3 or candidate == currentBoss)
+                local upgrade = currentHealth and currentHealth.Health > 0 and BossDetector.shouldSwitch(currentBoss, candidate,
+                    function(text) return M:bossRarity(text) end)
+                if candidate and (interruptLoot or upgrade or not currentBoss and not M.BossLootUntil) then
+                    if upgrade then M:log("Prioridade", "Trocando "..currentBoss.Name.." por "..candidate.Name) end
+                    M.BossLootUntil, M.BossLootAttempted = nil, nil
+                    currentBoss, blockedSince = candidate, nil
+                    beginBossFight(candidate)
+                    M:requestBossArea(candidate)
+                end
+            end
             if M.BossLootUntil then
                 if not S.BossAutoLoot or os.clock() >= M.BossLootUntil then
                     M.BossLootResult = "Coleta encerrada sem nova tela de recompensa observada"
@@ -1098,13 +1226,19 @@ task.spawn(function()
                 end
                 finishBossFight(true)
                 currentBoss, blockedSince = nil, nil
+                nextScan = 0
             end
             if not currentBoss and os.clock() >= nextScan then
-                nextScan = os.clock() + 2
+                nextScan = os.clock() + .5
                 currentBoss = findAliveBoss()
-                if currentBoss then beginBossFight(currentBoss) end
+                if currentBoss then beginBossFight(currentBoss); M:requestBossArea(currentBoss) end
             end
             if not currentBoss then M:setBossState("Aguardando boss reconhecido"); return end
+            health = bossHumanoid(currentBoss)
+            if not health or health.Health <= 0 then
+                finishBossFight(true); currentBoss, blockedSince, nextScan = nil, nil, 0
+                return
+            end
             local character = LP.Character
             local root = character and character:FindFirstChild("HumanoidRootPart")
             local humanoid = character and character:FindFirstChildOfClass("Humanoid")
@@ -1131,8 +1265,10 @@ task.spawn(function()
                     blockedSince = blockedSince or os.clock()
                     M:setBossState("Sem piso seguro para recuar")
                     if os.clock() - blockedSince >= 5 then
-                        S.AutoBoss = false; finishBossFight(false)
-                        setHubError("Auto Boss parado: sem local seguro. Reposicione e ligue novamente.")
+                        M.BossBlocked = M.BossBlocked or setmetatable({}, {__mode="k"})
+                        M.BossBlocked[currentBoss] = os.clock()+5
+                        finishBossFight(true); currentBoss, blockedSince, nextScan = nil, nil, 0
+                        M:setBossState("Aguardando piso seguro • nova tentativa automática")
                     end
                 else
                     blockedSince = nil
@@ -1145,17 +1281,20 @@ task.spawn(function()
                 blockedSince = blockedSince or os.clock()
                 M:setBossState("Sem piso seguro para atacar")
                 if os.clock() - blockedSince >= 5 then
-                    S.AutoBoss = false; finishBossFight(false)
-                    setHubError("Auto Boss parado: posicao de ataque indisponivel.")
+                    M.BossBlocked = M.BossBlocked or setmetatable({}, {__mode="k"})
+                    M.BossBlocked[currentBoss] = os.clock()+5
+                    finishBossFight(true); currentBoss, blockedSince, nextScan = nil, nil, 0
+                    M:setBossState("Aguardando piso seguro • nova tentativa automática")
                 end
+                if currentBoss then M:requestBossArea(currentBoss) end
                 return
             end
             blockedSince = nil
             root.CFrame = position
             root.AssemblyLinearVelocity = Vector3.zero
             if not findPunchTool() then
-                S.AutoBoss = false; finishBossFight(false)
-                setHubError("Auto Boss parado: ferramenta Punch indisponivel.")
+                finishBossFight(true); currentBoss, blockedSince = nil, nil
+                M:setBossState("Aguardando ferramenta Punch • retoma automaticamente")
                 return
             end
             if M:canAct() and S.AutoBoss then
@@ -1164,9 +1303,11 @@ task.spawn(function()
                 elseif health.Health < (M.BossObservedHealth or health.Health) then M.BossLastDamageAt = os.clock() end
                 M.BossObservedHealth = health.Health
                 local target = currentBoss
+                local generation = M.BossGeneration
                 local punched, reason = doAnimatedPunch(function()
                     local hp = bossHumanoid(target)
                     return S.AutoBoss and M:canAct() and LP.Character == character and target.Parent ~= nil
+                        and M.BossGeneration == generation
                         and HubRuntime.BossModel == target and hp and hp.Health > 0
                 end)
                 if not punched then M:setBossState(reason or "Soco indisponivel")
@@ -1175,9 +1316,12 @@ task.spawn(function()
             end
         end)
         if not ok then
-            S.AutoBoss = false; finishBossFight(false); currentBoss = nil
-            M:setBossState("Erro: abra o diagnostico")
-            M:log("Erro no boss", tostring(failure)); setHubError("Auto Boss interrompido: " .. tostring(failure))
+            finishBossFight(false); currentBoss, blockedSince, nextScan = nil, nil, os.clock()+2
+            M:setBossState("Falha temporária • nova tentativa em 2s; veja o diagnóstico")
+            if M.BossLastError ~= tostring(failure) or os.clock() >= (M.BossErrorLogAt or 0) then
+                M.BossLastError, M.BossErrorLogAt = tostring(failure), os.clock()+10
+                M:log("Erro no boss", tostring(failure)); setHubError("Auto Boss: " .. tostring(failure))
+            end
         end
     end
 end)
@@ -2167,7 +2311,7 @@ local function canPunch()
 end
 
 local function canAutoBoss()
-    return hasCharacter() and canPunch()
+    return hasCharacter() and findPunchTool() ~= nil
 end
 
 local function canRockFarm()
@@ -2717,17 +2861,7 @@ function M:observeBosses()
     local current = {}
     for _, boss in ipairs(bosses) do
         local root = bossRoot(boss)
-        local texts = {boss.Name}
-        local hum = boss:FindFirstChildWhichIsA("Humanoid", true)
-        if hum then texts[#texts + 1] = hum.DisplayName end
-        for _, key in ipairs({"Rarity", "BossType", "Tier"}) do
-            local value = boss:GetAttribute(key)
-            if type(value) == "string" then texts[#texts + 1] = value end
-        end
-        for _, obj in ipairs(boss:GetDescendants()) do
-            if obj:IsA("TextLabel") then texts[#texts + 1] = obj.Text end
-        end
-        local rarity = self:bossRarity(table.concat(texts, " "))
+        local rarity = self:bossInfo(boss)
         current[#current + 1] = rarity .. " - " .. boss.Name
         if not self.BossSeen[root] then
             self.BossSeen[root] = true
@@ -3372,7 +3506,7 @@ list.Padding = UDim.new(0, 12); list.SortOrder = Enum.SortOrder.LayoutOrder; lis
 local searchQuery, currentSection = "", ""
 local searchEntries = {}
 local UI = {Category = "Farm", CurrentCategory = "Farm", Order = 0, Tabs = {}, Width = 980,
-    ContentWidth = 730, LargeText = false, Stats = {}, TabBadges = {}, TabLabels = {}}
+    ContentWidth = 730, LargeText = false, Stats = {}, TabBadges = {}, TabLabels = {}, DailyTitles = {}}
 UI.Descriptions = {
     Farm = "Treino, equipamentos e ganho de força.", Bosses = "Encontros, defesa e recompensas.",
     PvP = "Jogadores, combate e filtros de karma.", Pets = "Sua coleção, cristais e evolução.",
@@ -3968,7 +4102,7 @@ section("BOSSES", "Espera um boss aparecer, vai até ele automaticamente, ataca 
 
 toggle(
     "Auto Kill Boss / farm de boss",
-    "Fica aguardando qualquer boss detectado no mapa; quando ele aparece, equipa Punch e ataca até o Humanoid acabar.",
+    "Monitora spawns e prioriza Rainbow > Mítico > Lendário > Épico > Raro > Comum. Troca de alvo quando surgir um mais raro.",
     "AutoBoss",
     canAutoBoss
 )
@@ -4175,7 +4309,7 @@ local function field(title, value, callback)
     frame.Parent = scroll
     addCorner(frame, 10)
     local entry = UI:addEntry(frame, currentSection .. " " .. title)
-    entry.Daily = UI.DailyTitles[title] == true
+    entry.Daily = (UI.DailyTitles and UI.DailyTitles[title]) == true
     local label = Instance.new("TextLabel")
     label.Size = UDim2.new(1, -20, 0, 25)
     label.Position = UDim2.fromOffset(10, 0)
@@ -4987,7 +5121,7 @@ local function maintenanceUI()
     card("Diagnosticar boss proximo", "Mostra nomes, vida e motivo de reconhecimento dos NPCs ate 150 studs. Abra perto do boss.", function()
         showReport("Diagnostico de bosses", M:bossDiagnostic())
     end, COLORS.Yellow)
-    field("Boss preferido (Qualquer ou nome exato)", S.BossPreference, function(value)
+    field("Boss preferido (desempate por nome)", S.BossPreference, function(value)
         value = value:match("^%s*(.-)%s*$")
         if #value < 1 or #value > 150 then return false, "Nome precisa ter entre 1 e 150 caracteres" end
         S.BossPreference = value
