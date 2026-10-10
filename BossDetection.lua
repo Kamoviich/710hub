@@ -85,5 +85,96 @@ local function modelHasBossMarker(model)
     return false
 end
 
-return {root = bossRoot, health = bossHumanoid, matches = modelHasBossMarker}
+local priorities = {["Arco-iris"]=6, Mitico=5, Lendario=4, Epico=3, Raro=2, Comum=1, Desconhecido=0}
+local rarityKeys = {"Rarity", "rarity", "BossRarity", "bossRarity", "BossType", "bossType", "Tier", "tier", "Raridade", "raridade"}
+local function bossInfo(model, classify)
+    if not model then return "Desconhecido", 0 end
+    local function known(value)
+        if type(value) ~= "string" or value == "" then return nil end
+        local rarity = classify(value)
+        return priorities[rarity] and priorities[rarity] > 0 and rarity or nil
+    end
+    -- Explicit metadata wins over names and reward text in a billboard.
+    local ancestor = model
+    while ancestor and ancestor ~= workspace do
+        for _, key in ipairs(rarityKeys) do
+            local rarity = known(ancestor:GetAttribute(key))
+            local field = ancestor:FindFirstChild(key)
+            if not rarity and field and field:IsA("StringValue") then rarity = known(field.Value) end
+            if rarity then return rarity, priorities[rarity] end
+        end
+        ancestor = ancestor.Parent
+    end
+    for _, item in ipairs(model:GetDescendants()) do
+        local node, excluded = item, false
+        while node and node ~= model do
+            local name = string.lower(node.Name)
+            for _, word in ipairs({"pet", "mascote", "loot", "drop", "reward", "recompensa"}) do
+                if name:find(word,1,true) then excluded = true; break end
+            end
+            node = node.Parent
+        end
+        if not excluded and (item:IsA("Model") or item:IsA("Humanoid") or item:IsA("Folder")) then
+            for _, key in ipairs(rarityKeys) do
+                local rarity = known(item:GetAttribute(key))
+                local field = item:FindFirstChild(key)
+                if not rarity and field and field:IsA("StringValue") then rarity = known(field.Value) end
+                if rarity then return rarity, priorities[rarity] end
+            end
+        end
+    end
+    local texts = {model.Name}
+    local humanoid = model:FindFirstChildWhichIsA("Humanoid", true)
+    if humanoid and type(humanoid.DisplayName) == "string" then texts[#texts+1] = humanoid.DisplayName end
+    ancestor = model.Parent
+    while ancestor and ancestor ~= workspace do texts[#texts+1] = ancestor.Name; ancestor = ancestor.Parent end
+    local named = known(table.concat(texts, " "))
+    if named then return named, priorities[named] end
+    for _, item in ipairs(model:GetDescendants()) do
+        if item:IsA("TextLabel") or item:IsA("TextButton") then
+            local node, excluded = item, false
+            while node and node ~= model do
+                local name = string.lower(node.Name)
+                for _, word in ipairs({"drop", "loot", "reward", "recompensa", "pet", "mascote"}) do
+                    if name:find(word,1,true) then excluded = true; break end
+                end
+                node = node.Parent
+            end
+            if not excluded then texts[#texts+1] = item.Text end
+        end
+    end
+    local rarity = classify(table.concat(texts, " "))
+    return rarity, priorities[rarity] or 0
+end
+
+local function chooseBoss(candidates, classify, distance, current)
+    local best, bestRank, bestPreferred, bestCurrent, bestDistance
+    local preference = string.lower(tostring(S.BossPreference or "Qualquer"))
+    for _, model in ipairs(candidates) do
+        if model.Parent and modelHasBossMarker(model) then
+            local _, rank = bossInfo(model, classify)
+            local preferred = preference ~= "qualquer" and string.lower(model.Name) == preference and 1 or 0
+            local selected = model == current and 1 or 0
+            local range = distance and distance(model) or math.huge
+            if not best or rank > bestRank
+                or rank == bestRank and preferred > bestPreferred
+                or rank == bestRank and preferred == bestPreferred and selected > bestCurrent
+                or rank == bestRank and preferred == bestPreferred and selected == bestCurrent and range < bestDistance then
+                best, bestRank, bestPreferred, bestCurrent, bestDistance = model, rank, preferred, selected, range
+            end
+        end
+    end
+    return best
+end
+
+local function shouldSwitch(current, candidate, classify)
+    if not candidate or candidate == current then return false end
+    if not current or not current.Parent or not modelHasBossMarker(current) then return true end
+    local _, oldRank = bossInfo(current, classify)
+    local _, newRank = bossInfo(candidate, classify)
+    return newRank > oldRank
+end
+
+return {root = bossRoot, health = bossHumanoid, matches = modelHasBossMarker,
+    info = bossInfo, choose = chooseBoss, shouldSwitch = shouldSwitch, priorities = priorities}
 end
