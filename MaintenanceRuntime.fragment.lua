@@ -10,17 +10,7 @@ function M:observeBosses()
     local current = {}
     for _, boss in ipairs(bosses) do
         local root = bossRoot(boss)
-        local texts = {boss.Name}
-        local hum = boss:FindFirstChildWhichIsA("Humanoid", true)
-        if hum then texts[#texts + 1] = hum.DisplayName end
-        for _, key in ipairs({"Rarity", "BossType", "Tier"}) do
-            local value = boss:GetAttribute(key)
-            if type(value) == "string" then texts[#texts + 1] = value end
-        end
-        for _, obj in ipairs(boss:GetDescendants()) do
-            if obj:IsA("TextLabel") then texts[#texts + 1] = obj.Text end
-        end
-        local rarity = self:bossRarity(table.concat(texts, " "))
+        local rarity = self:bossInfo(boss)
         current[#current + 1] = rarity .. " - " .. boss.Name
         if not self.BossSeen[root] then
             self.BossSeen[root] = true
@@ -350,10 +340,8 @@ function M:playerKarma(player, names)
         end
     end
 end
-task.spawn(function()
-    while SESSION.Alive and task.wait(.35) do
-        local ok, failure = pcall(function()
-            if not (S.PvpGood or S.PvpEvil) then M:stopPvp(); M.PvpStatus = M.PvpStopReason or "Desligado"; return end
+function M:pvpTick()
+            if not (S.PvpAny or S.PvpGood or S.PvpEvil) then M:stopPvp(); M.PvpDiagnostic = ""; M.PvpStatus = M.PvpStopReason or "Desligado"; return end
             M.PvpStopReason = nil
             if not M:canAct() or HubRuntime.BossActive then M:stopPvp(); M.PvpStatus = "Pausado: " .. (HubRuntime.BossActive and "combate com boss" or M:reasonText()); return end
             local character = LP.Character
@@ -361,7 +349,7 @@ task.spawn(function()
             local hum = character and character:FindFirstChildOfClass("Humanoid")
             if not root or not hum or hum.Health <= 0 then M:stopPvp(); M.PvpStatus = "Aguardando personagem"; return end
             if S.HealthGuard and hum.MaxHealth > 0 and hum.Health / hum.MaxHealth <= ((S.HealthLow or 55) / 100) then
-                S.PvpGood, S.PvpEvil = false, false; M:stopPvp()
+                S.PvpAny, S.PvpGood, S.PvpEvil = false, false, false; M:stopPvp()
                 M.PvpStopReason = "Parado por vida baixa; recupere antes de ligar novamente"; M.PvpStatus = M.PvpStopReason; return
             end
             local target, targetRoot, targetHum, distance = nil, nil, nil, S.PvpRadius
@@ -377,7 +365,7 @@ task.spawn(function()
                     local reason
                     if not otherRoot or not otherHum or otherHum.Health <= 0 then reason = "missing"
                     elseif model:FindFirstChildOfClass("ForceField") then reason = "protected"
-                    elseif good == nil or evil == nil then reason = "unknown"
+                    elseif not S.PvpAny and (good == nil or evil == nil) then reason = "unknown"
                     elseif not M:pvpEligible(good, evil) then reason = "karma"
                     else
                         local d = (root.Position - otherRoot.Position).Magnitude
@@ -397,24 +385,26 @@ task.spawn(function()
             M.PvpDiagnostic = summary .. "\n\n" .. table.concat(details, "\n")
             if not target then M:stopPvp(); M.PvpStatus = "Sem alvo. " .. summary; return end
             if not findPunchTool() then M:stopPvp(); M.PvpStatus = "Ferramenta Punch indisponivel"; return end
-            if M.PvpTarget ~= target then
+            if M.PvpTarget ~= target or M.PvpTargetModel ~= target.Character then
+                M.PvpDamageObserved = 0
+                M.PvpTargetModel = target.Character
                 M.PvpObservedHealth, M.PvpLastDamageAt = targetHum.Health, os.clock()
             elseif targetHum.Health < (M.PvpObservedHealth or targetHum.Health) then
+                M.PvpDamageObserved = (M.PvpDamageObserved or 0) + M.PvpObservedHealth - targetHum.Health
                 M.PvpLastDamageAt = os.clock()
             end
             M.PvpObservedHealth = targetHum.Health
             M.PvpTarget = target
-            local attackRange = 3.5
+            local attackRange = S.PvpAttackRange or 2.5
             if distance > attackRange then
                 hum:MoveTo(targetRoot.Position)
-                M.PvpLastDamageAt = os.clock()
                 M.PvpStatus = string.format("Aproximando: %s (%.1f studs)", target.Name, distance)
             else
                 hum:MoveTo(root.Position)
                 local face = Vector3.new(targetRoot.Position.X, root.Position.Y, targetRoot.Position.Z)
                 if (face - root.Position).Magnitude > .01 then root.CFrame = CFrame.lookAt(root.Position, face) end
                 local function allowed()
-                    return (S.PvpGood or S.PvpEvil) and M.PvpTarget == target and not HubRuntime.BossActive
+                    return (S.PvpAny or S.PvpGood or S.PvpEvil) and M.PvpTarget == target and not HubRuntime.BossActive
                         and target.Character == targetRoot.Parent and targetHum.Health > 0
                         and not targetRoot.Parent:FindFirstChildOfClass("ForceField")
                         and (root.Position - targetRoot.Position).Magnitude <= attackRange
@@ -423,10 +413,13 @@ task.spawn(function()
                 if not punched then M.PvpStatus = reason
                 elseif os.clock() - M.PvpLastDamageAt >= 8 then
                     M.PvpStatus = "Punch ativado, mas sem queda de vida observada: " .. target.Name .. ". Confira alcance ou protecao do jogo."
-                else M.PvpStatus = "Punch ativado: " .. target.Name .. " | vida observada: " .. math.ceil(targetHum.Health) end
+                else M.PvpStatus = "Punch ativado: " .. target.Name .. " | queda de vida observada: " .. math.ceil(M.PvpDamageObserved or 0) .. " | vida: " .. math.ceil(targetHum.Health) end
             end
-        end)
-        if not ok then S.PvpGood, S.PvpEvil = false, false; M:stopPvp(); M.PvpStopReason = "Erro: " .. tostring(failure); M.PvpStatus = M.PvpStopReason; M:log("PvP", M.PvpStatus) end
+end
+task.spawn(function()
+    while SESSION.Alive and task.wait(.35) do
+        local ok, failure = pcall(function() M:pvpTick() end)
+        if not ok then S.PvpAny, S.PvpGood, S.PvpEvil = false, false, false; M:stopPvp(); M.PvpStopReason = "Erro: " .. tostring(failure); M.PvpStatus = M.PvpStopReason; M:log("PvP", M.PvpStatus) end
     end
     M:stopPvp()
 end)
