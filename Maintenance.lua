@@ -9,13 +9,13 @@ return function(settings, clock)
         BossCounts = {}, BossObservations = 0, BossRecent = {},
     }
     M.AutoKeys = {"Train", "Rebirth", "Chests", "Hatch", "AutoNovaPhoenix", "Brawl", "AutoPunch",
-        "TrainWeight", "TrainPushups", "TrainSitups", "TrainHandstands", "PvpGood", "PvpEvil",
+        "TrainWeight", "TrainPushups", "TrainSitups", "TrainHandstands", "PvpAny", "PvpGood", "PvpEvil",
         "SmartRock", "LockPosition", "AutoMachine", "AutoBestMachine", "StrengthRebirth",
         "TurboStrength", "MaxStrengthF2P", "AutoBoss", "AutoAgility", "SmartFarm",
         "AutoEquipAfterHatch", "AutoEvolveAfterHatch", "GoalEnabled"}
-    local booleans = {"BossReturn", "BossDefense", "ResumeAfterDeath", "HealthGuard", "StallAlerts", "PerformanceMode", "StabilityMode", "RebirthGuard", "BreakEnabled"}
+    local booleans = {"PreserveFarmPets", "FarmCustom", "BossAutoLoot", "BossReturn", "BossDefense", "ResumeAfterDeath", "HealthGuard", "StallAlerts", "PerformanceMode", "StabilityMode", "RebirthGuard", "BreakEnabled"}
     local numbers = {
-        NovaMaxOpens = {1, 1000}, PvpRadius = {10, 150}, RepDelay = {.05, 5}, HatchDelay = {.1, 30}, BossDistance = {2, 12},
+        FarmIntervalMs = {1, 5000}, FarmReps = {1, 160}, FarmSpeed = {1, 3}, NovaMaxOpens = {1, 1000}, PvpRadius = {10, 500}, PvpAttackRange = {1.5, 5}, RepDelay = {.05, 5}, HatchDelay = {.1, 30}, BossDistance = {2, 12},
         HealthLow = {5, 60}, HealthResume = {65, 100}, StallSeconds = {30, 600},
         GoalValue = {1, 1e15}, RebirthTarget = {1, 1e15}, ProgressionTarget = {1, 1e15},
         RebirthFloor = {0, 1e15}, RebirthInterval = {.5, 30}, BreakEvery = {1, 240}, BreakMinutes = {1, 60},
@@ -27,6 +27,30 @@ return function(settings, clock)
     function M:log(kind, message)
         self.History[#self.History + 1] = {Time = math.floor(clock() - self.Started), Kind = kind, Message = tostring(message)}
         if #self.History > 150 then table.remove(self.History, 1) end
+    end
+    function M:farmPace()
+        local levels = {{.2, 1}, {.1, 4}, {.06, 8}}
+        local index = math.clamp(math.floor(tonumber(settings.FarmSpeed) or 2), 1, 3)
+        local pace = levels[index]
+        local delay, burst = pace[1], pace[2]
+        if settings.FarmCustom then
+            delay = math.clamp(settings.FarmIntervalMs or 100, 1, 5000) / 1000
+            burst = math.clamp(math.floor(settings.FarmReps or 4), 1, 160)
+        end
+        if settings.StabilityMode then delay, burst = math.max(delay, .14), math.min(burst, 3) end
+        return delay, burst
+    end
+    function M:setFarmTiming(key, value)
+        if self.Comparing then return false, "Aguarde a comparacao terminar" end
+        if key ~= "FarmIntervalMs" and key ~= "FarmReps" then return false, "Campo invalido" end
+        local n = tonumber(value)
+        local upper = key == "FarmReps" and 160 or 5000
+        if not n or n ~= n or n % 1 ~= 0 or n < 1 or n > upper then
+            return false, "Use um inteiro de 1 a " .. upper
+        end
+        settings[key], settings.FarmCustom = n, true
+        self.BestTraining = nil
+        return true, "Ritmo personalizado aplicado; ative Forca Rapida para usar"
     end
     function M:canAct()
         return next(self.Reasons) == nil
@@ -47,13 +71,15 @@ return function(settings, clock)
     for _, key in ipairs({"AutoMachine", "AutoAgility", "SmartRock"}) do conflict(key, "LockPosition") end
     for _, key in ipairs({"TurboStrength", "MaxStrengthF2P", "AutoAgility", "SmartRock", "AutoPunch"}) do conflict(key, "StrengthRebirth") end
     for _, key in ipairs({"Train", "TrainWeight", "TrainPushups", "TrainSitups", "TrainHandstands", "TurboStrength", "MaxStrengthF2P", "AutoMachine", "AutoBestMachine", "AutoAgility", "SmartRock", "AutoPunch", "StrengthRebirth", "Rebirth", "LockPosition"}) do conflict("SmartFarm", key) end
-    for _, mode in ipairs({"PvpGood", "PvpEvil"}) do
+    for _, mode in ipairs({"PvpAny", "PvpGood", "PvpEvil"}) do
         for _, key in ipairs(trainers) do conflict(mode, key) end
         for _, key in ipairs({"AutoBoss", "Brawl", "SmartRock", "AutoPunch", "LockPosition", "SmartFarm", "Rebirth", "StrengthRebirth"}) do conflict(mode, key) end
     end
     conflict("Hatch", "AutoNovaPhoenix")
     conflict("PvpGood", "PvpEvil")
+    conflict("PvpAny", "PvpGood"); conflict("PvpAny", "PvpEvil")
     function M:pvpEligible(good, evil)
+        if settings.PvpAny then return true end
         if type(good) ~= "number" or type(evil) ~= "number" or good ~= good or evil ~= evil or good < 0 or evil < 0 then return false end
         if settings.PvpGood then return evil > good end
         if settings.PvpEvil then return good > evil end
@@ -185,7 +211,7 @@ return function(settings, clock)
         settings.GoalValue, settings.RebirthTarget, settings.ProgressionTarget, settings.SelectedMachine = nil, nil, nil, nil
         settings.StopAt = nil
         for key, value in pairs(validated) do settings[key] = value end
-        settings.PvpGood, settings.PvpEvil = false, false
+        settings.PvpAny, settings.PvpGood, settings.PvpEvil = false, false, false
         self:normalizeConflicts()
         self:pause("Manual", true)
         self:resetBreak()
@@ -271,8 +297,9 @@ return function(settings, clock)
     function M:bossRarity(text)
         local value = string.lower(tostring(text or ""))
         for a, b in pairs({["é"]="e", ["É"]="e", ["í"]="i", ["Í"]="i", ["á"]="a", ["Á"]="a"}) do value = value:gsub(a, b) end
+        value = value:gsub("[%s_%-]", "")
         for _, group in ipairs({
-            {"Arco-iris", "rainbow", "arco"}, {"Mitico", "mythic", "mitico"},
+            {"Arco-iris", "rainbow", "arcoiris"}, {"Mitico", "mythic", "mitico"},
             {"Lendario", "legendary", "lendario"}, {"Epico", "epic", "epico"},
             {"Raro", "rare", "raro"}, {"Comum", "common", "comum"},
         }) do
