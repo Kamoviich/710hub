@@ -1,5 +1,7 @@
 # Mystery / Silence no 710Hub — 2026.10-boss-hover.35
 
+**Documento histórico.** A importação ampla foi removida a pedido do usuário. A revisão atual usa apenas funções selecionadas e rotinas nativas únicas, descritas em [MENU-SELECIONADO.md](MENU-SELECIONADO.md). Os números e comandos desta página correspondem à versão arquivada.
+
 O arquivo principal `710Hub.lua` incorpora os três módulos consultados: Mystery Muscle Legends WindUI, Silence Main e Silence Farming. O catálogo tem **427 elementos de interface**, dos quais **249 são interativos**. Esses números incluem seletores, campos e controles repetidos entre os módulos; não significam 427 poderes ou ganhos diferentes.
 
 ## O que foi recuperado
