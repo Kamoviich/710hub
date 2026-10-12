@@ -137,7 +137,7 @@ refreshRemotes()
 local S = {
     AutoWheel=false, AutoEggs=false, AutoBoosts=false, AutoBestPetObjective=false, AutoEvolveOwned=false,
     SetSpeed=false, SetSize=false, SetFOV=false, InfiniteJump=false, AntiFling=false,
-    HideName=false, HideStats=false, Spectate=false, PlayerESP=false,
+    HideName=false, HideStats=false, Spectate=false, PlayerESP=false, ShiftLock=false, BlockEggEating=false,
     PvpProtectFriends=false, PvpOnlySelected=false, WorldTime="Original",
     CharacterSpeed=120, CharacterSize=1, CameraFOV=70, ShopCount=1,
     PvpAny=false, PvpGood=false, PvpEvil=false, PvpRadius=150, PvpAttackRange=2.5,
@@ -612,6 +612,7 @@ local function safeInvoke(remote, ...)
 end
 
 local function safeFire(remote, ...)
+    if S.BlockEggEating and select(1, ...) == "proteinEgg" then return false end
     if not M:canAct() then return false end
     if not SESSION.Alive then return false end
     if not remote then
@@ -1186,6 +1187,7 @@ function M:applyBossHover(root,humanoid,character,frame)
         humanoid.AutoRotate=false
         humanoid:ChangeState(Enum.HumanoidStateType.Physics)
     end
+    humanoid.AutoRotate=false
     root.CFrame=frame
     root.AssemblyLinearVelocity=Vector3.zero
     root.AssemblyAngularVelocity=Vector3.zero
@@ -3593,6 +3595,7 @@ local function initializeEnhancements()
         end
         if S.WorldTime == "Original" then self:restore(Lighting,"ClockTime")
         else self:remember(Lighting,"ClockTime",S.WorldTime == "Dia" and 12 or 0) end
+        self:shiftLock()
         local present = {}
         if S.PlayerESP then
             for _, player in ipairs(Players:GetPlayers()) do
@@ -3615,7 +3618,7 @@ local function initializeEnhancements()
     end
     function X:stop()
         self.Token += 1
-        for _, key in ipairs({"AutoWheel","AutoEggs","AutoBoosts","AutoBestPetObjective","AutoEvolveOwned", "SetSpeed","SetSize","SetFOV","InfiniteJump","AntiFling","HideName","HideStats","Spectate","PlayerESP"}) do S[key] = false end
+        for _, key in ipairs({"AutoWheel","AutoEggs","AutoBoosts","AutoBestPetObjective","AutoEvolveOwned", "SetSpeed","SetSize","SetFOV","InfiniteJump","AntiFling","HideName","HideStats","Spectate","PlayerESP","ShiftLock"}) do S[key] = false end
         S.WorldTime = "Original"
         self.LastSafe = nil
         for object, saved in pairs(self.Saved) do
@@ -3627,6 +3630,26 @@ local function initializeEnhancements()
         if camera and camera.CameraSubject and not camera.CameraSubject.Parent then
             local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
             if hum then camera.CameraSubject = hum end
+        end
+    end
+    function X:shiftLock()
+        local character=LP.Character
+        local humanoid=character and character:FindFirstChildOfClass("Humanoid")
+        local root=character and character:FindFirstChild("HumanoidRootPart")
+        local camera=workspace.CurrentCamera
+        if S.ShiftLock then
+            self:remember(UIS,"MouseBehavior",Enum.MouseBehavior.LockCenter)
+            if humanoid then self:remember(humanoid,"CameraOffset",Vector3.new(1.75,.5,0)) end
+            if root and humanoid and humanoid.Health>0 and camera and M:canAct()
+                and not HubRuntime.BossActive and not M.PvpTarget and not S.AutoMachine and not S.AutoAgility then
+                self:remember(humanoid,"AutoRotate",false)
+                local look=camera.CFrame.LookVector
+                local flat=Vector3.new(look.X,0,look.Z)
+                if flat.Magnitude>.01 then root.CFrame=CFrame.lookAt(root.Position,root.Position+flat.Unit) end
+            end
+        else
+            self:restore(UIS,"MouseBehavior")
+            if humanoid then self:restore(humanoid,"CameraOffset"); self:restore(humanoid,"AutoRotate") end
         end
     end
     function X:travel(frame)
@@ -3684,6 +3707,9 @@ local function initializeEnhancements()
             if hum and hum.Health > 0 then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
         end))
     end
+    if RunService.RenderStepped then trackConnection(RunService.RenderStepped:Connect(function()
+        if SESSION.Alive and S.ShiftLock then X:shiftLock() end
+    end)) end
     task.spawn(function()
         while SESSION.Alive do
             local ok, err = pcall(function() X:tick() end)
@@ -6002,6 +6028,8 @@ local function initializeSourceBridge()
         ["Anti Rebirth"]="rebirth",
         ["Infinite Yield"]="external",
         ["All Emotes"]="external",
+        ["Permanent Shiftlock"]="shiftlock",
+        ["No Comer Eggs"]="eggs",
     }
     local externalURLs={
         ["Infinite Yield"]="https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source",
@@ -6260,6 +6288,16 @@ local function initializeSourceBridge()
         local args=table.pack(...)
         local desired=control.Kind=="Toggle" and S[control.Key]
         local engine=control.Engine
+        if overrides[control.Title]=="shiftlock" then
+            S.ShiftLock=not S.ShiftLock
+            HubRuntime.Extras:shiftLock()
+            self:report(engine,S.ShiftLock and "Shiftlock ligado; clique novamente para liberar" or "Shiftlock desligado")
+            return true
+        end
+        if overrides[control.Title]=="eggs" then
+            control.Value=desired; S.BlockEggEating=desired==true
+            return true
+        end
         if overrides[control.Title]=="external" then
             local epoch=self.Epoch
             local ok,result=pcall(function()
@@ -6298,12 +6336,13 @@ local function initializeSourceBridge()
     function B:set(control,value)
         control.Value=value
         if control.Kind=="Toggle" then S[control.Key]=value==true end
+        if overrides[control.Title]=="eggs" then S.BlockEggEating=value==true; return true end
         local widget=control.Engine.Widgets[control.Index]
         if widget and widget.Callback then return self:run(control.Engine,widget.Callback,nil,value==false,value) end
     end
     function B:stop()
         if self.Stopping or self.Activating then return end
-        self.Stopping=true; self.Epoch+=1
+        self.Stopping=true; self.Epoch+=1; S.BlockEggEating=false
         local stopEpoch=self.Epoch
         for _,control in ipairs(self.Catalog) do
             if control.Kind=="Toggle" and (control.Value or S[control.Key]) then
@@ -6312,7 +6351,7 @@ local function initializeSourceBridge()
                 if widget and widget.Callback then
                     task.spawn(function()
                         if self.Epoch~=stopEpoch or S[control.Key] then return end
-                        self:run(control.Engine,widget.Callback,nil,true,false)
+                        self:set(control,false)
                         local any=false
                         for _,item in ipairs(control.Engine.Controls) do if item.Kind=="Toggle" and S[item.Key] then any=true end end
                         if self.Epoch==stopEpoch and not any then self:restore(control.Engine) end
