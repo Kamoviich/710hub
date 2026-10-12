@@ -22,6 +22,8 @@ O controlador central aplica pausa, limite de chamadas e encerramento às rotina
 
 O botão **Anti Rebirth** foi adaptado para bloquear pedidos de rebirth feitos pelas rotinas integradas. O bloqueio é reversível em **Bloquear rebirth nas rotinas integradas**; não instala um hook permanente e não bloqueia scripts independentes.
 
+**No Comer Eggs** bloqueia o protocolo de consumo de Protein Eggs das rotinas integradas, com desligamento reversível, sem baixar o auxiliar `Crack`. **Permanent Shiftlock** usa MouseBehavior, CameraOffset e orientação do personagem; clique novamente para restaurar. Essa adaptação dispensa o loader externo do botão original e também oferece o deslocamento de câmera no celular.
+
 Os campos **Fake Stats** mudam somente os textos locais da interface do jogo. Não concedem atributos, moeda, kills ou rebirths. As operações de compra, troca e presente usam os itens/moedas possuídos e os protocolos de origem; o servidor decide a aceitação.
 
 **Infinite Yield** e **All Emotes** são atalhos externos, conforme o propósito dos botões do Mystery. Eles baixam as fontes correspondentes quando você clica e abrem interfaces próprias. O cancelamento central impede executar um download pendente; depois de abertos, os controles dessas ferramentas pertencem às próprias interfaces, incluindo seu encerramento. Não fazem parte das rotinas isoladas de Muscle Legends.
@@ -65,3 +67,9 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/Kamoviich/710hub/main
 ```
 
 Esse comando sempre baixa o arquivo publicado naquele ramo. A alteração local só passa a ser carregada depois que o arquivo correspondente é atualizado no GitHub. O script não assume que a publicação foi realizada.
+
+A versão de teste desta integração foi publicada no ramo `codex/mystery-silence-710hub`, com [PR em rascunho](https://github.com/Kamoviich/710hub/pull/1):
+
+```lua
+loadstring(game:HttpGet("https://raw.githubusercontent.com/Kamoviich/710hub/refs/heads/codex/mystery-silence-710hub/710Hub.lua", true))()
+```
