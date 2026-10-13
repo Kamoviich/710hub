@@ -1,1 +1,1 @@
-loadstring(game:HttpGet("https://raw.githubusercontent.com/Kamoviich/710hub/2825144cbaba3a2bf501f9bf130704ce27590515/710Hub.lua", true))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/Kamoviich/710hub/6754c6a187510ef59610f5176d7ca6cf87c35c80/710Hub.lua", true))()
