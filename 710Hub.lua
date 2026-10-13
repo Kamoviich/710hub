@@ -66,7 +66,7 @@ end
 
 local SESSION = {
     Alive = true,
-    Version = "2026.10-packs.37",
+    Version = "2026.10-rebirth.38",
     Connections = {},
 }
 
@@ -153,7 +153,7 @@ local S = {
     HatchCrystal="Blue Crystal", FarmSpeed=2, PreserveFarmPets=false, FarmCustom=false, FarmIntervalMs=100, FarmReps=4, RepDelay=.065, HatchDelay=.45,
     RebirthTarget=nil, SelectedMachine=nil,
     LastRebirthAttempt=0,
-    RebirthGuard=false, RebirthFloor=0, RebirthInterval=1,
+    RebirthGuard=false, RebirthFloor=0, RebirthInterval=.5,
     BreakEnabled=false, BreakEvery=30, BreakMinutes=5,
     BossAutoLoot=true, BossDefense=true, BossAbove=true, BossDistance=2, BossReturn=true, BossPreference="Qualquer",
     ResumeAfterDeath=true, HealthGuard=true, HealthLow=55, HealthResume=85,
@@ -3306,8 +3306,8 @@ initializeCleanRuntime()
 
 -- BEGIN FAST REP RUNTIME
 local function initializeFastRep()
-    local F={Token=0,Tokens=0,Rate=200,Sent=0,ActiveSeconds=0,CycleSeconds=0,
-        Gains={Strength=0,Durability=0,Rebirths=0},Recent={},Status="Parado",Role=nil}
+    local F={Token=0,Tokens=0,Rate=200,Sent=0,ActiveSeconds=0,BirthFailures=0,
+        Gains={Strength=0,Durability=0,Rebirths=0},Recent={},Status="Parado"}
     HubRuntime.FastRep=F
     -- Bonus definitions observed in the readable Silence farming source and Mystery catalog.
     -- Replicated perks take precedence. Reading this table never equips or unequips a pet.
@@ -3326,8 +3326,9 @@ local function initializeFastRep()
             and not M.PvpTarget and hum and hum.Health>0
     end
     function F:cancel()
-        self.Token+=1; self.Tokens=0; self.Role=nil; self.NextPets=0
-        self.LastControl=nil; self.CycleSeconds=0; self.Rate=200; self.NextBirth=nil; self.Status="Parado"
+        self.Token+=1; self.Tokens=0; self.NextPets=0
+        self.LastControl=nil; self.Rate=200; self.NextBirth=nil; self.BirthFailures=0
+        self.BirthResult=nil; self.Status="Parado"
     end
     function F:bonus(pet,index)
         local aliases=({{"repSpeed","repSpeedBonus","repSpeedPercent"},{"strengthMultiplier","strengthBonus"},
@@ -3364,10 +3365,10 @@ local function initializeFastRep()
     function F:rebirth()
         if not self:active() or not S.Rebirth or self.Busy or M.RebirthInFlight or M.PetEquipBusy
             or not M:canRequestRebirth(numberStat("Strength"),currentRebirths())
-            or os.clock()<(self.NextBirth or 0) or self.CycleSeconds<3
+            or os.clock()<(self.NextBirth or 0)
             or numberStat("Strength")<self:rebirthRequirement() then return end
         local token,before=self.Token,currentRebirths()
-        self.Busy=true; M.RebirthInFlight=true; self.Tokens=0
+        self.Busy=true; M.RebirthInFlight=true
         local ok,err=pcall(function()
             self.Status="Fast rebirth; mantendo seus pets equipados"
             if token~=self.Token or not self:active() or not S.Rebirth then return end
@@ -3376,19 +3377,34 @@ local function initializeFastRep()
             if token~=self.Token or not self:active() then return end
             local deadline=os.clock()+1.5
             while sent and response~=false and currentRebirths()==before and os.clock()<deadline
-                and token==self.Token and self:active() do task.wait(.1) end
+                and token==self.Token and self:active() do task.wait(.05) end
             if token~=self.Token or not self:active() then return end
             if currentRebirths()>before then
-                self.CycleSeconds=0; self.NextBirth=os.clock()+S.RebirthInterval
+                self.BirthFailures=0; self.NextBirth=M.LastRebirthRequest+S.RebirthInterval
+                self.BirthResult="Rebirth confirmado"
                 if S.RebirthTarget and currentRebirths()>=S.RebirthTarget then S.Rebirth=false end
                 self.Status="Rebirth confirmado; retomando treino"
             else
-                self.NextBirth=os.clock()+15; self.Status="Rebirth sem confirmação; nova tentativa em 15s"
+                self:retryBirth(response==false and "Recusado pelo jogo" or "Sem confirmação na estatística")
             end
         end)
         M.RebirthInFlight=false; self.Busy=false
-        self.Role=nil; self.NextPets=0; self.Tokens=0; self.LastControl=nil
-        if not ok then self.NextBirth=os.clock()+15; setHubError(err) end
+        if token==self.Token then
+            self.LastControl=nil
+            if not ok then self:retryBirth("Erro na solicitação"); setHubError(err) end
+        end
+    end
+    function F:retryBirth(message)
+        self.BirthFailures=math.min(3,(self.BirthFailures or 0)+1)
+        local delay=math.max(S.RebirthInterval,math.min(2,.5*2^(self.BirthFailures-1)))
+        self.NextBirth=os.clock()+delay; self.BirthResult=message
+    end
+    function F:rebirthStatus()
+        if not S.Rebirth then return "Rebirth desligado / meta encerrada" end
+        if self.Busy then return "Aguardando confirmação; força continua ativa" end
+        if numberStat("Strength")<self:rebirthRequirement() then return "Treinando até a força necessária para rebirth" end
+        local nextRequest=math.max(self.NextBirth or 0,(M.LastRebirthRequest or -math.huge)+S.RebirthInterval)
+        return string.format("%s | espera restante: %.2fs",self.BirthResult or "Pronto para pedir rebirth",math.max(0,nextRequest-os.clock()))
     end
     function F:sample(dt,active)
         local values={Strength=numberStat("Strength"),Durability=numberStat("Durability"),Rebirths=currentRebirths()}
@@ -3405,24 +3421,24 @@ local function initializeFastRep()
         dt=math.clamp(tonumber(dt) or 1/60,0,.1)
         local active=self:active()==true
         self:sample(dt,active)
-        if not active or self.Busy or M.PetEquipBusy then
+        if not active or M.PetEquipBusy then
             self.Tokens=0; self.LastControl=nil; return
         end
-        local now=os.clock(); self.CycleSeconds+=dt
+        local now=os.clock()
         if now>=(self.NextPets or 0) then self:equippedBonuses(); self.NextPets=now+5 end
         local strength,durability=numberStat("Strength"),numberStat("Durability")
         local limit=math.min(S.FastRepLimit,S.StabilityMode and 200 or 659)
         if not self.LastControl then
-            self.LastControl=now; self.ControlStrength=strength; self.ControlDurability=durability; self.NoProgress=0
+            self.LastControl=now; self.ControlStrength=strength; self.ControlDurability=durability; self.ControlBirths=currentRebirths(); self.NoProgress=0
         elseif now-self.LastControl>=.5 then
-            if strength>self.ControlStrength or durability>self.ControlDurability then
+            if strength>self.ControlStrength or durability>self.ControlDurability or currentRebirths()>self.ControlBirths then
                 self.NoProgress=0; self.Rate=math.min(limit,self.Rate*1.12)
             else
                 self.NoProgress+=now-self.LastControl
                 if self.NoProgress>=2 then self.Rate=math.max(40,self.Rate*.65); self.Tokens=0 end
                 if self.NoProgress>=10 then S.FastRep=false; S.Rebirth=false; self:cancel(); self.Status="Parado: 10s sem ganho observado"; return end
             end
-            self.LastControl=now; self.ControlStrength=strength; self.ControlDurability=durability
+            self.LastControl=now; self.ControlStrength=strength; self.ControlDurability=durability; self.ControlBirths=currentRebirths()
         end
         self.Rate=math.min(self.Rate,limit)
         local burst=S.StabilityMode and 8 or 24
@@ -3446,7 +3462,9 @@ local function initializeFastRep()
         end
         local first=self.Recent[1]; local seconds=first and self.ActiveSeconds-first.Seconds or 0
         local rate=seconds>0 and (self.Sent-first.Sent)/seconds or 0
-        local lines={self.Status,"Seus pets equipados são preservados durante força e fast rebirth.",
+        local lines={self.Status,self:rebirthStatus(),
+            "Força para rebirth: "..compact(numberStat("Strength")).." / "..compact(self:rebirthRequirement()),
+            "Seus pets equipados são preservados durante força e fast rebirth.",
             string.format("Pets atuais: %d slots | velocidade estimada: %s%% | bônus de rebirth estimado: %s%%",self.PetSlots or 0,tostring(self.PetSpeed or 0),tostring(self.PetBirth or 0)),
             string.format("Pedidos enviados: %.1f/s | total: %d | tempo ativo: %.1fs",rate,self.Sent,self.ActiveSeconds),
             "Ganhos medidos nos valores da conta; pedidos enviados não equivalem a reps aceitas."}
@@ -4549,7 +4567,7 @@ local function cleanUI()
 
     task.spawn(function()
         while SESSION.Alive do
-            pace.Detail.Text=HubRuntime.FastRep.Status
+            pace.Detail.Text=HubRuntime.FastRep.Status.." | "..HubRuntime.FastRep:rebirthStatus()
             farm.Detail.Text="Método: "..S.FarmMode.." | "..(C:farming() and "Ativo" or "Desligado")
             pvp.Detail.Text="Filtro: "..S.PvpFilter.." | "..(M.PvpStatus or "Desligado")
             boss.Detail.Text=(M.BossState or "Aguardando").." | "..HubRuntime.BossTarget
