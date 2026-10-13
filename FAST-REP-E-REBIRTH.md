@@ -1,6 +1,16 @@
-# 710Hub 2026.10-tested.39 — força e fast rebirth
+# 710Hub 2026.10-explore.40 — força e fast rebirth
 
-O modo **Fast Rep (packs)** envia reps por frame e ajusta o ritmo pelo progresso observado de força/durabilidade. Começa em 200 pedidos/s, aumenta até o limite configurado de 40–659 e reduz se o progresso parar. O teto antigo de 160 chamadas/s continua nas outras operações; esse treino tem um controle próprio, com até 24 pedidos por frame e sem acumular rajadas durante pausas.
+O modo **Fast Rep (packs)** envia reps por frame, sem acumular rajadas durante pausas. O seletor **Envio de reps** oferece três perfis, com teto local configurável de 40–10.000 pedidos/s:
+
+- **Explorar limite** (padrão): testa 250, 400, 500, 659, 1.000, 1.500, 2.500, 3.295, 5.000, 7.500 e 10.000, respeitando o teto configurado. Cada etapa espera dois segundos ativos e mede pelo menos dez segundos de ganhos. Sobe enquanto o ganho melhora; após duas etapas sem melhora superior a 5%, volta à melhor taxa medida nesta rodada.
+- **Intensivo**: começa diretamente no limite escolhido. Reduz o envio se o progresso parar.
+- **Adaptativo**: mantém o comportamento anterior, começando em 200 e subindo até 659 conforme os ganhos.
+
+A exploração compara força quando o rebirth está desligado e rebirths quando está ligado. Nesse segundo caso, aguarda um rebirth observado para comparar a etapa, sem substituir essa medida por pedidos enviados. Alterar o teto ou ligar/desligar o rebirth reinicia a comparação. O painel mostra cada alvo, pedidos enviados e ganho observado; os resultados podem mudar com boosts, FPS e servidor.
+
+Intensivo/exploração têm até 256 pedidos por frame, com orçamento local de quatro milissegundos para o loop de envio. Em modo estável, continuam limitados a 200 pedidos/s e oito por frame. O teto de 160 chamadas/s das outras operações continua separado.
+
+**10.000 é um teto experimental do cliente, não uma taxa aceita pelo servidor.** A [documentação oficial do Roblox](https://create.roblox.com/docs/reference/engine/classes/RemoteEvent) descreve throttling aproximado de 500 eventos/s por cliente, compartilhado pelos eventos do mesmo tipo. Taxas solicitadas maiores podem aumentar a fila e a latência sem aumentar o ganho. O explorador usa ganhos observados para evitar continuar subindo quando não há benefício. Ele não altera o limite do servidor nem garante posição no ranking global.
 
 **Seus pets equipados são preservados durante força e fast rebirth.** O controlador apenas lê os pets atuais, os slots e os bônus conhecidos/replicados. Não troca pets para velocidade, força ou rebirth. O autoequip por atributo e a evolução automática aguardam enquanto o Fast Rep estiver ativo. As ferramentas anteriores de pets continuam disponíveis quando o treino rápido estiver desligado, caso você as ative explicitamente.
 
@@ -9,7 +19,8 @@ O modo **Fast Rep (packs)** envia reps por frame e ajusta o ritmo pelo progresso
 1. Equipe no jogo o conjunto de pets que deseja manter.
 2. Em Treino, selecione **Fast Rep (packs)** e clique em **Iniciar / parar treino**.
 3. Para renascer junto ao treino, ative **Fast rebirth / rebirth automático**. Deixe desligado para acumular força.
-4. Abra **Rendimento do Fast Rep**: o relatório atualiza a cada segundo com ganho de força/durabilidade/rebirth, ritmo recente e média ativa. Aguarde pelo menos dez segundos antes de comparar ganhos.
+4. Em **Envio de reps**, use **Explorar limite** para medir a melhor taxa, ou **Intensivo** para começar no limite escolhido.
+5. Abra **Rendimento do Fast Rep**: o relatório atualiza a cada segundo com ganho de força/durabilidade/rebirth, ritmo recente, média ativa e resultados das etapas. Aguarde pelo menos dez segundos antes de comparar ganhos.
 
 O ciclo de fast rebirth solicita assim que há força suficiente e o intervalo configurado permite, sem a antiga espera fixa de três segundos. Dá preferência a um requisito replicado; se ele não existir, usa a fórmula encontrada no Silence (`5000 + rebirths * 2550`). Solicita pelo canal `rebirthRequest` e confirma a mudança na estatística, mantendo o treino de força ativo durante a resposta e a confirmação. Respeita a meta absoluta de rebirths; atingir essa meta para os rebirths e mantém o treino de força. Recusas usam espera adaptativa de 0,5, 1 e até 2 segundos, respeitando intervalos maiores que você configurar. O padrão é 0,5 segundo; a contagem parte do pedido, evitando uma segunda espera inteira depois da resposta. Uma única solicitação fica pendente por vez.
 
@@ -33,7 +44,9 @@ Gamepasses e boosts pertencem à conta e são aplicados pelo jogo. O hub não in
 
 ## Verificação
 
-Foram executadas **464 verificações offline**: 312 do menu, 67 de força/fast rebirth, 23 de cenários prolongados/concorrentes, 22 do fluxo de bosses, 20 da pose acima do boss e 20 da interface. O menu tem 67 elementos, com títulos/IDs únicos. A suite de Fast Rep executa o script completo com doze pets equipados e verifica suas referências exatas após sucesso, recusa, timeout, pausa, boss, respawn e queda de FPS; registra zero chamadas de equip/unequip nesse fluxo. Os casos prolongados verificam um minuto de ciclos, parada sem ganhos apesar de recusas frequentes, requisitos inválidos, pausa longa, confirmação pendente e cancelamento de alterações de pets ao entrar no Fast Rep. Nesses últimos casos, a fixture inicia explicitamente uma tarefa de pets antes do treino e verifica que nenhuma alteração restante acontece após ativar o modo.
+Foram executadas **510 verificações offline**: 317 do menu, 67 de força/fast rebirth, 23 de cenários prolongados/concorrentes, 41 de taxas/exploração, 22 do fluxo de bosses, 20 da pose acima do boss e 20 da interface. O menu tem 68 elementos, com títulos/IDs únicos. A suite de Fast Rep executa o script completo com doze pets equipados e verifica suas referências exatas após sucesso, recusa, timeout, pausa, boss, respawn e queda de FPS; registra zero chamadas de equip/unequip nesse fluxo. Os casos prolongados verificam um minuto de ciclos, parada sem ganhos apesar de recusas frequentes, requisitos inválidos, pausa longa, confirmação pendente e cancelamento de alterações de pets ao entrar no Fast Rep. Nesses últimos casos, a fixture inicia explicitamente uma tarefa de pets antes do treino e verifica que nenhuma alteração restante acontece após ativar o modo.
+
+O benchmark local mediu aproximadamente 500,0, 658,7, 1.500,0, 3.294,7, 4.999,7 e 9.999,7 pedidos/s para os respectivos alvos 500, 659, 1.500, 3.295, 5.000 e 10.000. Essa fixture não impõe o throttling do Roblox: são medidas do loop local simulado. Uma fixture separada limita os pedidos aceitos a 500/s e o explorador seleciona 500 após testar etapas superiores sem melhora. Outra fixture sem limite permite alcançar as onze etapas até 10.000. Também foram testados pausa da exploração, mudança do objetivo, teto manual, orçamento de quatro milissegundos por frame e FPS baixo. Os resultados completos estão em `tests/fast-rep-rate-results.txt`.
 
 Os testes também verificam pedido em menos de 300ms quando a força já basta, força ativa durante resposta/replicação atrasada, ausência de pedidos concorrentes, recuperação após duas recusas temporárias e espera limitada após recusas persistentes. Esses tempos são resultados da fixture, não medições no Roblox.
 
@@ -42,15 +55,16 @@ py -3 build_clean.py
 py -3 tests/check_clean.py
 py -3 tests/check_fast_rep.py
 py -3 tests/check_fast_rep.py --stress
+py -3 tests/check_fast_rep.py --rates
 py -3 tests/check_published.py
 py -3 tests/check_boss_hover.py
 py -3 tests/check_design.py
 ```
 
-As fixtures definem seus próprios ganhos e requisitos. Os testes não comprovam rendimento no servidor Roblox real. Pedidos enviados não são reps aceitas e 659 pedidos/s não garantem ganhos iguais aos screenshots. Compare o ganho observado por minuto na mesma conta, conjunto de pets, boosts e servidor.
+As fixtures definem seus próprios ganhos e requisitos. Os testes não comprovam rendimento no servidor Roblox real. Pedidos enviados não são reps aceitas e taxas maiores não garantem ganhos iguais aos screenshots. Compare o ganho observado por minuto na mesma conta, conjunto de pets, boosts e servidor.
 
 ## Versão de teste fixada
 
 ```lua
-loadstring(game:HttpGet("https://raw.githubusercontent.com/Kamoviich/710hub/2825144cbaba3a2bf501f9bf130704ce27590515/710Hub.lua", true))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/Kamoviich/710hub/6754c6a187510ef59610f5176d7ca6cf87c35c80/710Hub.lua", true))()
 ```
