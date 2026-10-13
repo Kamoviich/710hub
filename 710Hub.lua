@@ -66,7 +66,7 @@ end
 
 local SESSION = {
     Alive = true,
-    Version = "2026.10-rebirth.38",
+    Version = "2026.10-tested.39",
     Connections = {},
 }
 
@@ -3012,7 +3012,7 @@ local function initializeEnhancements()
         for index = 1, math.min(slots,#candidates) do desired[candidates[index].Pet] = true end
         M.PetEquipBusy = true
         local token = self.Token
-        local function active() return SESSION.Alive and token == self.Token and M:canAct() end
+        local function active() return SESSION.Alive and token == self.Token and M:canAct() and not S.FastRep end
         local ok, result = pcall(function()
             for pet in pairs(equipped) do
                 if not desired[pet] then
@@ -3136,7 +3136,7 @@ local function initializeEnhancements()
             self.Next.Pets = now+10; self:equipObjective()
         end
         if S.AutoEvolveOwned and not S.FastRep and now >= (self.Next.Evolve or 0) then
-            self.Next.Evolve = now+5; evolveReadyOwned(function() return S.AutoEvolveOwned end)
+            self.Next.Evolve = now+5; evolveReadyOwned(function() return S.AutoEvolveOwned and not S.FastRep end)
         end
     end
     if UIS.JumpRequest then
@@ -3357,7 +3357,10 @@ local function initializeFastRep()
     function F:rebirthRequirement()
         for _,name in ipairs({"rebirthStrengthRequirement","RebirthRequirement"}) do
             local value=LP:FindFirstChild(name)
-            if value and tonumber(value.Value) then return math.max(0,tonumber(value.Value)) end
+            if value and (value:IsA("NumberValue") or value:IsA("IntValue")) then
+                local number=tonumber(value.Value)
+                if number and number==number and number>=0 and number<math.huge then return number end
+            end
         end
         -- Muscle Legends formula used by Silence; a refused request backs off.
         return 5000+currentRebirths()*2550
@@ -3390,7 +3393,6 @@ local function initializeFastRep()
         end)
         M.RebirthInFlight=false; self.Busy=false
         if token==self.Token then
-            self.LastControl=nil
             if not ok then self:retryBirth("Erro na solicitação"); setHubError(err) end
         end
     end
@@ -3401,6 +3403,7 @@ local function initializeFastRep()
     end
     function F:rebirthStatus()
         if not S.Rebirth then return "Rebirth desligado / meta encerrada" end
+        if not self:active() then return "Pausado; aguardando retomar treino / personagem" end
         if self.Busy then return "Aguardando confirmação; força continua ativa" end
         if numberStat("Strength")<self:rebirthRequirement() then return "Treinando até a força necessária para rebirth" end
         local nextRequest=math.max(self.NextBirth or 0,(M.LastRebirthRequest or -math.huge)+S.RebirthInterval)
@@ -3413,16 +3416,27 @@ local function initializeFastRep()
             for key,value in pairs(values) do self.Gains[key]+=math.max(0,value-self.Previous[key]) end
         end
         self.Previous=values; self.WasActive=active
-        self.Recent[#self.Recent+1]={At=os.clock(),Seconds=self.ActiveSeconds,Sent=self.Sent,
-            Strength=self.Gains.Strength,Durability=self.Gains.Durability,Rebirths=self.Gains.Rebirths}
-        while #self.Recent>1 and self.Recent[2].At<os.clock()-10 do table.remove(self.Recent,1) end
+        local now=os.clock()
+        -- Gains remain sampled per frame; the displayed rolling window needs only four points/s.
+        if not self.LastRecentAt or now-self.LastRecentAt>=.25 then
+            self.LastRecentAt=now
+            self.Recent[#self.Recent+1]={At=now,Sent=self.Sent,
+                Strength=self.Gains.Strength,Durability=self.Gains.Durability,Rebirths=self.Gains.Rebirths}
+            while #self.Recent>1 and self.Recent[2].At<now-10 do table.remove(self.Recent,1) end
+        end
     end
     function F:frame(dt)
         dt=math.clamp(tonumber(dt) or 1/60,0,.1)
         local active=self:active()==true
         self:sample(dt,active)
         if not active or M.PetEquipBusy then
-            self.Tokens=0; self.LastControl=nil; return
+            self.Tokens=0; self.LastControl=nil
+            if S.FastRep then
+                local reason=HubRuntime.BossActive and "boss em combate" or M.PetEquipBusy and "encerrando transação de pets"
+                    or not M:canAct() and M:reasonText() or "aguardando personagem"
+                self.Status="Pausado: "..reason
+            end
+            return
         end
         local now=os.clock()
         if now>=(self.NextPets or 0) then self:equippedBonuses(); self.NextPets=now+5 end
@@ -3460,7 +3474,7 @@ local function initializeFastRep()
             end
             return string.format("%.2f",value)
         end
-        local first=self.Recent[1]; local seconds=first and self.ActiveSeconds-first.Seconds or 0
+        local first=self.Recent[1]; local seconds=first and os.clock()-first.At or 0
         local rate=seconds>0 and (self.Sent-first.Sent)/seconds or 0
         local lines={self.Status,self:rebirthStatus(),
             "Força para rebirth: "..compact(numberStat("Strength")).." / "..compact(self:rebirthRequirement()),
