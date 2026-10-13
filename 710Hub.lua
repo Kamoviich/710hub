@@ -66,7 +66,7 @@ end
 
 local SESSION = {
     Alive = true,
-    Version = "2026.10-tested.39",
+    Version = "2026.10-explore.40",
     Connections = {},
 }
 
@@ -134,7 +134,7 @@ end
 refreshRemotes()
 
 local S = {
-    FastRep=false, FastRepLimit=659, FarmMode="Fast Rep (packs)", PvpFilter="Todos", PetObjective="strength",
+    FastRep=false, FastRepProfile="Explorar limite", FastRepLimit=10000, FarmMode="Fast Rep (packs)", PvpFilter="Todos", PetObjective="strength",
     HatchMaxOpens=20, HatchTargetPet="",
     AutoWheel=false, AutoEggs=false, AutoBoosts=false, AutoBestPetObjective=false, AutoEvolveOwned=false,
     SetSpeed=false, SetSize=false, SetFOV=false, InfiniteJump=false, AntiFling=false,
@@ -202,7 +202,7 @@ return function(settings, clock)
         "SetSpeed", "SetSize", "SetFOV", "InfiniteJump", "AntiFling", "Spectate", "ShiftLock"}
     local booleans = { "PreserveFarmPets", "FarmCustom", "BossAutoLoot", "BossReturn", "BossDefense", "BossAbove", "ResumeAfterDeath", "HealthGuard", "StallAlerts", "PerformanceMode", "StabilityMode", "RebirthGuard", "BreakEnabled", "PvpProtectFriends", "PvpOnlySelected"}
     local numbers = {
-        FastRepLimit = {40, 659},
+        FastRepLimit = {40, 10000},
         CharacterSpeed = {1, 500}, CharacterSize = {1, 100}, CameraFOV = {30, 120}, ShopCount = {1, 20},
         FarmIntervalMs = {1, 5000}, FarmReps = {1, 160}, FarmSpeed = {1, 3}, HatchMaxOpens = {1, 100}, PvpRadius = {10, 500}, PvpAttackRange = {1.5, 5}, RepDelay = {.05, 5}, HatchDelay = {.1, 30}, BossDistance = {2, 12},
         HealthLow = {5, 60}, HealthResume = {65, 100}, StallSeconds = {30, 600},
@@ -210,6 +210,7 @@ return function(settings, clock)
         RebirthFloor = {0, 1e15}, RebirthInterval = {.5, 30}, BreakEvery = {1, 240}, BreakMinutes = {1, 60},
     }
     local choices = {
+        FastRepProfile={"Explorar limite","Intensivo","Adaptativo"},
         FarmMode={"Fast Rep (packs)","Automático","Peso","Flexões","Abdominais","Parada de mãos","Máquina","Pedras","Esteira"},
         PvpFilter={"Todos","Karma bom","Karma ruim","Selecionado"}, PetObjective={"strength","durability","agility"}, SmartObjective = {"Força", "Durabilidade", "Agilidade", "Rebirths"},
         GoalStat = {"Strength", "Agility", "Durability", "Rebirths"}}
@@ -376,7 +377,7 @@ return function(settings, clock)
             local value = source[key]
             if value ~= nil then
                 if type(value) ~= "number" or value ~= value or value < bounds[1] or value > bounds[2]
-                    or ((key == "ShopCount" or key == "HatchMaxOpens") and value % 1 ~= 0) then return nil, key end
+                    or ((key == "ShopCount" or key == "HatchMaxOpens" or key == "FastRepLimit") and value % 1 ~= 0) then return nil, key end
                 result[key] = value
             end
         end
@@ -3327,8 +3328,59 @@ local function initializeFastRep()
     end
     function F:cancel()
         self.Token+=1; self.Tokens=0; self.NextPets=0
-        self.LastControl=nil; self.Rate=200; self.NextBirth=nil; self.BirthFailures=0
-        self.BirthResult=nil; self.Status="Parado"
+        self.LastControl=nil; self.RateSignature=nil; self.Rate=200; self.NextBirth=nil; self.BirthFailures=0
+        self.BirthResult=nil; self.Trial=nil; self.Status="Parado"
+    end
+    function F:limits()
+        local explore=S.FastRepProfile=="Explorar limite"
+        local intensive=S.FastRepProfile=="Intensivo"
+        local ceiling=S.StabilityMode and 200 or (intensive or explore) and 10000 or 659
+        return math.min(S.FastRepLimit,ceiling),S.StabilityMode and 8 or (intensive or explore) and 256 or 24
+    end
+    function F:startTrial(limit)
+        local rates={}
+        for _,rate in ipairs({250,400,500,659,1000,1500,2500,3295,5000,7500,10000}) do
+            if rate<=limit then rates[#rates+1]=rate end
+        end
+        if rates[#rates]~=limit then rates[#rates+1]=limit end
+        self.Trial={Rates=rates,Index=1,Seconds=0,Records={},Stale=0,BestScore=-1,
+            BestRate=rates[1],Target=rates[1],Objective=S.Rebirth and "Rebirths" or "Strength"}
+        self.Rate=rates[1]
+    end
+    function F:trialTick(dt)
+        local trial=self.Trial
+        if not trial or trial.Done then return end
+        trial.Seconds+=dt
+        -- Let replication settle, then compare ten active seconds at each requested rate.
+        if trial.Seconds<2 then return end
+        if not trial.Baseline then
+            trial.Baseline={Seconds=trial.Seconds,Strength=self.Gains.Strength,
+                Rebirths=self.Gains.Rebirths,Sent=self.Sent}
+            return
+        end
+        local duration=trial.Seconds-trial.Baseline.Seconds
+        if duration<10 then return end
+        local stat=trial.Objective
+        local score=(self.Gains[stat]-trial.Baseline[stat])/duration
+        if stat=="Rebirths" and score==0 then
+            -- Do not compare a strength proxy against a completed rebirth measurement.
+            self.Trial.Note="Aguardando rebirth observado para comparar esta etapa"
+            return
+        end
+        local record={Target=trial.Target,SentRate=(self.Sent-trial.Baseline.Sent)/duration,
+            Score=score,Stat=stat,Seconds=duration}
+        trial.Records[#trial.Records+1]=record
+        if trial.BestScore<0 or score>trial.BestScore*1.05 then
+            trial.BestScore=score; trial.BestRate=trial.Target; trial.Stale=0
+        else trial.Stale+=1 end
+        if trial.Stale>=2 or trial.Index>=#trial.Rates then
+            trial.Done=true; self.Rate=trial.BestRate
+            trial.Note=trial.Stale>=2 and "Duas etapas sem melhora; melhor taxa retomada" or "Teto local explorado"
+        else
+            trial.Index+=1; trial.Target=trial.Rates[trial.Index]
+            trial.Seconds=0; trial.Baseline=nil; trial.Note=nil; self.Rate=trial.Target
+        end
+        self.Tokens=0
     end
     function F:bonus(pet,index)
         local aliases=({{"repSpeed","repSpeedBonus","repSpeedPercent"},{"strengthMultiplier","strengthBonus"},
@@ -3441,12 +3493,21 @@ local function initializeFastRep()
         local now=os.clock()
         if now>=(self.NextPets or 0) then self:equippedBonuses(); self.NextPets=now+5 end
         local strength,durability=numberStat("Strength"),numberStat("Durability")
-        local limit=math.min(S.FastRepLimit,S.StabilityMode and 200 or 659)
+        local limit,burst=self:limits()
+        local signature=tostring(S.FastRepProfile)..":"..tostring(limit)..":"..tostring(S.Rebirth)
+        if self.RateSignature~=signature then
+            self.RateSignature=signature; self.Tokens=0
+            self.Trial=nil
+            self.Rate=S.FastRepProfile=="Intensivo" and limit or math.min(200,limit)
+            if S.FastRepProfile=="Explorar limite" then self:startTrial(limit) end
+        end
+        self:trialTick(dt)
+        if self.Trial then limit=math.min(limit,self.Trial.Done and self.Trial.BestRate or self.Trial.Target) end
         if not self.LastControl then
             self.LastControl=now; self.ControlStrength=strength; self.ControlDurability=durability; self.ControlBirths=currentRebirths(); self.NoProgress=0
         elseif now-self.LastControl>=.5 then
             if strength>self.ControlStrength or durability>self.ControlDurability or currentRebirths()>self.ControlBirths then
-                self.NoProgress=0; self.Rate=math.min(limit,self.Rate*1.12)
+                self.NoProgress=0; self.Rate=math.min(limit,self.Rate*(S.FastRepProfile=="Intensivo" and 1.25 or 1.12))
             else
                 self.NoProgress+=now-self.LastControl
                 if self.NoProgress>=2 then self.Rate=math.max(40,self.Rate*.65); self.Tokens=0 end
@@ -3455,17 +3516,18 @@ local function initializeFastRep()
             self.LastControl=now; self.ControlStrength=strength; self.ControlDurability=durability; self.ControlBirths=currentRebirths()
         end
         self.Rate=math.min(self.Rate,limit)
-        local burst=S.StabilityMode and 8 or 24
         self.Tokens=math.min(burst,self.Tokens+self.Rate*dt)
         local event=getMuscleEvent()
         if not event then S.FastRep=false; self:cancel(); self.Status="Canal de reps indisponível"; return end
+        local character,burstStarted=LP.Character,os.clock()
         for _=1,math.floor(self.Tokens) do
-            if not self:active() then break end
+            if not SESSION.Alive or not S.FastRep or not M:canAct() or HubRuntime.BossActive
+                or M.PetEquipBusy or LP.Character~=character or os.clock()-burstStarted>=.004 then break end
             local ok,err=pcall(function() event:FireServer("rep") end)
             if not ok then S.FastRep=false; self:cancel(); setHubError(err); break end
             self.Tokens-=1; self.Sent+=1; HubRuntime.RemoteCalls+=1
         end
-        if S.FastRep then self.Status=string.format("Fast Rep: %.0f reps/s alvo | bônus de velocidade: %s%%",self.Rate,tostring(self.PetSpeed or 0)) end
+        if S.FastRep then self.Status=string.format("Fast Rep %s: %.0f pedidos/s alvo | bônus de velocidade: %s%%",S.FastRepProfile,self.Rate,tostring(self.PetSpeed or 0)) end
     end
     function F:report()
         local function compact(value)
@@ -3482,6 +3544,14 @@ local function initializeFastRep()
             string.format("Pets atuais: %d slots | velocidade estimada: %s%% | bônus de rebirth estimado: %s%%",self.PetSlots or 0,tostring(self.PetSpeed or 0),tostring(self.PetBirth or 0)),
             string.format("Pedidos enviados: %.1f/s | total: %d | tempo ativo: %.1fs",rate,self.Sent,self.ActiveSeconds),
             "Ganhos medidos nos valores da conta; pedidos enviados não equivalem a reps aceitas."}
+        if self.Trial then
+            local trial=self.Trial
+            lines[#lines+1]=string.format("Exploração: etapa %d/%d | alvo: %d/s | melhor: %d/s\n%s",trial.Index,#trial.Rates,trial.Target,trial.BestRate,
+                trial.Note or "Aumentando por etapas e comparando o ganho observado")
+            for _,row in ipairs(trial.Records) do
+                lines[#lines+1]=string.format("Alvo %d/s | enviado %.1f/s | %s: %s/s",row.Target,row.SentRate,row.Stat,compact(row.Score))
+            end
+        end
         for _,key in ipairs({"Strength","Durability","Rebirths"}) do
             local pace=seconds>0 and (self.Gains[key]-first[key])/seconds or 0
             local average=self.ActiveSeconds>0 and self.Gains[key]/self.ActiveSeconds or 0
@@ -4438,7 +4508,8 @@ local function cleanUI()
     choices("machine_select","Máquina do treino","Lista atual do mapa; aparece ao escolher o método Máquina.",function()
         local out={}; for _,machine in ipairs(scanMachines()) do out[#out+1]={Label=machine.name,Value=machine.name} end; return out
     end,function(name) S.SelectedMachine=name end,function() return S.FarmMode=="Máquina" and canMachineFarm() end)
-    numeric("fast_rep_limit","Fast Rep: limite de reps/s (40–659)","FastRepLimit",40,659,true)
+    choices("rep_profile","Envio de reps","Explorar sobe por etapas e escolhe o melhor ganho medido. Intensivo começa no limite; Adaptativo sobe até 659. Seus pets são preservados.",strings({"Explorar limite","Intensivo","Adaptativo"}),function(value) S.FastRepProfile=value; HubRuntime.FastRep:cancel() end)
+    numeric("fast_rep_limit","Fast Rep: teto local de pedidos/s (40–10000)","FastRepLimit",40,10000,true)
     local pace=action("farm_pace","Rendimento do Fast Rep","Força, durabilidade, rebirths e pedidos enviados; atualiza a cada segundo sem alterar seus pets.",function() report("Rendimento observado",function() return HubRuntime.FastRep:report() end) end)
     input("farm_interval","Outros métodos: intervalo em rajada (ms)",S.FarmIntervalMs,function(value) return M:setFarmTiming("FarmIntervalMs",value) end)
     input("farm_reps","Outros métodos: reps por ciclo em rajada",S.FarmReps,function(value) return M:setFarmTiming("FarmReps",value) end)
