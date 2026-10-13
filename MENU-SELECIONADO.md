@@ -1,6 +1,6 @@
 # 710Hub — seleção limpa
 
-**Atualização 2026.10-packs.37:** força adaptativa e fast rebirth integrados, mantendo os pets equipados. O menu atual tem 67 elementos e 427 verificações locais. Consulte [FAST-REP-E-REBIRTH.md](FAST-REP-E-REBIRTH.md) para uso e resultados. A descrição abaixo registra a revisão anterior 2026.10-clean.36.
+**Atualização 2026.10-rebirth.38:** força adaptativa e fast rebirth integrados, mantendo os pets equipados e corrigindo esperas desnecessárias no ciclo. O menu atual tem 67 elementos e 441 verificações locais. Consulte [FAST-REP-E-REBIRTH.md](FAST-REP-E-REBIRTH.md) para uso e resultados. A descrição abaixo registra a revisão anterior 2026.10-clean.36.
 
 O menu tem **65 elementos**: 26 toggles, 14 campos e 25 cards de ação, seleção ou estado. Há um único controle para cada propósito; as opções de um seletor não são cópias da mesma rotina.
 
