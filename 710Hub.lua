@@ -66,7 +66,7 @@ end
 
 local SESSION = {
     Alive = true,
-    Version = "2026.10-clean.36",
+    Version = "2026.10-packs.37",
     Connections = {},
 }
 
@@ -134,7 +134,7 @@ end
 refreshRemotes()
 
 local S = {
-    FarmMode="Automático", PvpFilter="Todos", PetObjective="strength",
+    FastRep=false, FastRepLimit=659, FarmMode="Fast Rep (packs)", PvpFilter="Todos", PetObjective="strength",
     HatchMaxOpens=20, HatchTargetPet="",
     AutoWheel=false, AutoEggs=false, AutoBoosts=false, AutoBestPetObjective=false, AutoEvolveOwned=false,
     SetSpeed=false, SetSize=false, SetFOV=false, InfiniteJump=false, AntiFling=false,
@@ -193,15 +193,16 @@ return function(settings, clock)
         Stalled = false, WasTraining = false, Samples = {}, ActiveSeconds = 0,
         BossCounts = {}, BossObservations = 0, BossRecent = {},
     }
-    M.AutoKeys = {"Rebirth", "Chests", "Hatch", "AutoPunch",
+    M.AutoKeys = {"FastRep", "Rebirth", "Chests", "Hatch", "AutoPunch",
         "TrainWeight", "TrainPushups", "TrainSitups", "TrainHandstands", "PvpAny", "PvpGood", "PvpEvil",
         "SmartRock", "AutoMachine",
         "MaxStrengthF2P", "AutoBoss", "AutoAgility",
         "GoalEnabled",
         "AutoWheel", "AutoEggs", "AutoBoosts", "AutoBestPetObjective", "AutoEvolveOwned",
         "SetSpeed", "SetSize", "SetFOV", "InfiniteJump", "AntiFling", "Spectate", "ShiftLock"}
-    local booleans = {"PreserveFarmPets", "FarmCustom", "BossAutoLoot", "BossReturn", "BossDefense", "BossAbove", "ResumeAfterDeath", "HealthGuard", "StallAlerts", "PerformanceMode", "StabilityMode", "RebirthGuard", "BreakEnabled", "PvpProtectFriends", "PvpOnlySelected"}
+    local booleans = { "PreserveFarmPets", "FarmCustom", "BossAutoLoot", "BossReturn", "BossDefense", "BossAbove", "ResumeAfterDeath", "HealthGuard", "StallAlerts", "PerformanceMode", "StabilityMode", "RebirthGuard", "BreakEnabled", "PvpProtectFriends", "PvpOnlySelected"}
     local numbers = {
+        FastRepLimit = {40, 659},
         CharacterSpeed = {1, 500}, CharacterSize = {1, 100}, CameraFOV = {30, 120}, ShopCount = {1, 20},
         FarmIntervalMs = {1, 5000}, FarmReps = {1, 160}, FarmSpeed = {1, 3}, HatchMaxOpens = {1, 100}, PvpRadius = {10, 500}, PvpAttackRange = {1.5, 5}, RepDelay = {.05, 5}, HatchDelay = {.1, 30}, BossDistance = {2, 12},
         HealthLow = {5, 60}, HealthResume = {65, 100}, StallSeconds = {30, 600},
@@ -209,7 +210,7 @@ return function(settings, clock)
         RebirthFloor = {0, 1e15}, RebirthInterval = {.5, 30}, BreakEvery = {1, 240}, BreakMinutes = {1, 60},
     }
     local choices = {
-        FarmMode={"Automático","Peso","Flexões","Abdominais","Parada de mãos","Máquina","Pedras","Esteira"},
+        FarmMode={"Fast Rep (packs)","Automático","Peso","Flexões","Abdominais","Parada de mãos","Máquina","Pedras","Esteira"},
         PvpFilter={"Todos","Karma bom","Karma ruim","Selecionado"}, PetObjective={"strength","durability","agility"}, SmartObjective = {"Força", "Durabilidade", "Agilidade", "Rebirths"},
         GoalStat = {"Strength", "Agility", "Durability", "Rebirths"}}
     local strings = {"HatchCrystal", "HatchTargetPet", "SelectedMachine", "BossPreference"}
@@ -253,7 +254,7 @@ return function(settings, clock)
         M.Conflicts[a][b], M.Conflicts[b][a] = true, true
     end
     -- Only competing tool/position owners. Selection and passive helpers stay on.
-    local trainers = {"Train", "TrainWeight", "TrainPushups", "TrainSitups", "TrainHandstands", "TurboStrength", "MaxStrengthF2P", "AutoMachine", "AutoAgility"}
+    local trainers = {"FastRep", "Train", "TrainWeight", "TrainPushups", "TrainSitups", "TrainHandstands", "TurboStrength", "MaxStrengthF2P", "AutoMachine", "AutoAgility"}
     for i, a in ipairs(trainers) do
         for j = i + 1, #trainers do conflict(a, trainers[j]) end
         conflict(a, "AutoPunch"); conflict(a, "SmartRock")
@@ -263,7 +264,7 @@ return function(settings, clock)
     for _, key in ipairs({"Train", "TrainWeight", "TrainPushups", "TrainSitups", "TrainHandstands", "TurboStrength", "MaxStrengthF2P", "AutoMachine", "AutoBestMachine", "AutoAgility", "SmartRock", "AutoPunch", "StrengthRebirth", "Rebirth", "LockPosition"}) do conflict("SmartFarm", key) end
     for _, mode in ipairs({"PvpAny", "PvpGood", "PvpEvil"}) do
         for _, key in ipairs(trainers) do conflict(mode, key) end
-        for _, key in ipairs({"AutoBoss", "Brawl", "SmartRock", "AutoPunch", "LockPosition", "SmartFarm", "Rebirth", "StrengthRebirth"}) do conflict(mode, key) end
+        for _, key in ipairs({"FastRep", "AutoBoss", "Brawl", "SmartRock", "AutoPunch", "LockPosition", "SmartFarm", "Rebirth", "StrengthRebirth"}) do conflict(mode, key) end
     end
     conflict("PvpGood", "PvpEvil")
     conflict("PvpAny", "PvpGood"); conflict("PvpAny", "PvpEvil")
@@ -655,6 +656,8 @@ local agilityLastTeleport = 0
 
 
 local function stopAllAutomations()
+    S.FastRep=false
+    if HubRuntime.FastRep then HubRuntime.FastRep:cancel() end
     if HubRuntime.Clean then HubRuntime.Clean:stopHatch() end
     if HubRuntime.Extras then HubRuntime.Extras:stop() end
     M:cancelComparison()
@@ -2987,6 +2990,7 @@ local function initializeEnhancements()
         return found and score or nil
     end
     function X:equipObjective()
+        if S.FastRep then return false end
         if not SESSION.Alive or not M:canAct() or M.PetEquipBusy then return false end
         refreshRemotes()
         local candidates, equipped, slots = {}, equippedPets()
@@ -3131,7 +3135,7 @@ local function initializeEnhancements()
         if S.AutoBestPetObjective and now >= (self.Next.Pets or 0) and not HubRuntime.BossActive then
             self.Next.Pets = now+10; self:equipObjective()
         end
-        if S.AutoEvolveOwned and now >= (self.Next.Evolve or 0) then
+        if S.AutoEvolveOwned and not S.FastRep and now >= (self.Next.Evolve or 0) then
             self.Next.Evolve = now+5; evolveReadyOwned(function() return S.AutoEvolveOwned end)
         end
     end
@@ -3166,13 +3170,14 @@ initializeEnhancements()
 local function initializeCleanRuntime()
     local C={HatchToken=0,HatchSent=0,HatchUnconfirmed=0,HatchStatus="Desligado"}
     HubRuntime.Clean=C
-    C.Modes={"Automático","Peso","Flexões","Abdominais","Parada de mãos","Máquina","Pedras","Esteira"}
+    C.Modes={"Fast Rep (packs)","Automático","Peso","Flexões","Abdominais","Parada de mãos","Máquina","Pedras","Esteira"}
     C.ModeKeys={
+        ["Fast Rep (packs)"]="FastRep",
         ["Automático"]="MaxStrengthF2P",["Peso"]="TrainWeight",["Flexões"]="TrainPushups",
         ["Abdominais"]="TrainSitups",["Parada de mãos"]="TrainHandstands",
         ["Máquina"]="AutoMachine",["Pedras"]="SmartRock",["Esteira"]="AutoAgility",
     }
-    C.FarmKeys={"Train","TrainWeight","TrainPushups","TrainSitups","TrainHandstands","TurboStrength",
+    C.FarmKeys={"FastRep","Train","TrainWeight","TrainPushups","TrainSitups","TrainHandstands","TurboStrength",
         "MaxStrengthF2P","AutoMachine","AutoBestMachine","SmartRock","AutoPunch","AutoAgility","SmartFarm","StrengthRebirth"}
     function C:farming()
         for _,key in ipairs(self.FarmKeys) do if S[key] then return true end end
@@ -3180,8 +3185,10 @@ local function initializeCleanRuntime()
     end
     function C:clearFarm()
         for _,key in ipairs(self.FarmKeys) do S[key]=false end
+        if HubRuntime.FastRep then HubRuntime.FastRep:cancel() end
     end
     function C:available(mode)
+        if mode=="Fast Rep (packs)" then return hasCharacter() and getMuscleEvent()~=nil end
         if mode=="Máquina" then return canMachineFarm() end
         if mode=="Pedras" then return canRockFarm() and canPunch() end
         if mode=="Esteira" then return canAgilityFarm() and bestTreadmill()~=nil end
@@ -3296,6 +3303,171 @@ local function initializeCleanRuntime()
 end
 initializeCleanRuntime()
 -- END CLEAN RUNTIME
+
+-- BEGIN FAST REP RUNTIME
+local function initializeFastRep()
+    local F={Token=0,Tokens=0,Rate=200,Sent=0,ActiveSeconds=0,CycleSeconds=0,
+        Gains={Strength=0,Durability=0,Rebirths=0},Recent={},Status="Parado",Role=nil}
+    HubRuntime.FastRep=F
+    -- Bonus definitions observed in the readable Silence farming source and Mystery catalog.
+    -- Replicated perks take precedence. Reading this table never equips or unequips a pet.
+    F.Bonuses={
+        ["Omega Overlord"]={20,0,0,0},["Swift Samurai"]={15,0,0,0},
+        ["Powercore Hound"]={0,25,15,0},["Titanium Hydra"]={0,0,0,2},
+        ["Tribal Overlord"]={0,0,0,2},["Inferno Unicorn"]={0,25,25,0},
+        ["Inferno Drake"]={40,0,0,0},["Common Boss Pet"]={5,0,0,0},
+        ["Rare Boss Pet"]={7,0,0,0},["Epic Boss Pet"]={10,0,0,0},
+        ["Rainbow Boss Pet"]={10,7,0,0},["Legendary Boss Pet"]={10,10,0,0},
+        ["Mythic Boss Pet"]={10,20,0,0},
+    }
+    function F:active()
+        local hum=LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
+        return SESSION.Alive and S.FastRep and M:canAct() and not HubRuntime.BossActive
+            and not M.PvpTarget and hum and hum.Health>0
+    end
+    function F:cancel()
+        self.Token+=1; self.Tokens=0; self.Role=nil; self.NextPets=0
+        self.LastControl=nil; self.CycleSeconds=0; self.Rate=200; self.NextBirth=nil; self.Status="Parado"
+    end
+    function F:bonus(pet,index)
+        local aliases=({{"repSpeed","repSpeedBonus","repSpeedPercent"},{"strengthMultiplier","strengthBonus"},
+            {"durabilityMultiplier","durabilityBonus"},{"rebirth","rebirths","rebirthBonus"}})[index]
+        local perks=pet:FindFirstChild("perksFolder")
+        for _,container in ipairs({perks or pet,pet}) do
+            for _,name in ipairs(aliases) do
+                local value=container:FindFirstChild(name)
+                local n=value and (value:IsA("NumberValue") or value:IsA("IntValue")) and tonumber(value.Value) or container:GetAttribute(name)
+                if type(n)=="number" and n==n and n>=0 then return n end
+            end
+        end
+        return (self.Bonuses[pet.Name] or {})[index] or 0
+    end
+    function F:equippedBonuses()
+        local pets,slots=equippedPets()
+        local speed,birth=0,0
+        for pet in pairs(pets) do
+            if typeof(pet)=="Instance" then
+                speed+=self:bonus(pet,1); birth+=self:bonus(pet,4)
+            end
+        end
+        self.PetSpeed=speed; self.PetSlots=slots; self.PetBirth=birth
+        return speed,birth,slots
+    end
+    function F:rebirthRequirement()
+        for _,name in ipairs({"rebirthStrengthRequirement","RebirthRequirement"}) do
+            local value=LP:FindFirstChild(name)
+            if value and tonumber(value.Value) then return math.max(0,tonumber(value.Value)) end
+        end
+        -- Muscle Legends formula used by Silence; a refused request backs off.
+        return 5000+currentRebirths()*2550
+    end
+    function F:rebirth()
+        if not self:active() or not S.Rebirth or self.Busy or M.RebirthInFlight or M.PetEquipBusy
+            or not M:canRequestRebirth(numberStat("Strength"),currentRebirths())
+            or os.clock()<(self.NextBirth or 0) or self.CycleSeconds<3
+            or numberStat("Strength")<self:rebirthRequirement() then return end
+        local token,before=self.Token,currentRebirths()
+        self.Busy=true; M.RebirthInFlight=true; self.Tokens=0
+        local ok,err=pcall(function()
+            self.Status="Fast rebirth; mantendo seus pets equipados"
+            if token~=self.Token or not self:active() or not S.Rebirth then return end
+            refreshRemotes(); M.LastRebirthRequest=os.clock()
+            local response,_,sent=safeInvoke(R.Rebirth,"rebirthRequest")
+            if token~=self.Token or not self:active() then return end
+            local deadline=os.clock()+1.5
+            while sent and response~=false and currentRebirths()==before and os.clock()<deadline
+                and token==self.Token and self:active() do task.wait(.1) end
+            if token~=self.Token or not self:active() then return end
+            if currentRebirths()>before then
+                self.CycleSeconds=0; self.NextBirth=os.clock()+S.RebirthInterval
+                if S.RebirthTarget and currentRebirths()>=S.RebirthTarget then S.Rebirth=false end
+                self.Status="Rebirth confirmado; retomando treino"
+            else
+                self.NextBirth=os.clock()+15; self.Status="Rebirth sem confirmação; nova tentativa em 15s"
+            end
+        end)
+        M.RebirthInFlight=false; self.Busy=false
+        self.Role=nil; self.NextPets=0; self.Tokens=0; self.LastControl=nil
+        if not ok then self.NextBirth=os.clock()+15; setHubError(err) end
+    end
+    function F:sample(dt,active)
+        local values={Strength=numberStat("Strength"),Durability=numberStat("Durability"),Rebirths=currentRebirths()}
+        if active then self.ActiveSeconds+=dt end
+        if active and self.Previous and self.WasActive then
+            for key,value in pairs(values) do self.Gains[key]+=math.max(0,value-self.Previous[key]) end
+        end
+        self.Previous=values; self.WasActive=active
+        self.Recent[#self.Recent+1]={At=os.clock(),Seconds=self.ActiveSeconds,Sent=self.Sent,
+            Strength=self.Gains.Strength,Durability=self.Gains.Durability,Rebirths=self.Gains.Rebirths}
+        while #self.Recent>1 and self.Recent[2].At<os.clock()-10 do table.remove(self.Recent,1) end
+    end
+    function F:frame(dt)
+        dt=math.clamp(tonumber(dt) or 1/60,0,.1)
+        local active=self:active()==true
+        self:sample(dt,active)
+        if not active or self.Busy or M.PetEquipBusy then
+            self.Tokens=0; self.LastControl=nil; return
+        end
+        local now=os.clock(); self.CycleSeconds+=dt
+        if now>=(self.NextPets or 0) then self:equippedBonuses(); self.NextPets=now+5 end
+        local strength,durability=numberStat("Strength"),numberStat("Durability")
+        local limit=math.min(S.FastRepLimit,S.StabilityMode and 200 or 659)
+        if not self.LastControl then
+            self.LastControl=now; self.ControlStrength=strength; self.ControlDurability=durability; self.NoProgress=0
+        elseif now-self.LastControl>=.5 then
+            if strength>self.ControlStrength or durability>self.ControlDurability then
+                self.NoProgress=0; self.Rate=math.min(limit,self.Rate*1.12)
+            else
+                self.NoProgress+=now-self.LastControl
+                if self.NoProgress>=2 then self.Rate=math.max(40,self.Rate*.65); self.Tokens=0 end
+                if self.NoProgress>=10 then S.FastRep=false; S.Rebirth=false; self:cancel(); self.Status="Parado: 10s sem ganho observado"; return end
+            end
+            self.LastControl=now; self.ControlStrength=strength; self.ControlDurability=durability
+        end
+        self.Rate=math.min(self.Rate,limit)
+        local burst=S.StabilityMode and 8 or 24
+        self.Tokens=math.min(burst,self.Tokens+self.Rate*dt)
+        local event=getMuscleEvent()
+        if not event then S.FastRep=false; self:cancel(); self.Status="Canal de reps indisponível"; return end
+        for _=1,math.floor(self.Tokens) do
+            if not self:active() then break end
+            local ok,err=pcall(function() event:FireServer("rep") end)
+            if not ok then S.FastRep=false; self:cancel(); setHubError(err); break end
+            self.Tokens-=1; self.Sent+=1; HubRuntime.RemoteCalls+=1
+        end
+        if S.FastRep then self.Status=string.format("Fast Rep: %.0f reps/s alvo | bônus de velocidade: %s%%",self.Rate,tostring(self.PetSpeed or 0)) end
+    end
+    function F:report()
+        local function compact(value)
+            for _,unit in ipairs({{1e18,"Qi"},{1e15,"Qa"},{1e12,"T"},{1e9,"B"},{1e6,"M"},{1e3,"K"}}) do
+                if math.abs(value)>=unit[1] then return string.format("%.2f%s",value/unit[1],unit[2]) end
+            end
+            return string.format("%.2f",value)
+        end
+        local first=self.Recent[1]; local seconds=first and self.ActiveSeconds-first.Seconds or 0
+        local rate=seconds>0 and (self.Sent-first.Sent)/seconds or 0
+        local lines={self.Status,"Seus pets equipados são preservados durante força e fast rebirth.",
+            string.format("Pets atuais: %d slots | velocidade estimada: %s%% | bônus de rebirth estimado: %s%%",self.PetSlots or 0,tostring(self.PetSpeed or 0),tostring(self.PetBirth or 0)),
+            string.format("Pedidos enviados: %.1f/s | total: %d | tempo ativo: %.1fs",rate,self.Sent,self.ActiveSeconds),
+            "Ganhos medidos nos valores da conta; pedidos enviados não equivalem a reps aceitas."}
+        for _,key in ipairs({"Strength","Durability","Rebirths"}) do
+            local pace=seconds>0 and (self.Gains[key]-first[key])/seconds or 0
+            local average=self.ActiveSeconds>0 and self.Gains[key]/self.ActiveSeconds or 0
+            lines[#lines+1]=string.format("%s: %s | ganho: %s\nÚltimos 10s: %s/s | %s/min | %s/h | %s/d\nMédia ativa: %s/s",key,compact(numberStat(key)),compact(self.Gains[key]),compact(pace),compact(pace*60),compact(pace*3600),compact(pace*86400),compact(average))
+        end
+        return table.concat(lines,"\n\n")
+    end
+    local ordinary=M.attemptRebirth
+    function M:attemptRebirth() if S.FastRep then return F:rebirth() end; return ordinary(self) end
+    trackConnection(RunService.Heartbeat:Connect(function(dt)
+        if not SESSION.Alive then return end
+        local ok,err=pcall(function() F:frame(dt) end)
+        if not ok then S.FastRep=false; F:cancel(); setHubError("Fast Rep: "..tostring(err)) end
+    end))
+
+end
+initializeFastRep()
+-- END FAST REP RUNTIME
 
 local function initializeUI()
 local TweenService = game:GetService("TweenService")
@@ -4175,10 +4347,13 @@ local function cleanUI()
         list.CanvasSize=UDim2.new(); list.AutomaticCanvasSize=Enum.AutomaticSize.Y
         list.ScrollBarThickness=5; list.BackgroundTransparency=1; list.BorderSizePixel=0; list.ZIndex=21; list.Parent=overlay
         local text=Instance.new("TextBox")
-        text.Text=body; text.TextEditable=false; text.ClearTextOnFocus=false; text.MultiLine=true; text.TextWrapped=true
+        text.Text=type(body)=="function" and body() or body; text.TextEditable=false; text.ClearTextOnFocus=false; text.MultiLine=true; text.TextWrapped=true
         text.Size=UDim2.new(1,-12,0,0); text.AutomaticSize=Enum.AutomaticSize.Y; text.TextSize=14
         text.TextXAlignment=Enum.TextXAlignment.Left; text.TextYAlignment=Enum.TextYAlignment.Top
         text.Font=Enum.Font.Gotham; text.TextColor3=COLORS.White; text.BackgroundTransparency=1; text.ZIndex=22; text.Parent=list
+        if type(body)=="function" then task.spawn(function()
+            while SESSION.Alive and overlay.Parent do text.Text=body(); task.wait(1) end
+        end) end
     end
     local function choose(title,options,callback)
         local overlay=modal(title)
@@ -4223,7 +4398,7 @@ local function cleanUI()
     local function group(name,category,desc) UI.Groups[name]=category; section(name,desc) end
 
     group("TREINO","Farm","Um controlador de treino, com método escolhido e limites de carga.")
-    choices("farm_method","Método de treino","Automático escolhe máquinas elegíveis ou ferramenta; cada método tem uma única rotina.",strings(C.Modes),function(mode) C:setMode(mode); renderAllToggles() end)
+    choices("farm_method","Método de treino","Fast Rep ajusta o ritmo pelos ganhos reais; Automático escolhe máquina ou ferramenta.",strings(C.Modes),function(mode) C:setMode(mode); renderAllToggles() end)
     local farm=action("farm_start","Iniciar / parar treino","Inicia o método selecionado; aguarda durante combate com boss.",function()
         if C:farming() then C:clearFarm() else C:startFarm() end
         renderAllToggles()
@@ -4231,9 +4406,11 @@ local function cleanUI()
     choices("machine_select","Máquina do treino","Lista atual do mapa; aparece ao escolher o método Máquina.",function()
         local out={}; for _,machine in ipairs(scanMachines()) do out[#out+1]={Label=machine.name,Value=machine.name} end; return out
     end,function(name) S.SelectedMachine=name end,function() return S.FarmMode=="Máquina" and canMachineFarm() end)
-    input("farm_interval","Intervalo do treino em rajada (ms)",S.FarmIntervalMs,function(value) return M:setFarmTiming("FarmIntervalMs",value) end)
-    input("farm_reps","Repetições por ciclo em rajada",S.FarmReps,function(value) return M:setFarmTiming("FarmReps",value) end)
-    switch("rebirth_auto","Rebirth automático","Usa o canal normal do jogo; respeita o intervalo e a meta configurada.","Rebirth",canRebirth)
+    numeric("fast_rep_limit","Fast Rep: limite de reps/s (40–659)","FastRepLimit",40,659,true)
+    local pace=action("farm_pace","Rendimento do Fast Rep","Força, durabilidade, rebirths e pedidos enviados; atualiza a cada segundo sem alterar seus pets.",function() report("Rendimento observado",function() return HubRuntime.FastRep:report() end) end)
+    input("farm_interval","Outros métodos: intervalo em rajada (ms)",S.FarmIntervalMs,function(value) return M:setFarmTiming("FarmIntervalMs",value) end)
+    input("farm_reps","Outros métodos: reps por ciclo em rajada",S.FarmReps,function(value) return M:setFarmTiming("FarmReps",value) end)
+    switch("rebirth_auto","Fast rebirth / rebirth automático","Junto ao Fast Rep, treina até o requisito, solicita rebirth e retoma força com seus pets atuais; confirma a meta na conta.","Rebirth",canRebirth)
     numeric("rebirth_interval","Intervalo entre rebirths (segundos)","RebirthInterval",.5,30)
     input("rebirth_target","Meta absoluta de rebirths (0 = sem limite)",S.RebirthTarget or 0,function(value)
         local n=tonumber(value); if not n or n~=n or n%1~=0 or n<0 or n>1e15 then return false,"Use um inteiro de 0 a 1e15" end
@@ -4359,7 +4536,7 @@ local function cleanUI()
     action("close","Encerrar 710Hub","Para as rotinas, restaura efeitos e remove o painel.",function() stopAllAutomations(); SESSION.Cleanup() end)
 
     function UI:syncFields()
-        for id,key in pairs({farm_interval="FarmIntervalMs",farm_reps="FarmReps",rebirth_interval="RebirthInterval",
+        for id,key in pairs({fast_rep_limit="FastRepLimit",farm_interval="FarmIntervalMs",farm_reps="FarmReps",rebirth_interval="RebirthInterval",
             boss_height="BossDistance",hatch_limit="HatchMaxOpens",hatch_target="HatchTargetPet",shop_count="ShopCount",
             character_speed="CharacterSpeed",character_size="CharacterSize",camera_fov="CameraFOV"}) do
             registry[id].Object.Text=tostring(S[key]); registry[id].Object.TextColor3=COLORS.White
@@ -4372,6 +4549,7 @@ local function cleanUI()
 
     task.spawn(function()
         while SESSION.Alive do
+            pace.Detail.Text=HubRuntime.FastRep.Status
             farm.Detail.Text="Método: "..S.FarmMode.." | "..(C:farming() and "Ativo" or "Desligado")
             pvp.Detail.Text="Filtro: "..S.PvpFilter.." | "..(M.PvpStatus or "Desligado")
             boss.Detail.Text=(M.BossState or "Aguardando").." | "..HubRuntime.BossTarget
