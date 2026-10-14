@@ -1,6 +1,8 @@
-# 710Hub 2026.10-priority.41 — força e fast rebirth
+# 710Hub 2026.10-ultra.42 — força e fast rebirth
 
-O modo **Fast Rep (packs)** envia reps por frame, sem acumular rajadas durante pausas. O seletor **Envio de reps** oferece três perfis, com teto local configurável de 40–10.000 pedidos/s:
+O modo **Fast Rep (packs)** envia reps sem acumular rajadas durante pausas. O seletor **Envio de reps** oferece quatro perfis, com teto local configurável de 40–10.000 pedidos/s:
+
+- **Ultra (lotes):** adapta o treino `Strength (Slower)` do Silence anexado: até 350 reps/lote, tamanho reduzido com ping alto e intervalo mínimo baseado no ping e no teto escolhido. Usa um único trabalhador; o Heartbeat não envia reps simultaneamente. A preparação local suspende apenas o `LocalScript` chamado `bodyMovementScript` do próprio personagem, preservando sua referência e estado. Restaura ao parar, pausar, morrer, trocar de perfil ou encerrar. O Silence original destrói esse script; nossa adaptação mantém a mudança reversível. Essa diferença é verificável no código, mas não prova que era a causa do ganho em trilhões relatado pelo usuário.
 
 - **Explorar limite** (padrão): testa 250, 400, 500, 659, 1.000, 1.500, 2.500, 3.295, 5.000, 7.500 e 10.000, respeitando o teto configurado. Cada etapa espera dois segundos ativos e mede pelo menos dez segundos de ganhos. Sobe enquanto o ganho melhora; após duas etapas sem melhora superior a 5%, volta à melhor taxa medida nesta rodada.
 - **Intensivo**: começa diretamente no limite escolhido. Reduz o envio se o progresso parar.
@@ -25,6 +27,8 @@ Intensivo/exploração têm até 256 pedidos por frame, com orçamento local de 
 ### Configuração rápida
 
 O seletor **Configuração rápida** aplica os campos e inicia o método Fast Rep, respeitando modo estável, pausas e metas já configuradas:
+
+- **Ultra rápido:** perfil Ultra (lotes), teto local de 10.000 pedidos/s e rebirth desligado. Adapta a preparação local reversível e os lotes ao ping, mantendo todos os pets equipados. Se o serviço de ping não estiver disponível, usa referência de 80ms, sem assumir que esse é o ping real.
 
 - **Força acumulada:** perfil Intensivo, alvo de 659 pedidos/s (o alvo do trecho de força do Silence anexado), rebirth desligado. Preserva a força acumulada e os pets; não compra ou consome boosts automaticamente.
 - **Rebirth rápido:** perfil Intensivo, teto de 450 pedidos/s, rebirth ligado e intervalo de 0,5 segundo. Ao ter força suficiente, suspende reps excedentes e prioriza a solicitação/confirmacão. Se a meta absoluta de rebirth já foi atingida, avisa e mantém rebirth desligado até você aumentar ou remover essa meta.
@@ -53,7 +57,9 @@ Gamepasses e boosts pertencem à conta e são aplicados pelo jogo. O hub não in
 
 ## Verificação
 
-Foram executadas **522 verificações offline**: 322 do menu, 74 de força/fast rebirth, 23 de cenários prolongados/concorrentes, 41 de taxas/exploração, 22 do fluxo de bosses, 20 da pose acima do boss e 20 da interface. O menu tem 69 elementos, com títulos/IDs únicos. A suite de Fast Rep executa o script completo com doze pets equipados e verifica suas referências exatas após sucesso, recusa, timeout, pausa, boss, respawn e queda de FPS; registra zero chamadas de equip/unequip nesse fluxo. Os casos prolongados verificam um minuto de ciclos, prioridade intencional durante recusas quando a força já basta, requisitos inválidos, pausa longa, confirmação pendente e cancelamento de alterações de pets ao entrar no Fast Rep. Nesses últimos casos, a fixture inicia explicitamente uma tarefa de pets antes do treino e verifica que nenhuma alteração restante acontece após ativar o modo.
+Foram executadas **561 verificações offline**: 323 do menu, 74 de força/fast rebirth, 23 de cenários prolongados/concorrentes, 41 de taxas/exploração, 38 do Ultra, 22 do fluxo de bosses, 20 da pose acima do boss e 20 da interface. O menu mantém 69 elementos, com títulos/IDs únicos; o Ultra reutiliza seletores existentes. A suite de Fast Rep executa o script completo com doze pets equipados e verifica suas referências exatas após sucesso, recusa, timeout, pausa, boss, respawn e queda de FPS; registra zero chamadas de equip/unequip nesse fluxo. Os casos prolongados verificam um minuto de ciclos, prioridade intencional durante recusas quando a força já basta, requisitos inválidos, pausa longa, confirmação pendente e cancelamento de alterações de pets ao entrar no Fast Rep. Nesses últimos casos, a fixture inicia explicitamente uma tarefa de pets antes do treino e verifica que nenhuma alteração restante acontece após ativar o modo.
+
+Os casos Ultra verificam adaptação a ping de 40/100/200/300ms, fallback sem serviço de ping, ausência de trabalhador duplicado, limites manuais/estáveis, respawn, substituição do script local, transporte com falha, parada sem ganho, rebirth pendente e restauração do estado original do movimento. O loop local simulado mediu aproximadamente 10.033,3/s, 7.500,0/s, 1.233,3/s e 500,0/s nesses quatro pings; essas medidas descrevem pedidos locais em lotes, não taxa aceita no Roblox. A fixture não reproduz o custo real de rede, o throttling nem a quantização de `task.wait` no cliente. O ganho de força por pedido é definido pela fixture, e esses testes não comprovam trilhões em segundos na conta real.
 
 Uma fixture reproduz 41,1B de força e requisito de 485,4M: a solicitação pendente não recebe novas reps concorrentes e uma fila simulada termina de processar. Outro caso mantém uma resposta atrasada por seis segundos, verifica fase/duração no painel e a ausência de duplicatas. Os presets e a estimativa por ganhos também são exercitados. Isso valida os controles locais; não mede a fila real do usuário nem prova qual foi a causa da demora mostrada nas imagens.
 
@@ -67,6 +73,7 @@ py -3 tests/check_clean.py
 py -3 tests/check_fast_rep.py
 py -3 tests/check_fast_rep.py --stress
 py -3 tests/check_fast_rep.py --rates
+py -3 tests/check_fast_rep.py --ultra
 py -3 tests/check_published.py
 py -3 tests/check_boss_hover.py
 py -3 tests/check_design.py
@@ -77,5 +84,5 @@ As fixtures definem seus próprios ganhos e requisitos. Os testes não comprovam
 ## Versão de teste fixada
 
 ```lua
-loadstring(game:HttpGet("https://raw.githubusercontent.com/Kamoviich/710hub/d9c611815e123ba535125eada17b361eb8d76b69/710Hub.lua", true))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/Kamoviich/710hub/987a5afb2a12269239106088bf5a1a0c0c7a7ca6/710Hub.lua", true))()
 ```
