@@ -66,7 +66,7 @@ end
 
 local SESSION = {
     Alive = true,
-    Version = "2026.10-ultra.42",
+    Version = "2026.10-combined.43",
     Connections = {},
 }
 
@@ -210,7 +210,7 @@ return function(settings, clock)
         RebirthFloor = {0, 1e15}, RebirthInterval = {.5, 30}, BreakEvery = {1, 240}, BreakMinutes = {1, 60},
     }
     local choices = {
-        FastRepProfile={"Ultra (lotes)","Explorar limite","Intensivo","Adaptativo"},
+        FastRepProfile={"Combinado","Ultra (lotes)","Explorar limite","Intensivo","Adaptativo"},
         FarmMode={"Fast Rep (packs)","Automático","Peso","Flexões","Abdominais","Parada de mãos","Máquina","Pedras","Esteira"},
         PvpFilter={"Todos","Karma bom","Karma ruim","Selecionado"}, PetObjective={"strength","durability","agility"}, SmartObjective = {"Força", "Durabilidade", "Agilidade", "Rebirths"},
         GoalStat = {"Strength", "Agility", "Durability", "Rebirths"}}
@@ -3215,12 +3215,13 @@ local function initializeCleanRuntime()
         return true
     end
     function C:applyPreset(name)
-        if name~="Ultra rápido" and name~="Força acumulada" and name~="Rebirth rápido" then return false end
+        if name~="Ultra combinado" and name~="Ultra rápido" and name~="Força acumulada" and name~="Rebirth rápido" then return false end
         self:clearFarm()
         S.FarmMode="Fast Rep (packs)"; S.FastRepProfile="Intensivo"
         S.Rebirth=name=="Rebirth rápido"
-        S.FastRepLimit=name=="Ultra rápido" and 10000 or S.Rebirth and 450 or 659
+        S.FastRepLimit=(name=="Ultra rápido" or name=="Ultra combinado") and 10000 or S.Rebirth and 450 or 659
         if name=="Ultra rápido" then S.FastRepProfile="Ultra (lotes)" end
+        if name=="Ultra combinado" then S.FastRepProfile="Combinado" end
         S.RebirthInterval=.5
         if S.Rebirth and S.RebirthTarget and currentRebirths()>=S.RebirthTarget then
             S.Rebirth=false
@@ -3344,17 +3345,52 @@ local function initializeFastRep()
     end
     function F:cancel()
         self:restoreMovement()
-        self.Token+=1; self.Tokens=0; self.NextPets=0
+        self.Token+=1; self.Tokens=0; self.BatchTokens=0; self.NextPets=0
         self.LastControl=nil; self.RateSignature=nil; self.Rate=200; self.NextBirth=nil; self.BirthFailures=0
         self.BirthResult=nil; self.Trial=nil; self.Status="Parado"
     end
     function F:limits()
         local explore=S.FastRepProfile=="Explorar limite"
+        local combined=S.FastRepProfile=="Combinado"
         local ultra=S.FastRepProfile=="Ultra (lotes)"
-        local intensive=S.FastRepProfile=="Intensivo" or ultra
+        local intensive=S.FastRepProfile=="Intensivo" or ultra or combined
         local ceiling=S.StabilityMode and 200 or (intensive or explore) and 10000 or 659
         if S.Rebirth then ceiling=math.min(ceiling,450) end
-        return math.min(S.FastRepLimit,ceiling),S.StabilityMode and 8 or ultra and 350 or (intensive or explore) and 256 or 24
+        return math.min(S.FastRepLimit,ceiling),S.StabilityMode and 8 or combined and 24 or ultra and 350 or (intensive or explore) and 256 or 24
+    end
+    function F:waitingBirth()
+        local pending=self.PendingBirth
+        local goalReached=S.RebirthTarget and currentRebirths()>=S.RebirthTarget
+        return S.Rebirth and not goalReached and (pending and currentRebirths()<=pending.Before
+            or numberStat("Strength")>=self:rebirthRequirement())
+    end
+    function F:sendBurst(count,lane)
+        local event=getMuscleEvent()
+        if not event then S.FastRep=false; self:cancel(); self.Status="Canal de reps indisponível"; return 0 end
+        local character,started,sent=LP.Character,os.clock(),0
+        local spent=self.SendSpent or 0
+        for _=1,count do
+            if not SESSION.Alive or not S.FastRep or not M:canAct() or HubRuntime.BossActive
+                or M.PetEquipBusy or LP.Character~=character or spent+os.clock()-started>=.004 then break end
+            local ok,err=pcall(function() event:FireServer("rep") end)
+            if not ok then S.FastRep=false; self:cancel(); setHubError(err); break end
+            sent+=1; self.Sent+=1; HubRuntime.RemoteCalls+=1
+        end
+        self.SendSpent=spent+os.clock()-started
+        if lane=="classic" then self.ClassicSent=(self.ClassicSent or 0)+sent end
+        if lane=="batch" then self.BatchSent=(self.BatchSent or 0)+sent end
+        return sent
+    end
+    function F:combinedBatch(dt)
+        if S.FastRepProfile~="Combinado" or not self:active() or M.PetEquipBusy or self:waitingBirth() then
+            self.BatchTokens=0; return
+        end
+        local limit=self:limits()
+        local remainder=math.max(0,math.min(self.Rate,limit)-math.min(659,self.Rate,limit))
+        local burst=self:ultraTiming()
+        self.BatchTokens=math.min(burst,(self.BatchTokens or 0)+remainder*math.clamp(dt,0,.1))
+        local sent=self:sendBurst(math.floor(self.BatchTokens),"batch")
+        self.BatchTokens=math.max(0,(self.BatchTokens or 0)-sent)
     end
     function F:restoreMovement()
         local saved=self.Movement
@@ -3381,6 +3417,11 @@ local function initializeFastRep()
             self.HasPing=ok and type(ping)=="number" and ping==ping and ping>=0 and ping<math.huge
         end
         local limit,burst=self:limits()
+        if S.FastRepProfile=="Combinado" then
+            limit=math.max(0,math.min(self.Rate,limit)-math.min(659,self.Rate,limit))
+            burst=S.StabilityMode and 8 or 350
+            if limit==0 then return 0,.05 end
+        end
         local ping=self.Ping or 80
         local pingBatch=ping<80 and 500 or ping<150 and 300 or ping<250 and 100 or 50
         burst=math.min(burst,pingBatch)
@@ -3540,12 +3581,13 @@ local function initializeFastRep()
         end
     end
     function F:frame(dt)
+        self.SendSpent=0
         dt=math.clamp(tonumber(dt) or 1/60,0,.1)
         local active=self:active()==true
         self:sample(dt,active)
         if not active or M.PetEquipBusy then
             self:restoreMovement()
-            self.Tokens=0; self.LastControl=nil
+            self.Tokens=0; self.BatchTokens=0; self.LastControl=nil
             if S.FastRep then
                 local reason=HubRuntime.BossActive and "boss em combate" or M.PetEquipBusy and "encerrando transação de pets"
                     or not M:canAct() and M:reasonText() or "aguardando personagem"
@@ -3553,26 +3595,23 @@ local function initializeFastRep()
             end
             return
         end
-        if S.FastRepProfile=="Ultra (lotes)" then self:prepareMovement() else self:restoreMovement() end
+        if S.FastRepProfile=="Ultra (lotes)" or S.FastRepProfile=="Combinado" then self:prepareMovement() else self:restoreMovement() end
         local now=os.clock()
         if now>=(self.NextPets or 0) then self:equippedBonuses(); self.NextPets=now+5 end
         local strength,durability=numberStat("Strength"),numberStat("Durability")
         local limit,burst=self:limits()
         local signature=tostring(S.FastRepProfile)..":"..tostring(limit)..":"..tostring(S.Rebirth)
         if self.RateSignature~=signature then
-            self.RateSignature=signature; self.Tokens=0
+            self.RateSignature=signature; self.Tokens=0; self.BatchTokens=0
             self.Trial=nil
-            self.Rate=(S.FastRepProfile=="Intensivo" or S.FastRepProfile=="Ultra (lotes)") and limit or math.min(200,limit)
+            self.Rate=(S.FastRepProfile=="Intensivo" or S.FastRepProfile=="Ultra (lotes)" or S.FastRepProfile=="Combinado") and limit or math.min(200,limit)
             if S.FastRepProfile=="Explorar limite" then self:startTrial(limit) end
         end
         self:trialTick(dt)
         if self.Trial then limit=math.min(limit,self.Trial.Done and self.Trial.BestRate or self.Trial.Target) end
-        local pending=self.PendingBirth
-        local goalReached=S.RebirthTarget and currentRebirths()>=S.RebirthTarget
-        local waiting=S.Rebirth and not goalReached and (pending and currentRebirths()<=pending.Before
-            or strength>=self:rebirthRequirement())
+        local waiting=self:waitingBirth()
         if waiting then
-            self.Tokens=0; self.WaitingForBirth=true
+            self.Tokens=0; self.BatchTokens=0; self.WaitingForBirth=true
             self.Status=self:rebirthStatus().." | prioridade ao rebirth; sem reps excedentes"
             return
         elseif self.WaitingForBirth then
@@ -3592,17 +3631,11 @@ local function initializeFastRep()
         end
         self.Rate=math.min(self.Rate,limit)
         if S.FastRepProfile=="Ultra (lotes)" then burst=self:ultraTiming() end
-        self.Tokens=math.min(burst,self.Tokens+self.Rate*dt)
-        local event=getMuscleEvent()
-        if not event then S.FastRep=false; self:cancel(); self.Status="Canal de reps indisponível"; return end
-        local character,burstStarted=LP.Character,os.clock()
-        for _=1,math.floor(self.Tokens) do
-            if not SESSION.Alive or not S.FastRep or not M:canAct() or HubRuntime.BossActive
-                or M.PetEquipBusy or LP.Character~=character or os.clock()-burstStarted>=.004 then break end
-            local ok,err=pcall(function() event:FireServer("rep") end)
-            if not ok then S.FastRep=false; self:cancel(); setHubError(err); break end
-            self.Tokens-=1; self.Sent+=1; HubRuntime.RemoteCalls+=1
-        end
+        local combined=S.FastRepProfile=="Combinado"
+        local frameRate=combined and math.min(659,self.Rate) or self.Rate
+        self.Tokens=math.min(burst,self.Tokens+frameRate*dt)
+        local sent=self:sendBurst(math.floor(self.Tokens),combined and "classic" or nil)
+        self.Tokens=math.max(0,self.Tokens-sent)
         if S.FastRep then self.Status=string.format("Fast Rep %s: %.0f pedidos/s alvo | bônus de velocidade: %s%%",S.FastRepProfile,self.Rate,tostring(self.PetSpeed or 0)) end
     end
     function F:report()
@@ -3630,10 +3663,13 @@ local function initializeFastRep()
             string.format("Pets atuais: %d slots | velocidade estimada: %s%% | bônus de rebirth estimado: %s%%",self.PetSlots or 0,tostring(self.PetSpeed or 0),tostring(self.PetBirth or 0)),
             string.format("Pedidos enviados: %.1f/s | total: %d | tempo ativo: %.1fs",rate,self.Sent,self.ActiveSeconds),
             "Ganhos medidos nos valores da conta; pedidos enviados não equivalem a reps aceitas."}
-        if S.FastRepProfile=="Ultra (lotes)" then
+        if S.FastRepProfile=="Ultra (lotes)" or S.FastRepProfile=="Combinado" then
             local batch,delay=self:ultraTiming()
             lines[#lines+1]=string.format("Ultra: até %d reps/lote | intervalo %.3fs | ping %s | sem troca de pets",batch,delay,
                 self.HasPing and string.format("%.0fms",self.Ping) or "indisponível; referência 80ms")
+        end
+        if S.FastRepProfile=="Combinado" then
+            lines[#lines+1]=string.format("Combinado: clássico até 659/s + lotes no restante do teto total.\nPedidos da sessão: clássico %d | lotes %d",self.ClassicSent or 0,self.BatchSent or 0)
         end
         lines[#lines+1]="Estimativa no ritmo recente: 1T "..estimate(1e12).." | 1Qa "..estimate(1e15)..". Depende do ganho atual se manter."
         if self.Trial then
@@ -3666,6 +3702,12 @@ local function initializeFastRep()
             if S.FastRepProfile=="Ultra (lotes)" then
                 local ok,err=pcall(function() F:frame(now-previous) end)
                 if not ok then S.FastRep=false; F:cancel(); setHubError("Ultra: "..tostring(err)) end
+                previous=now
+                local _,delay=F:ultraTiming()
+                task.wait(S.FastRep and math.min(delay,.1) or .05)
+            elseif S.FastRepProfile=="Combinado" then
+                local ok,err=pcall(function() F:combinedBatch(now-previous) end)
+                if not ok then S.FastRep=false; F:cancel(); setHubError("Combinado: "..tostring(err)) end
                 previous=now
                 local _,delay=F:ultraTiming()
                 task.wait(S.FastRep and math.min(delay,.1) or .05)
@@ -4609,7 +4651,7 @@ local function cleanUI()
     local function group(name,category,desc) UI.Groups[name]=category; section(name,desc) end
 
     group("TREINO","Farm","Um controlador de treino, com método escolhido e limites de carga.")
-    choices("farm_preset","Configuração rápida","Ultra rápido: lotes ajustados pelo ping, sem rebirth. Força acumulada: 659/s. Rebirth rápido: prioridade à confirmação. Seus pets são mantidos.",strings({"Ultra rápido","Força acumulada","Rebirth rápido"}),function(value) C:applyPreset(value); UI:syncFields(); renderAllToggles() end)
+    choices("farm_preset","Configuração rápida","Ultra combinado: clássico + lotes juntos. Ultra rápido: lotes/ping. Força acumulada: 659/s. Rebirth rápido: prioridade à confirmação. Seus pets são mantidos.",strings({"Ultra combinado","Ultra rápido","Força acumulada","Rebirth rápido"}),function(value) C:applyPreset(value); UI:syncFields(); renderAllToggles() end)
     choices("farm_method","Método de treino","Fast Rep ajusta o ritmo pelos ganhos reais; Automático escolhe máquina ou ferramenta.",strings(C.Modes),function(mode) C:setMode(mode); renderAllToggles() end)
     local farm=action("farm_start","Iniciar / parar treino","Inicia o método selecionado; aguarda durante combate com boss.",function()
         if C:farming() then C:clearFarm() else C:startFarm() end
@@ -4618,7 +4660,7 @@ local function cleanUI()
     choices("machine_select","Máquina do treino","Lista atual do mapa; aparece ao escolher o método Máquina.",function()
         local out={}; for _,machine in ipairs(scanMachines()) do out[#out+1]={Label=machine.name,Value=machine.name} end; return out
     end,function(name) S.SelectedMachine=name end,function() return S.FarmMode=="Máquina" and canMachineFarm() end)
-    choices("rep_profile","Envio de reps","Ultra usa lotes e ping; Explorar mede etapas; Intensivo começa no limite; Adaptativo sobe até 659. Seus pets são preservados.",strings({"Ultra (lotes)","Explorar limite","Intensivo","Adaptativo"}),function(value) S.FastRepProfile=value; HubRuntime.FastRep:cancel() end)
+    choices("rep_profile","Envio de reps","Combinado soma clássico e lotes dentro do teto total; Ultra usa lotes/ping; Explorar mede ganhos. Seus pets são preservados.",strings({"Combinado","Ultra (lotes)","Explorar limite","Intensivo","Adaptativo"}),function(value) S.FastRepProfile=value; HubRuntime.FastRep:cancel() end)
     numeric("fast_rep_limit","Fast Rep: teto local de pedidos/s (40–10000)","FastRepLimit",40,10000,true)
     local pace=action("farm_pace","Rendimento do Fast Rep","Força, durabilidade, rebirths e pedidos enviados; atualiza a cada segundo sem alterar seus pets.",function() report("Rendimento observado",function() return HubRuntime.FastRep:report() end) end)
     input("farm_interval","Outros métodos: intervalo em rajada (ms)",S.FarmIntervalMs,function(value) return M:setFarmTiming("FarmIntervalMs",value) end)
