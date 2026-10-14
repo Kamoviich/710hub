@@ -66,7 +66,7 @@ end
 
 local SESSION = {
     Alive = true,
-    Version = "2026.10-priority.41",
+    Version = "2026.10-ultra.42",
     Connections = {},
 }
 
@@ -210,7 +210,7 @@ return function(settings, clock)
         RebirthFloor = {0, 1e15}, RebirthInterval = {.5, 30}, BreakEvery = {1, 240}, BreakMinutes = {1, 60},
     }
     local choices = {
-        FastRepProfile={"Explorar limite","Intensivo","Adaptativo"},
+        FastRepProfile={"Ultra (lotes)","Explorar limite","Intensivo","Adaptativo"},
         FarmMode={"Fast Rep (packs)","Automático","Peso","Flexões","Abdominais","Parada de mãos","Máquina","Pedras","Esteira"},
         PvpFilter={"Todos","Karma bom","Karma ruim","Selecionado"}, PetObjective={"strength","durability","agility"}, SmartObjective = {"Força", "Durabilidade", "Agilidade", "Rebirths"},
         GoalStat = {"Strength", "Agility", "Durability", "Rebirths"}}
@@ -2446,6 +2446,7 @@ task.spawn(function()
 end)
 
 SESSION.Cleanup = function()
+    if HubRuntime.FastRep then HubRuntime.FastRep:cancel() end
     if M.releaseBossHover then M:releaseBossHover() end
     if HubRuntime.Extras then HubRuntime.Extras:stop() end
     M:cancelComparison()
@@ -3214,11 +3215,12 @@ local function initializeCleanRuntime()
         return true
     end
     function C:applyPreset(name)
-        if name~="Força acumulada" and name~="Rebirth rápido" then return false end
+        if name~="Ultra rápido" and name~="Força acumulada" and name~="Rebirth rápido" then return false end
         self:clearFarm()
         S.FarmMode="Fast Rep (packs)"; S.FastRepProfile="Intensivo"
         S.Rebirth=name=="Rebirth rápido"
-        S.FastRepLimit=S.Rebirth and 450 or 659
+        S.FastRepLimit=name=="Ultra rápido" and 10000 or S.Rebirth and 450 or 659
+        if name=="Ultra rápido" then S.FastRepProfile="Ultra (lotes)" end
         S.RebirthInterval=.5
         if S.Rebirth and S.RebirthTarget and currentRebirths()>=S.RebirthTarget then
             S.Rebirth=false
@@ -3341,16 +3343,49 @@ local function initializeFastRep()
             and not M.PvpTarget and hum and hum.Health>0
     end
     function F:cancel()
+        self:restoreMovement()
         self.Token+=1; self.Tokens=0; self.NextPets=0
         self.LastControl=nil; self.RateSignature=nil; self.Rate=200; self.NextBirth=nil; self.BirthFailures=0
         self.BirthResult=nil; self.Trial=nil; self.Status="Parado"
     end
     function F:limits()
         local explore=S.FastRepProfile=="Explorar limite"
-        local intensive=S.FastRepProfile=="Intensivo"
+        local ultra=S.FastRepProfile=="Ultra (lotes)"
+        local intensive=S.FastRepProfile=="Intensivo" or ultra
         local ceiling=S.StabilityMode and 200 or (intensive or explore) and 10000 or 659
         if S.Rebirth then ceiling=math.min(ceiling,450) end
-        return math.min(S.FastRepLimit,ceiling),S.StabilityMode and 8 or (intensive or explore) and 256 or 24
+        return math.min(S.FastRepLimit,ceiling),S.StabilityMode and 8 or ultra and 350 or (intensive or explore) and 256 or 24
+    end
+    function F:restoreMovement()
+        local saved=self.Movement
+        self.Movement=nil
+        if saved and saved.Script.Parent then pcall(function() saved.Script.Enabled=saved.Enabled end) end
+    end
+    function F:prepareMovement()
+        local character=LP.Character
+        if self.Movement and (self.Movement.Character~=character or not self.Movement.Script.Parent) then self:restoreMovement() end
+        if self.Movement then return end
+        local script=character and character:FindFirstChild("bodyMovementScript")
+        if not script or not script:IsA("LocalScript") then return end
+        local ok,enabled=pcall(function() return script.Enabled end)
+        if ok and type(enabled)=="boolean" and pcall(function() script.Enabled=false end) then
+            self.Movement={Script=script,Enabled=enabled,Character=character}
+        end
+    end
+    function F:ultraTiming()
+        local now=os.clock()
+        if now>=(self.NextPing or 0) then
+            self.NextPing=now+.5
+            local ok,ping=pcall(function() return game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValue() end)
+            self.Ping=ok and type(ping)=="number" and ping==ping and ping>=0 and ping<math.huge and ping or 80
+            self.HasPing=ok and type(ping)=="number" and ping==ping and ping>=0 and ping<math.huge
+        end
+        local limit,burst=self:limits()
+        local ping=self.Ping or 80
+        local pingBatch=ping<80 and 500 or ping<150 and 300 or ping<250 and 100 or 50
+        burst=math.min(burst,pingBatch)
+        local delay=math.max(1/60,math.clamp(ping/2500,.001,.1),burst/math.min(self.Rate,limit))
+        return burst,delay
     end
     function F:startTrial(limit)
         local rates={}
@@ -3509,6 +3544,7 @@ local function initializeFastRep()
         local active=self:active()==true
         self:sample(dt,active)
         if not active or M.PetEquipBusy then
+            self:restoreMovement()
             self.Tokens=0; self.LastControl=nil
             if S.FastRep then
                 local reason=HubRuntime.BossActive and "boss em combate" or M.PetEquipBusy and "encerrando transação de pets"
@@ -3517,6 +3553,7 @@ local function initializeFastRep()
             end
             return
         end
+        if S.FastRepProfile=="Ultra (lotes)" then self:prepareMovement() else self:restoreMovement() end
         local now=os.clock()
         if now>=(self.NextPets or 0) then self:equippedBonuses(); self.NextPets=now+5 end
         local strength,durability=numberStat("Strength"),numberStat("Durability")
@@ -3525,7 +3562,7 @@ local function initializeFastRep()
         if self.RateSignature~=signature then
             self.RateSignature=signature; self.Tokens=0
             self.Trial=nil
-            self.Rate=S.FastRepProfile=="Intensivo" and limit or math.min(200,limit)
+            self.Rate=(S.FastRepProfile=="Intensivo" or S.FastRepProfile=="Ultra (lotes)") and limit or math.min(200,limit)
             if S.FastRepProfile=="Explorar limite" then self:startTrial(limit) end
         end
         self:trialTick(dt)
@@ -3545,7 +3582,7 @@ local function initializeFastRep()
             self.LastControl=now; self.ControlStrength=strength; self.ControlDurability=durability; self.ControlBirths=currentRebirths(); self.NoProgress=0
         elseif now-self.LastControl>=.5 then
             if strength>self.ControlStrength or durability>self.ControlDurability or currentRebirths()>self.ControlBirths then
-                self.NoProgress=0; self.Rate=math.min(limit,self.Rate*(S.FastRepProfile=="Intensivo" and 1.25 or 1.12))
+                self.NoProgress=0; self.Rate=math.min(limit,self.Rate*(S.FastRepProfile~="Adaptativo" and 1.25 or 1.12))
             else
                 self.NoProgress+=now-self.LastControl
                 if self.NoProgress>=2 then self.Rate=math.max(40,self.Rate*.65); self.Tokens=0 end
@@ -3554,6 +3591,7 @@ local function initializeFastRep()
             self.LastControl=now; self.ControlStrength=strength; self.ControlDurability=durability; self.ControlBirths=currentRebirths()
         end
         self.Rate=math.min(self.Rate,limit)
+        if S.FastRepProfile=="Ultra (lotes)" then burst=self:ultraTiming() end
         self.Tokens=math.min(burst,self.Tokens+self.Rate*dt)
         local event=getMuscleEvent()
         if not event then S.FastRep=false; self:cancel(); self.Status="Canal de reps indisponível"; return end
@@ -3592,6 +3630,11 @@ local function initializeFastRep()
             string.format("Pets atuais: %d slots | velocidade estimada: %s%% | bônus de rebirth estimado: %s%%",self.PetSlots or 0,tostring(self.PetSpeed or 0),tostring(self.PetBirth or 0)),
             string.format("Pedidos enviados: %.1f/s | total: %d | tempo ativo: %.1fs",rate,self.Sent,self.ActiveSeconds),
             "Ganhos medidos nos valores da conta; pedidos enviados não equivalem a reps aceitas."}
+        if S.FastRepProfile=="Ultra (lotes)" then
+            local batch,delay=self:ultraTiming()
+            lines[#lines+1]=string.format("Ultra: até %d reps/lote | intervalo %.3fs | ping %s | sem troca de pets",batch,delay,
+                self.HasPing and string.format("%.0fms",self.Ping) or "indisponível; referência 80ms")
+        end
         lines[#lines+1]="Estimativa no ritmo recente: 1T "..estimate(1e12).." | 1Qa "..estimate(1e15)..". Depende do ganho atual se manter."
         if self.Trial then
             local trial=self.Trial
@@ -3612,9 +3655,26 @@ local function initializeFastRep()
     function M:attemptRebirth() if S.FastRep then return F:rebirth() end; return ordinary(self) end
     trackConnection(RunService.Heartbeat:Connect(function(dt)
         if not SESSION.Alive then return end
+        if S.FastRepProfile=="Ultra (lotes)" then return end
         local ok,err=pcall(function() F:frame(dt) end)
         if not ok then S.FastRep=false; F:cancel(); setHubError("Fast Rep: "..tostring(err)) end
     end))
+    task.spawn(function()
+        local previous=os.clock()
+        while SESSION.Alive do
+            local now=os.clock()
+            if S.FastRepProfile=="Ultra (lotes)" then
+                local ok,err=pcall(function() F:frame(now-previous) end)
+                if not ok then S.FastRep=false; F:cancel(); setHubError("Ultra: "..tostring(err)) end
+                previous=now
+                local _,delay=F:ultraTiming()
+                task.wait(S.FastRep and math.min(delay,.1) or .05)
+            else
+                previous=now; task.wait(.05)
+            end
+        end
+        F:restoreMovement()
+    end)
 
 end
 initializeFastRep()
@@ -4549,7 +4609,7 @@ local function cleanUI()
     local function group(name,category,desc) UI.Groups[name]=category; section(name,desc) end
 
     group("TREINO","Farm","Um controlador de treino, com método escolhido e limites de carga.")
-    choices("farm_preset","Configuração rápida","Força acumulada: alvo 659/s como Silence, sem rebirth. Rebirth rápido: 450/s, prioridade à confirmação. Ambos mantêm seus pets e respeitam modo estável/metas.",strings({"Força acumulada","Rebirth rápido"}),function(value) C:applyPreset(value); UI:syncFields(); renderAllToggles() end)
+    choices("farm_preset","Configuração rápida","Ultra rápido: lotes ajustados pelo ping, sem rebirth. Força acumulada: 659/s. Rebirth rápido: prioridade à confirmação. Seus pets são mantidos.",strings({"Ultra rápido","Força acumulada","Rebirth rápido"}),function(value) C:applyPreset(value); UI:syncFields(); renderAllToggles() end)
     choices("farm_method","Método de treino","Fast Rep ajusta o ritmo pelos ganhos reais; Automático escolhe máquina ou ferramenta.",strings(C.Modes),function(mode) C:setMode(mode); renderAllToggles() end)
     local farm=action("farm_start","Iniciar / parar treino","Inicia o método selecionado; aguarda durante combate com boss.",function()
         if C:farming() then C:clearFarm() else C:startFarm() end
@@ -4558,7 +4618,7 @@ local function cleanUI()
     choices("machine_select","Máquina do treino","Lista atual do mapa; aparece ao escolher o método Máquina.",function()
         local out={}; for _,machine in ipairs(scanMachines()) do out[#out+1]={Label=machine.name,Value=machine.name} end; return out
     end,function(name) S.SelectedMachine=name end,function() return S.FarmMode=="Máquina" and canMachineFarm() end)
-    choices("rep_profile","Envio de reps","Explorar sobe por etapas e escolhe o melhor ganho medido. Intensivo começa no limite; Adaptativo sobe até 659. Seus pets são preservados.",strings({"Explorar limite","Intensivo","Adaptativo"}),function(value) S.FastRepProfile=value; HubRuntime.FastRep:cancel() end)
+    choices("rep_profile","Envio de reps","Ultra usa lotes e ping; Explorar mede etapas; Intensivo começa no limite; Adaptativo sobe até 659. Seus pets são preservados.",strings({"Ultra (lotes)","Explorar limite","Intensivo","Adaptativo"}),function(value) S.FastRepProfile=value; HubRuntime.FastRep:cancel() end)
     numeric("fast_rep_limit","Fast Rep: teto local de pedidos/s (40–10000)","FastRepLimit",40,10000,true)
     local pace=action("farm_pace","Rendimento do Fast Rep","Força, durabilidade, rebirths e pedidos enviados; atualiza a cada segundo sem alterar seus pets.",function() report("Rendimento observado",function() return HubRuntime.FastRep:report() end) end)
     input("farm_interval","Outros métodos: intervalo em rajada (ms)",S.FarmIntervalMs,function(value) return M:setFarmTiming("FarmIntervalMs",value) end)
