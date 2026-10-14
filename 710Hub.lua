@@ -66,7 +66,7 @@ end
 
 local SESSION = {
     Alive = true,
-    Version = "2026.10-explore.40",
+    Version = "2026.10-priority.41",
     Connections = {},
 }
 
@@ -3213,6 +3213,20 @@ local function initializeCleanRuntime()
         if running then return self:startFarm() end
         return true
     end
+    function C:applyPreset(name)
+        if name~="Força acumulada" and name~="Rebirth rápido" then return false end
+        self:clearFarm()
+        S.FarmMode="Fast Rep (packs)"; S.FastRepProfile="Intensivo"
+        S.Rebirth=name=="Rebirth rápido"
+        S.FastRepLimit=S.Rebirth and 450 or 659
+        S.RebirthInterval=.5
+        if S.Rebirth and S.RebirthTarget and currentRebirths()>=S.RebirthTarget then
+            S.Rebirth=false
+            setHubStatus("Meta de rebirth já atingida; aumente ou remova a meta para continuar")
+        end
+        if S.Rebirth then M:resolveConflicts("Rebirth") end
+        return self:startFarm()
+    end
     function C:pvpActive() return S.PvpAny or S.PvpGood or S.PvpEvil end
     function C:startPvp()
         if not findPunchTool() then setHubStatus("Punch indisponível"); return false end
@@ -3335,6 +3349,7 @@ local function initializeFastRep()
         local explore=S.FastRepProfile=="Explorar limite"
         local intensive=S.FastRepProfile=="Intensivo"
         local ceiling=S.StabilityMode and 200 or (intensive or explore) and 10000 or 659
+        if S.Rebirth then ceiling=math.min(ceiling,450) end
         return math.min(S.FastRepLimit,ceiling),S.StabilityMode and 8 or (intensive or explore) and 256 or 24
     end
     function F:startTrial(limit)
@@ -3424,11 +3439,15 @@ local function initializeFastRep()
             or numberStat("Strength")<self:rebirthRequirement() then return end
         local token,before=self.Token,currentRebirths()
         self.Busy=true; M.RebirthInFlight=true
+        local pending={Started=os.clock(),Before=before,Phase="resposta"}
+        self.PendingBirth=pending
+        task.spawn(function()
         local ok,err=pcall(function()
             self.Status="Fast rebirth; mantendo seus pets equipados"
             if token~=self.Token or not self:active() or not S.Rebirth then return end
             refreshRemotes(); M.LastRebirthRequest=os.clock()
             local response,_,sent=safeInvoke(R.Rebirth,"rebirthRequest")
+            pending.Phase="estatística"
             if token~=self.Token or not self:active() then return end
             local deadline=os.clock()+1.5
             while sent and response~=false and currentRebirths()==before and os.clock()<deadline
@@ -3444,9 +3463,11 @@ local function initializeFastRep()
             end
         end)
         M.RebirthInFlight=false; self.Busy=false
+        if self.PendingBirth==pending then self.PendingBirth=nil end
         if token==self.Token then
             if not ok then self:retryBirth("Erro na solicitação"); setHubError(err) end
         end
+        end)
     end
     function F:retryBirth(message)
         self.BirthFailures=math.min(3,(self.BirthFailures or 0)+1)
@@ -3456,7 +3477,13 @@ local function initializeFastRep()
     function F:rebirthStatus()
         if not S.Rebirth then return "Rebirth desligado / meta encerrada" end
         if not self:active() then return "Pausado; aguardando retomar treino / personagem" end
-        if self.Busy then return "Aguardando confirmação; força continua ativa" end
+        if self.Busy then
+            local pending=self.PendingBirth
+            local elapsed=pending and os.clock()-pending.Started or 0
+            local observed=pending and currentRebirths()>pending.Before
+            return string.format("%s | aguardando %s há %.1fs",observed and "Rebirth observado na conta" or "Reps suspensas para priorizar rebirth",
+                pending and pending.Phase or "confirmação",elapsed)
+        end
         if numberStat("Strength")<self:rebirthRequirement() then return "Treinando até a força necessária para rebirth" end
         local nextRequest=math.max(self.NextBirth or 0,(M.LastRebirthRequest or -math.huge)+S.RebirthInterval)
         return string.format("%s | espera restante: %.2fs",self.BirthResult or "Pronto para pedir rebirth",math.max(0,nextRequest-os.clock()))
@@ -3503,6 +3530,17 @@ local function initializeFastRep()
         end
         self:trialTick(dt)
         if self.Trial then limit=math.min(limit,self.Trial.Done and self.Trial.BestRate or self.Trial.Target) end
+        local pending=self.PendingBirth
+        local goalReached=S.RebirthTarget and currentRebirths()>=S.RebirthTarget
+        local waiting=S.Rebirth and not goalReached and (pending and currentRebirths()<=pending.Before
+            or strength>=self:rebirthRequirement())
+        if waiting then
+            self.Tokens=0; self.WaitingForBirth=true
+            self.Status=self:rebirthStatus().." | prioridade ao rebirth; sem reps excedentes"
+            return
+        elseif self.WaitingForBirth then
+            self.WaitingForBirth=false; self.LastControl=nil
+        end
         if not self.LastControl then
             self.LastControl=now; self.ControlStrength=strength; self.ControlDurability=durability; self.ControlBirths=currentRebirths(); self.NoProgress=0
         elseif now-self.LastControl>=.5 then
@@ -3538,12 +3576,23 @@ local function initializeFastRep()
         end
         local first=self.Recent[1]; local seconds=first and os.clock()-first.At or 0
         local rate=seconds>0 and (self.Sent-first.Sent)/seconds or 0
+        local strengthPace=seconds>0 and (self.Gains.Strength-first.Strength)/seconds or 0
+        local function estimate(target)
+            if numberStat("Strength")>=target then return "atingida" end
+            if S.Rebirth then return "rebirth ativo consome a força; use Força acumulada" end
+            if strengthPace<=0 then return "aguardando ganho medido" end
+            local remaining=(target-numberStat("Strength"))/strengthPace
+            if remaining<60 then return string.format("~%.1fs",remaining) end
+            if remaining<3600 then return string.format("~%.1fmin",remaining/60) end
+            return string.format("~%.1fh",remaining/3600)
+        end
         local lines={self.Status,self:rebirthStatus(),
             "Força para rebirth: "..compact(numberStat("Strength")).." / "..compact(self:rebirthRequirement()),
             "Seus pets equipados são preservados durante força e fast rebirth.",
             string.format("Pets atuais: %d slots | velocidade estimada: %s%% | bônus de rebirth estimado: %s%%",self.PetSlots or 0,tostring(self.PetSpeed or 0),tostring(self.PetBirth or 0)),
             string.format("Pedidos enviados: %.1f/s | total: %d | tempo ativo: %.1fs",rate,self.Sent,self.ActiveSeconds),
             "Ganhos medidos nos valores da conta; pedidos enviados não equivalem a reps aceitas."}
+        lines[#lines+1]="Estimativa no ritmo recente: 1T "..estimate(1e12).." | 1Qa "..estimate(1e15)..". Depende do ganho atual se manter."
         if self.Trial then
             local trial=self.Trial
             lines[#lines+1]=string.format("Exploração: etapa %d/%d | alvo: %d/s | melhor: %d/s\n%s",trial.Index,#trial.Rates,trial.Target,trial.BestRate,
@@ -4500,6 +4549,7 @@ local function cleanUI()
     local function group(name,category,desc) UI.Groups[name]=category; section(name,desc) end
 
     group("TREINO","Farm","Um controlador de treino, com método escolhido e limites de carga.")
+    choices("farm_preset","Configuração rápida","Força acumulada: alvo 659/s como Silence, sem rebirth. Rebirth rápido: 450/s, prioridade à confirmação. Ambos mantêm seus pets e respeitam modo estável/metas.",strings({"Força acumulada","Rebirth rápido"}),function(value) C:applyPreset(value); UI:syncFields(); renderAllToggles() end)
     choices("farm_method","Método de treino","Fast Rep ajusta o ritmo pelos ganhos reais; Automático escolhe máquina ou ferramenta.",strings(C.Modes),function(mode) C:setMode(mode); renderAllToggles() end)
     local farm=action("farm_start","Iniciar / parar treino","Inicia o método selecionado; aguarda durante combate com boss.",function()
         if C:farming() then C:clearFarm() else C:startFarm() end
@@ -4513,7 +4563,7 @@ local function cleanUI()
     local pace=action("farm_pace","Rendimento do Fast Rep","Força, durabilidade, rebirths e pedidos enviados; atualiza a cada segundo sem alterar seus pets.",function() report("Rendimento observado",function() return HubRuntime.FastRep:report() end) end)
     input("farm_interval","Outros métodos: intervalo em rajada (ms)",S.FarmIntervalMs,function(value) return M:setFarmTiming("FarmIntervalMs",value) end)
     input("farm_reps","Outros métodos: reps por ciclo em rajada",S.FarmReps,function(value) return M:setFarmTiming("FarmReps",value) end)
-    switch("rebirth_auto","Fast rebirth / rebirth automático","Junto ao Fast Rep, treina até o requisito, solicita rebirth e retoma força com seus pets atuais; confirma a meta na conta.","Rebirth",canRebirth)
+    switch("rebirth_auto","Fast rebirth / rebirth automático","Prioriza a confirmação quando a força já basta, suspende reps excedentes e limita treino a 450 pedidos/s; seus pets atuais são mantidos.","Rebirth",canRebirth)
     numeric("rebirth_interval","Intervalo entre rebirths (segundos)","RebirthInterval",.5,30)
     input("rebirth_target","Meta absoluta de rebirths (0 = sem limite)",S.RebirthTarget or 0,function(value)
         local n=tonumber(value); if not n or n~=n or n%1~=0 or n<0 or n>1e15 then return false,"Use um inteiro de 0 a 1e15" end
