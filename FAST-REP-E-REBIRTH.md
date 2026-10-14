@@ -1,10 +1,18 @@
-# 710Hub 2026.10-combined.43 — força e fast rebirth
+# 710Hub 2026.10-timing.44 — força e fast rebirth
+
+## Correção de agendamento e medição após travadas
+
+O usuário confirmou que o chamado “bug de ping” era ativar os dois Fast Rep do Silence, sem alterar configurações de rede. O perfil Combinado mantém essas duas rotas. O código anexado lê o ping para escolher tamanho e intervalo dos lotes; não contém uma rotina específica para provocar latência. A travada seguida de um salto de força pode envolver ganhos acumulados antes da atualização, mas o relato não identifica a causa nem estabelece a taxa aceita pelo servidor.
+
+Foi removida uma espera adicional calculada como `lote / taxa` no 710Hub. Os créditos por tempo já limitam a taxa solicitada, tornando essa segunda espera desnecessária. Como [`task.wait` retoma no próximo Heartbeat elegível](https://create.roblox.com/docs/scripting/scheduler), ela podia consumir dois frames e desperdiçar créditos no limite por lote. Antes da correção, a nova fixture falhou com 5.250 pedidos/s no Ultra, a 30 FPS e ping de 40ms. Depois, o mesmo cenário simulou 10.000 pedidos/s, respeitando o teto configurado. Ultra e Combinado também passaram nos cenários de 60 FPS, teto manual de 1.000 e ping alto. Esses números medem o loop local, sem rede ou servidor reais.
+
+A média ativa agora inclui todo o tempo transcorrido entre atualizações, inclusive uma travada. O limite de 0,1s continua aplicado apenas aos créditos de envio, para evitar rajadas de compensação. Uma fixture de dois segundos verifica que 200.000 de ganho acumulado são medidos como 100.000/s, em vez de dividir por 0,1s. A exploração usa o mesmo tempo completo. O painel informa que o ping é somente lido e que a espera real pode ser maior que a solicitada.
 
 O modo **Fast Rep (packs)** envia reps sem acumular rajadas durante pausas. O seletor **Envio de reps** oferece cinco perfis, com teto local configurável de 40–10.000 pedidos/s:
 
 - **Combinado:** ativa as duas rotas juntas: clássico pelo Heartbeat, até 659 pedidos/s, e Ultra em lotes pelo trabalhador. Divide o teto total entre elas; os lotes usam o restante depois da reserva clássica. Não duplica medição de ganhos ou tempo ativo. Ambas compartilham orçamento de quatro milissegundos por frame e param juntas em pausa, erro, cancelamento e prioridade de rebirth. O relatório separa os contadores clássico/lotes. Esse perfil responde ao relato do usuário de ligar os dois treinos do Silence simultaneamente; não prova qual foi o ganho aceito no servidor.
 
-- **Ultra (lotes):** adapta o treino `Strength (Slower)` do Silence anexado: até 350 reps/lote, tamanho reduzido com ping alto e intervalo mínimo baseado no ping e no teto escolhido. Usa um único trabalhador; o Heartbeat não envia reps simultaneamente. A preparação local suspende apenas o `LocalScript` chamado `bodyMovementScript` do próprio personagem, preservando sua referência e estado. Restaura ao parar, pausar, morrer, trocar de perfil ou encerrar. O Silence original destrói esse script; nossa adaptação mantém a mudança reversível. Essa diferença é verificável no código, mas não prova que era a causa do ganho em trilhões relatado pelo usuário.
+- **Ultra (lotes):** adapta o treino `Strength (Slower)` do Silence anexado: até 350 reps/lote, tamanho reduzido com ping alto e intervalo mínimo baseado no ping, sem espera adicional para encher um lote. Créditos de envio aplicam o teto escolhido. Usa um único trabalhador; o Heartbeat não envia reps simultaneamente. A preparação local suspende apenas o `LocalScript` chamado `bodyMovementScript` do próprio personagem, preservando sua referência e estado. Restaura ao parar, pausar, morrer, trocar de perfil ou encerrar. O Silence original destrói esse script; nossa adaptação mantém a mudança reversível. Essa diferença é verificável no código, mas não prova que era a causa do ganho em trilhões relatado pelo usuário.
 
 - **Explorar limite** (padrão): testa 250, 400, 500, 659, 1.000, 1.500, 2.500, 3.295, 5.000, 7.500 e 10.000, respeitando o teto configurado. Cada etapa espera dois segundos ativos e mede pelo menos dez segundos de ganhos. Sobe enquanto o ganho melhora; após duas etapas sem melhora superior a 5%, volta à melhor taxa medida nesta rodada.
 - **Intensivo**: começa diretamente no limite escolhido. Reduz o envio se o progresso parar.
@@ -61,11 +69,11 @@ Gamepasses e boosts pertencem à conta e são aplicados pelo jogo. O hub não in
 
 ## Verificação
 
-Foram executadas **589 verificações offline**: 324 do menu, 74 de força/fast rebirth, 23 de cenários prolongados/concorrentes, 41 de taxas/exploração, 38 do Ultra, 27 do Combinado, 22 do fluxo de bosses, 20 da pose acima do boss e 20 da interface. O menu mantém 69 elementos, com títulos/IDs únicos; Ultra e Combinado reutilizam seletores existentes. A suite de Fast Rep executa o script completo com doze pets equipados e verifica suas referências exatas após sucesso, recusa, timeout, pausa, boss, respawn e queda de FPS; registra zero chamadas de equip/unequip nesse fluxo. Os casos prolongados verificam um minuto de ciclos, prioridade intencional durante recusas quando a força já basta, requisitos inválidos, pausa longa, confirmação pendente e cancelamento de alterações de pets ao entrar no Fast Rep. Nesses últimos casos, a fixture inicia explicitamente uma tarefa de pets antes do treino e verifica que nenhuma alteração restante acontece após ativar o modo.
+Foram executadas **609 verificações offline**: 324 do menu, 74 de força/fast rebirth, 23 de cenários prolongados/concorrentes, 41 de taxas/exploração, 38 do Ultra, 27 do Combinado, 20 de agendamento/travadas, 22 do fluxo de bosses, 20 da pose acima do boss e 20 da interface. O menu mantém 69 elementos, com títulos/IDs únicos; Ultra e Combinado reutilizam seletores existentes. A suite de Fast Rep executa o script completo com doze pets equipados e verifica suas referências exatas após sucesso, recusa, timeout, pausa, boss, respawn e queda de FPS; registra zero chamadas de equip/unequip nesse fluxo. Os casos prolongados verificam um minuto de ciclos, prioridade intencional durante recusas quando a força já basta, requisitos inválidos, pausa longa, confirmação pendente e cancelamento de alterações de pets ao entrar no Fast Rep. Nesses últimos casos, a fixture inicia explicitamente uma tarefa de pets antes do treino e verifica que nenhuma alteração restante acontece após ativar o modo.
 
 Os 27 casos Combinado verificam soma dos contadores, tempo ativo contado uma única vez, teto agregado, orçamento de CPU compartilhado, interrupção de ambas as rotas e preservação exata dos pets. Em ping simulado de 300ms, foram medidos 659 pedidos/s clássicos + 500 em lotes = 1.159/s locais. Uma fixture com aceitação limitada demonstra que mais pedidos não são convertidos automaticamente em mais ganhos. Não foi medido o servidor real do usuário.
 
-Os casos Ultra verificam adaptação a ping de 40/100/200/300ms, fallback sem serviço de ping, ausência de trabalhador duplicado, limites manuais/estáveis, respawn, substituição do script local, transporte com falha, parada sem ganho, rebirth pendente e restauração do estado original do movimento. O loop local simulado mediu aproximadamente 10.033,3/s, 7.500,0/s, 1.233,3/s e 500,0/s nesses quatro pings; essas medidas descrevem pedidos locais em lotes, não taxa aceita no Roblox. A fixture não reproduz o custo real de rede, o throttling nem a quantização de `task.wait` no cliente. O ganho de força por pedido é definido pela fixture, e esses testes não comprovam trilhões em segundos na conta real.
+Os casos Ultra verificam adaptação a ping de 40/100/200/300ms, fallback sem serviço de ping, ausência de trabalhador duplicado, limites manuais/estáveis, respawn, substituição do script local, transporte com falha, parada sem ganho, rebirth pendente e restauração do estado original do movimento. O loop local simulado mediu aproximadamente 10.000,0/s, 7.500,0/s, 1.233,3/s e 500,0/s nesses quatro pings; essas medidas descrevem pedidos locais em lotes, não taxa aceita no Roblox. Essa fixture não reproduz o custo real de rede, o throttling nem a quantização de `task.wait` no cliente. A fixture adicional `--timing` modela somente a retomada por frame, usando 20/30/60 FPS; não implementa o scheduler completo do Roblox. O ganho de força por pedido é definido pela fixture, e esses testes não comprovam trilhões em segundos na conta real.
 
 Uma fixture reproduz 41,1B de força e requisito de 485,4M: a solicitação pendente não recebe novas reps concorrentes e uma fila simulada termina de processar. Outro caso mantém uma resposta atrasada por seis segundos, verifica fase/duração no painel e a ausência de duplicatas. Os presets e a estimativa por ganhos também são exercitados. Isso valida os controles locais; não mede a fila real do usuário nem prova qual foi a causa da demora mostrada nas imagens.
 
@@ -81,6 +89,7 @@ py -3 tests/check_fast_rep.py --stress
 py -3 tests/check_fast_rep.py --rates
 py -3 tests/check_fast_rep.py --ultra
 py -3 tests/check_fast_rep.py --combined
+py -3 tests/check_fast_rep.py --timing
 py -3 tests/check_published.py
 py -3 tests/check_boss_hover.py
 py -3 tests/check_design.py
@@ -91,5 +100,5 @@ As fixtures definem seus próprios ganhos e requisitos. Os testes não comprovam
 ## Versão de teste fixada
 
 ```lua
-loadstring(game:HttpGet("https://raw.githubusercontent.com/Kamoviich/710hub/196c89e643f8cb7b60523f0003e11617a92b3ab7/710Hub.lua", true))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/Kamoviich/710hub/3f41a45c19d66f32b8c0cfbd6d4d2d3be0944824/710Hub.lua", true))()
 ```
