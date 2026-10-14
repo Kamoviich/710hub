@@ -1,6 +1,6 @@
 # 710Hub — seleção limpa
 
-**Atualização 2026.10-priority.41:** presets para força acumulada e rebirth rápido, prioridade à confirmação sem reps excedentes, exploração de taxas e pets preservados. O menu atual tem 69 elementos e 522 verificações locais. Consulte [FAST-REP-E-REBIRTH.md](FAST-REP-E-REBIRTH.md) para uso e resultados. A descrição abaixo registra a revisão anterior 2026.10-clean.36.
+**Atualização 2026.10-ultra.42:** Ultra em lotes inspirado no Silence anexado, adaptação por ping, preparação local reversível e pets preservados. O menu mantém 69 elementos e passou em 561 verificações locais. Consulte [FAST-REP-E-REBIRTH.md](FAST-REP-E-REBIRTH.md) para uso e resultados. A descrição abaixo registra a revisão anterior 2026.10-clean.36.
 
 O menu tem **65 elementos**: 26 toggles, 14 campos e 25 cards de ação, seleção ou estado. Há um único controle para cada propósito; as opções de um seletor não são cópias da mesma rotina.
 
