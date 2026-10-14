@@ -66,7 +66,7 @@ end
 
 local SESSION = {
     Alive = true,
-    Version = "2026.10-combined.43",
+    Version = "2026.10-timing.44",
     Connections = {},
 }
 
@@ -3425,7 +3425,10 @@ local function initializeFastRep()
         local ping=self.Ping or 80
         local pingBatch=ping<80 and 500 or ping<150 and 300 or ping<250 and 100 or 50
         burst=math.min(burst,pingBatch)
-        local delay=math.max(1/60,math.clamp(ping/2500,.001,.1),burst/math.min(self.Rate,limit))
+        -- Tokens already pace the configured rate. Waiting for a full batch here
+        -- adds a second limiter: task.wait resumes on a Heartbeat, so e.g. 35ms
+        -- becomes two 30-FPS frames and discards elapsed credit at the burst cap.
+        local delay=math.max(1/60,math.clamp(ping/2500,.001,.1))
         return burst,delay
     end
     function F:startTrial(limit)
@@ -3582,9 +3585,12 @@ local function initializeFastRep()
     end
     function F:frame(dt)
         self.SendSpent=0
-        dt=math.clamp(tonumber(dt) or 1/60,0,.1)
+        local elapsed=tonumber(dt)
+        if not elapsed or elapsed~=elapsed or elapsed<0 or elapsed==math.huge then elapsed=1/60 end
+        dt=math.clamp(elapsed,0,.1)
         local active=self:active()==true
-        self:sample(dt,active)
+        -- Limit catch-up sends, but include a frozen frame in gain measurements.
+        self:sample(elapsed,active)
         if not active or M.PetEquipBusy then
             self:restoreMovement()
             self.Tokens=0; self.BatchTokens=0; self.LastControl=nil
@@ -3607,7 +3613,7 @@ local function initializeFastRep()
             self.Rate=(S.FastRepProfile=="Intensivo" or S.FastRepProfile=="Ultra (lotes)" or S.FastRepProfile=="Combinado") and limit or math.min(200,limit)
             if S.FastRepProfile=="Explorar limite" then self:startTrial(limit) end
         end
-        self:trialTick(dt)
+        self:trialTick(elapsed)
         if self.Trial then limit=math.min(limit,self.Trial.Done and self.Trial.BestRate or self.Trial.Target) end
         local waiting=self:waitingBirth()
         if waiting then
@@ -3667,6 +3673,7 @@ local function initializeFastRep()
             local batch,delay=self:ultraTiming()
             lines[#lines+1]=string.format("Ultra: até %d reps/lote | intervalo %.3fs | ping %s | sem troca de pets",batch,delay,
                 self.HasPing and string.format("%.0fms",self.Ping) or "indisponível; referência 80ms")
+            lines[#lines+1]="Ping somente medido. O intervalo pode aumentar até o próximo ciclo do jogo; confira os ganhos medidos abaixo."
         end
         if S.FastRepProfile=="Combinado" then
             lines[#lines+1]=string.format("Combinado: clássico até 659/s + lotes no restante do teto total.\nPedidos da sessão: clássico %d | lotes %d",self.ClassicSent or 0,self.BatchSent or 0)
