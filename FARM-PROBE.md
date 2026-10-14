@@ -2,6 +2,10 @@
 
 `710Hub-farm-probe.lua` abre um medidor independente. Pode acompanhar o 710Hub ou o Silence. Os botões identificam qual farm você está medindo; **não iniciam nem trocam o farm**. O script lê valores da conta e eventos locais; não envia reps, não equipa pets, não provoca travadas e não altera a rede.
 
+```lua
+loadstring(game:HttpGet("https://raw.githubusercontent.com/Kamoviich/710hub/254c4da939e392d3f8c3b6c76937e9f3efd0d5bc/710Hub-farm-probe.lua", true))()
+```
+
 ## Como medir na conta real
 
 1. Mantenha o mesmo servidor, pets, boosts, treino e configurações. Desligue o rebirth para que a força não seja consumida durante a rodada. Evite coletar recompensas, consumir boosts ou combater bosses durante a comparação.
@@ -27,6 +31,8 @@ São excluídas da comparação rodadas interrompidas ou com reset observado de 
 Esses valores foram escolhidos na fixture para verificar a medição. **Não representam taxas do Muscle Legends e não demonstram se o servidor real tem um bug.** O caso sem bônus e o caso com bônus apresentam resultados diferentes no comparador, mesmo com travadas. A medição real mostrará associação entre pausas e ganhos, não prova causal nem confirmação independente do servidor.
 
 Foram executadas 53 verificações locais: 41 do cálculo/comparação e 12 do adaptador/interface. Incluem janela estendida por travada, ausência de conclusão com pouca amostra, reset/rebirth, pets alterados, condições diferentes entre rodadas, reexecução/limpeza, zero remotes e painel de 320×320. O script independente compilou em Luau. Os testes não executaram Roblox, Silence nem um servidor real.
+
+O teste matemático publicado é independente do mock de Roblox e executa o núcleo real do repositório: `luau tests/farm_probe_math.luau` (requer o CLI Luau). Os comandos abaixo executam também a fixture de interface no workspace de desenvolvimento:
 
 ```powershell
 py -3 build_farm_probe.py
