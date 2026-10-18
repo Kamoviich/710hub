@@ -1,6 +1,6 @@
 # 710Hub — seleção limpa
 
-**Atualização 2026.10-timing.44:** removida uma espera redundante dos lotes no Ultra e Combinado; a média de ganhos agora inclui o tempo das travadas. Clássico e lotes podem rodar juntos no preset Ultra combinado, com orçamento total compartilhado e pets preservados. O menu mantém 69 elementos e passou em 609 verificações locais. Consulte [FAST-REP-E-REBIRTH.md](FAST-REP-E-REBIRTH.md) para uso e resultados. A descrição abaixo registra a revisão anterior 2026.10-clean.36.
+**Atualização 2026.10-rebirth.45:** o treino continua durante o auto rebirth e a espera local aceita zero. Seus pets são preservados. O menu mantém 69 elementos e passou em 638 verificações locais. Consulte [FAST-REP-E-REBIRTH.md](FAST-REP-E-REBIRTH.md) para uso e resultados. A descrição abaixo registra a revisão anterior 2026.10-clean.36.
 
 O menu tem **65 elementos**: 26 toggles, 14 campos e 25 cards de ação, seleção ou estado. Há um único controle para cada propósito; as opções de um seletor não são cópias da mesma rotina.
 
