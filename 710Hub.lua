@@ -41,9 +41,9 @@ local startupOK, startupError = xpcall(function()
     while not game:IsLoaded() and os.clock() < deadline do task.wait(0.1) end
     assert(game:IsLoaded(), "O jogo nao carregou em 30 segundos.")
 -- 710Hub - Muscle Legends (2026)
--- Script único para Muscle Legends.
--- Features: Auto Train, Auto Rebirth, Auto Chests, Auto Hatch, Pet Manager,
--- Equip Best owned pets, teleport browser, Anti-AFK, Stop All.
+-- Menu selecionado, com rotinas nativas únicas para Muscle Legends.
+-- Features: treino por método, rebirth, boss invertido, PvP filtrado, pets,
+-- cristais limitados, roleta, consumíveis, perfis, navegação e Stop All.
 
 if game.GameId ~= 1268927906 then
     error("Abra Muscle Legends antes de executar o 710Hub. GameId atual: " .. tostring(game.GameId))
@@ -66,7 +66,7 @@ end
 
 local SESSION = {
     Alive = true,
-    Version = "2026.10-daily.32",
+    Version = "2026.10-rebirth.45",
     Connections = {},
 }
 
@@ -118,7 +118,6 @@ local REMOTE_NAMES = {
     Chest = "checkChestRemote",
     EquipPet = "equipPetEvent",
     EvolvePet = "petEvolveEvent",
-    Brawl = "brawlEvent",
     Machine = "machineInteractRemote",
     PetShop = "cPetShopRemote",
 }
@@ -135,29 +134,34 @@ end
 refreshRemotes()
 
 local S = {
+    FastRep=false, FastRepProfile="Explorar limite", FastRepLimit=10000, FarmMode="Fast Rep (packs)", PvpFilter="Todos", PetObjective="strength",
+    HatchMaxOpens=20, HatchTargetPet="",
+    AutoWheel=false, AutoEggs=false, AutoBoosts=false, AutoBestPetObjective=false, AutoEvolveOwned=false,
+    SetSpeed=false, SetSize=false, SetFOV=false, InfiniteJump=false, AntiFling=false,
+    Spectate=false, ShiftLock=false,
+    PvpProtectFriends=false, PvpOnlySelected=false,
+    CharacterSpeed=120, CharacterSize=1, CameraFOV=70, ShopCount=1,
     PvpAny=false, PvpGood=false, PvpEvil=false, PvpRadius=150, PvpAttackRange=2.5,
     TrainWeight=false, TrainPushups=false, TrainSitups=false, TrainHandstands=false,
-    Train=false, Rebirth=false, Chests=false, Hatch=false, AutoNovaPhoenix=false, Brawl=false,
+    Train=false, Rebirth=false, Chests=false, Hatch=false, Brawl=false,
     AutoPunch=false, SmartRock=false, LockPosition=false,
     AutoMachine=false, AutoBestMachine=false, StrengthRebirth=false,
     TurboStrength=false, MaxStrengthF2P=false, AutoBoss=false,
     AutoAgility=false, SmartFarm=false,
-    AutoEquipAfterHatch=false, AutoEvolveAfterHatch=false,
-    PerformanceMode=false, StabilityMode=false, GoalEnabled=false,
+        PerformanceMode=false, StabilityMode=false, GoalEnabled=false,
     SmartObjective="Força", GoalStat="Strength", GoalValue=nil,
-    HatchCrystal="Blue Crystal", NovaCrystal="Charged Crystal", NovaMaxOpens=100, FarmSpeed=2, PreserveFarmPets=false, FarmCustom=false, FarmIntervalMs=100, FarmReps=4, RepDelay=.065, HatchDelay=.45,
+    HatchCrystal="Blue Crystal", FarmSpeed=2, PreserveFarmPets=false, FarmCustom=false, FarmIntervalMs=100, FarmReps=4, RepDelay=.065, HatchDelay=.45,
     RebirthTarget=nil, SelectedMachine=nil,
     LastRebirthAttempt=0,
-    RebirthGuard=false, RebirthFloor=0, RebirthInterval=1,
+    RebirthGuard=false, RebirthFloor=0, RebirthInterval=0,
     BreakEnabled=false, BreakEvery=30, BreakMinutes=5,
-    BossAutoLoot=true, BossDefense=true, BossDistance=3, BossReturn=true, BossPreference="Qualquer",
+    BossAutoLoot=true, BossDefense=true, BossAbove=true, BossDistance=2, BossReturn=true, BossPreference="Qualquer",
     ResumeAfterDeath=true, HealthGuard=true, HealthLow=55, HealthResume=85,
     StallAlerts=true, StallSeconds=60,
     StopAt=nil, ProgressionTarget=nil,
 }
 
 local HubRuntime = {
-    NovaAttempts = 0, NovaStatus = "Desligado", NovaCrystalVerified = false,
     Status = "Inicializando...",
     LastError = "Nenhum",
     RemoteCalls = 0,
@@ -189,21 +193,28 @@ return function(settings, clock)
         Stalled = false, WasTraining = false, Samples = {}, ActiveSeconds = 0,
         BossCounts = {}, BossObservations = 0, BossRecent = {},
     }
-    M.AutoKeys = {"Train", "Rebirth", "Chests", "Hatch", "AutoNovaPhoenix", "Brawl", "AutoPunch",
+    M.AutoKeys = {"FastRep", "Rebirth", "Chests", "Hatch", "AutoPunch",
         "TrainWeight", "TrainPushups", "TrainSitups", "TrainHandstands", "PvpAny", "PvpGood", "PvpEvil",
-        "SmartRock", "LockPosition", "AutoMachine", "AutoBestMachine", "StrengthRebirth",
-        "TurboStrength", "MaxStrengthF2P", "AutoBoss", "AutoAgility", "SmartFarm",
-        "AutoEquipAfterHatch", "AutoEvolveAfterHatch", "GoalEnabled"}
-    local booleans = {"PreserveFarmPets", "FarmCustom", "BossAutoLoot", "BossReturn", "BossDefense", "ResumeAfterDeath", "HealthGuard", "StallAlerts", "PerformanceMode", "StabilityMode", "RebirthGuard", "BreakEnabled"}
+        "SmartRock", "AutoMachine",
+        "MaxStrengthF2P", "AutoBoss", "AutoAgility",
+        "GoalEnabled",
+        "AutoWheel", "AutoEggs", "AutoBoosts", "AutoBestPetObjective", "AutoEvolveOwned",
+        "SetSpeed", "SetSize", "SetFOV", "InfiniteJump", "AntiFling", "Spectate", "ShiftLock"}
+    local booleans = { "PreserveFarmPets", "FarmCustom", "BossAutoLoot", "BossReturn", "BossDefense", "BossAbove", "ResumeAfterDeath", "HealthGuard", "StallAlerts", "PerformanceMode", "StabilityMode", "RebirthGuard", "BreakEnabled", "PvpProtectFriends", "PvpOnlySelected"}
     local numbers = {
-        FarmIntervalMs = {1, 5000}, FarmReps = {1, 160}, FarmSpeed = {1, 3}, NovaMaxOpens = {1, 1000}, PvpRadius = {10, 500}, PvpAttackRange = {1.5, 5}, RepDelay = {.05, 5}, HatchDelay = {.1, 30}, BossDistance = {2, 12},
+        FastRepLimit = {40, 10000},
+        CharacterSpeed = {1, 500}, CharacterSize = {1, 100}, CameraFOV = {30, 120}, ShopCount = {1, 20},
+        FarmIntervalMs = {1, 5000}, FarmReps = {1, 160}, FarmSpeed = {1, 3}, HatchMaxOpens = {1, 100}, PvpRadius = {10, 500}, PvpAttackRange = {1.5, 5}, RepDelay = {.05, 5}, HatchDelay = {.1, 30}, BossDistance = {2, 12},
         HealthLow = {5, 60}, HealthResume = {65, 100}, StallSeconds = {30, 600},
         GoalValue = {1, 1e15}, RebirthTarget = {1, 1e15}, ProgressionTarget = {1, 1e15},
-        RebirthFloor = {0, 1e15}, RebirthInterval = {.5, 30}, BreakEvery = {1, 240}, BreakMinutes = {1, 60},
+        RebirthFloor = {0, 1e15}, RebirthInterval = {0, 30}, BreakEvery = {1, 240}, BreakMinutes = {1, 60},
     }
-    local choices = {SmartObjective = {"Força", "Durabilidade", "Agilidade", "Rebirths"},
+    local choices = {
+        FastRepProfile={"Combinado","Ultra (lotes)","Explorar limite","Intensivo","Adaptativo"},
+        FarmMode={"Fast Rep (packs)","Automático","Peso","Flexões","Abdominais","Parada de mãos","Máquina","Pedras","Esteira"},
+        PvpFilter={"Todos","Karma bom","Karma ruim","Selecionado"}, PetObjective={"strength","durability","agility"}, SmartObjective = {"Força", "Durabilidade", "Agilidade", "Rebirths"},
         GoalStat = {"Strength", "Agility", "Durability", "Rebirths"}}
-    local strings = {"HatchCrystal", "NovaCrystal", "SelectedMachine", "BossPreference"}
+    local strings = {"HatchCrystal", "HatchTargetPet", "SelectedMachine", "BossPreference"}
 
     function M:log(kind, message)
         self.History[#self.History + 1] = {Time = math.floor(clock() - self.Started), Kind = kind, Message = tostring(message)}
@@ -244,7 +255,7 @@ return function(settings, clock)
         M.Conflicts[a][b], M.Conflicts[b][a] = true, true
     end
     -- Only competing tool/position owners. Selection and passive helpers stay on.
-    local trainers = {"Train", "TrainWeight", "TrainPushups", "TrainSitups", "TrainHandstands", "TurboStrength", "MaxStrengthF2P", "AutoMachine", "AutoAgility"}
+    local trainers = {"FastRep", "Train", "TrainWeight", "TrainPushups", "TrainSitups", "TrainHandstands", "TurboStrength", "MaxStrengthF2P", "AutoMachine", "AutoAgility"}
     for i, a in ipairs(trainers) do
         for j = i + 1, #trainers do conflict(a, trainers[j]) end
         conflict(a, "AutoPunch"); conflict(a, "SmartRock")
@@ -254,9 +265,8 @@ return function(settings, clock)
     for _, key in ipairs({"Train", "TrainWeight", "TrainPushups", "TrainSitups", "TrainHandstands", "TurboStrength", "MaxStrengthF2P", "AutoMachine", "AutoBestMachine", "AutoAgility", "SmartRock", "AutoPunch", "StrengthRebirth", "Rebirth", "LockPosition"}) do conflict("SmartFarm", key) end
     for _, mode in ipairs({"PvpAny", "PvpGood", "PvpEvil"}) do
         for _, key in ipairs(trainers) do conflict(mode, key) end
-        for _, key in ipairs({"AutoBoss", "Brawl", "SmartRock", "AutoPunch", "LockPosition", "SmartFarm", "Rebirth", "StrengthRebirth"}) do conflict(mode, key) end
+        for _, key in ipairs({"FastRep", "AutoBoss", "Brawl", "SmartRock", "AutoPunch", "LockPosition", "SmartFarm", "Rebirth", "StrengthRebirth"}) do conflict(mode, key) end
     end
-    conflict("Hatch", "AutoNovaPhoenix")
     conflict("PvpGood", "PvpEvil")
     conflict("PvpAny", "PvpGood"); conflict("PvpAny", "PvpEvil")
     function M:pvpEligible(good, evil)
@@ -366,7 +376,8 @@ return function(settings, clock)
         for key, bounds in pairs(numbers) do
             local value = source[key]
             if value ~= nil then
-                if type(value) ~= "number" or value ~= value or value < bounds[1] or value > bounds[2] then return nil, key end
+                if type(value) ~= "number" or value ~= value or value < bounds[1] or value > bounds[2]
+                    or ((key == "ShopCount" or key == "HatchMaxOpens" or key == "FastRepLimit") and value % 1 ~= 0) then return nil, key end
                 result[key] = value
             end
         end
@@ -393,6 +404,7 @@ return function(settings, clock)
         settings.StopAt = nil
         for key, value in pairs(validated) do settings[key] = value end
         settings.PvpAny, settings.PvpGood, settings.PvpEvil = false, false, false
+        for _, key in ipairs({"AutoNovaPhoenix","AutoEquipAfterHatch","AutoEvolveAfterHatch","Train","TurboStrength","SmartFarm","StrengthRebirth","AutoBestMachine","Brawl","HideName","HideStats","PlayerESP","LockPosition","BreakEnabled","RebirthGuard"}) do settings[key]=false end
         self:normalizeConflicts()
         self:pause("Manual", true)
         self:resetBreak()
@@ -454,9 +466,10 @@ return function(settings, clock)
     end
     function M:canRequestRebirth(strength, rebirths)
         if not self:canAct() or self.Comparing or self.RebirthInFlight then return false end
+        if clock() < (self.RebirthRetryAt or -math.huge) then return false end
         if settings.RebirthTarget and rebirths >= settings.RebirthTarget then return false end
         if settings.RebirthGuard and strength < (settings.RebirthFloor or 0) then return false end
-        return clock() - (self.LastRebirthRequest or -math.huge) >= (settings.RebirthInterval or 1)
+        return clock() - (self.LastRebirthRequest or -math.huge) >= (settings.RebirthInterval or 0)
     end
     function M:resetBreak()
         self.ActiveSeconds, self.BreakUntil = 0, nil
@@ -532,6 +545,7 @@ return function(settings, clock)
     end
     return M
 end
+
 end)()(S, os.clock)
 M:pause("Respawn", true)
 -- END MAINTENANCE CORE
@@ -594,9 +608,9 @@ local function safeInvoke(remote, ...)
         HubRuntime.RemoteCalls += 1
         return remote:InvokeServer(table.unpack(args, 1, args.n))
     end)
-    if ok then return a, b end
+    if ok then return a, b, true end
     setHubError(a)
-    return nil
+    return nil, nil, false
 end
 
 local function safeFire(remote, ...)
@@ -638,36 +652,16 @@ local lockedCFrame = nil
 local agilityOriginalWalkSpeed = nil
 local agilityLastTeleport = 0
 
-local function captureLockPosition()
-    local character = LP.Character
-    local root = character and character:FindFirstChild("HumanoidRootPart")
-    if root then
-        lockedCFrame = root.CFrame
-        return true
-    end
-    return false
-end
 
 
-task.spawn(function()
-    while SESSION.Alive and task.wait(S.StabilityMode and .14 or .08) do
-        if M:canAct() and S.LockPosition and not HubRuntime.BossActive then
-            local character = LP.Character
-            local root = character and character:FindFirstChild("HumanoidRootPart")
-            if not lockedCFrame then
-                captureLockPosition()
-            end
-            if root and lockedCFrame then
-                pcall(function()
-                    root.CFrame = lockedCFrame
-                    root.AssemblyLinearVelocity = Vector3.zero
-                end)
-            end
-        end
-    end
-end)
+
+
 
 local function stopAllAutomations()
+    S.FastRep=false
+    if HubRuntime.FastRep then HubRuntime.FastRep:cancel() end
+    if HubRuntime.Clean then HubRuntime.Clean:stopHatch() end
+    if HubRuntime.Extras then HubRuntime.Extras:stop() end
     M:cancelComparison()
     if HubRuntime.StopBoss then HubRuntime.StopBoss() end
     if M.stopPvp then M:stopPvp() end
@@ -682,8 +676,6 @@ local function stopAllAutomations()
     S.Rebirth = false
     S.Chests = false
     S.Hatch = false
-    S.AutoNovaPhoenix = false
-    HubRuntime.NovaStatus = "Parado pelo usuario"
     S.Brawl = false
     S.AutoPunch = false
     S.SmartRock = false
@@ -695,8 +687,6 @@ local function stopAllAutomations()
     S.AutoBoss = false
     S.AutoAgility = false
     S.SmartFarm = false
-    S.AutoEquipAfterHatch = false
-    S.AutoEvolveAfterHatch = false
     S.GoalEnabled = false
     S.LockPosition = false
     lockedCFrame = nil
@@ -1073,6 +1063,7 @@ local function beginBossFight(target)
 end
 
 local function finishBossFight(returnToStart)
+    if M.releaseBossHover then M:releaseBossHover() end
     M.BossGeneration = (M.BossGeneration or 0) + 1
     M.BossLootUntil, M.BossLootAttempted = nil, nil
     M:resetBossDefense()
@@ -1127,6 +1118,82 @@ function M:bossPosition(root, humanoid, target, character, distance, lateral)
     return CFrame.lookAt(position, Vector3.new(targetRoot.Position.X, position.Y, targetRoot.Position.Z))
 end
 
+-- BEGIN BOSS HOVER
+-- Native Auto Kill Boss: inverted character above the loaded boss.
+function M:bossHoverFrame(target)
+    local targetRoot=bossRoot(target)
+    if not targetRoot then return nil end
+    local top=targetRoot.Position.Y+targetRoot.Size.Y/2
+    local head=target:FindFirstChild("Head",true)
+    if head and head:IsA("BasePart") then top=math.max(top,head.Position.Y+head.Size.Y/2) end
+    local position=Vector3.new(targetRoot.Position.X,top+math.clamp(S.BossDistance or 3,2,12),targetRoot.Position.Z)
+    local look=targetRoot.CFrame.LookVector
+    local flat=Vector3.new(look.X,0,look.Z)
+    if flat.Magnitude<.01 then flat=Vector3.new(0,0,-1) end
+    -- A horizontal yaw followed by 180 degrees on X keeps UpVector pointing
+    -- down, with the character's head toward the boss below.
+    return CFrame.lookAt(position,position+flat.Unit)*CFrame.Angles(math.pi,0,0)
+end
+function M:releaseBossHover()
+    local saved=self.BossHoverSaved
+    self.BossHoverSaved=nil
+    self.BossHoverCheckedAt=nil
+    if not saved then return end
+    pcall(function()
+        if saved.Humanoid.Parent then
+            saved.Humanoid.AutoRotate=saved.AutoRotate
+            if saved.Humanoid.Health>0 then saved.Humanoid:ChangeState(Enum.HumanoidStateType.GettingUp) end
+        end
+        local root=saved.Root
+        if LP.Character==saved.Character and root.Parent then
+            local look=root.CFrame.LookVector
+            local flat=Vector3.new(look.X,0,look.Z)
+            if flat.Magnitude<.01 then flat=Vector3.new(0,0,-1) end
+            root.CFrame=CFrame.lookAt(root.Position,root.Position+flat.Unit)
+            root.AssemblyAngularVelocity=Vector3.zero
+        end
+    end)
+end
+function M:applyBossHover(root,humanoid,character,frame)
+    local saved=self.BossHoverSaved
+    if saved and (saved.Character~=character or saved.Root~=root) then self:releaseBossHover(); saved=nil end
+    if not saved then
+        self.BossHoverSaved={Character=character,Root=root,Humanoid=humanoid,AutoRotate=humanoid.AutoRotate}
+        humanoid.AutoRotate=false
+        humanoid:ChangeState(Enum.HumanoidStateType.Physics)
+    end
+    humanoid.AutoRotate=false
+    root.CFrame=frame
+    root.AssemblyLinearVelocity=Vector3.zero
+    root.AssemblyAngularVelocity=Vector3.zero
+end
+function M:bossAttackPosition(root,humanoid,target,character)
+    local ground=self:bossPosition(root,humanoid,target,character,S.BossDistance,0)
+    if not ground then self:releaseBossHover(); return nil end
+    if not S.BossAbove then self:releaseBossHover(); return ground end
+    self.BossHoverCheckedAt=os.clock()
+    return self:bossHoverFrame(target)
+end
+trackConnection(RunService.Heartbeat:Connect(function()
+    local saved=M.BossHoverSaved
+    if not saved then return end
+    local boss=HubRuntime.BossModel
+    local health=boss and bossHumanoid(boss)
+    local character=LP.Character
+    local humanoid=character and character:FindFirstChildOfClass("Humanoid")
+    local root=character and character:FindFirstChild("HumanoidRootPart")
+    local low=humanoid and S.HealthGuard and humanoid.MaxHealth>0 and humanoid.Health*100/humanoid.MaxHealth<=(S.HealthLow or 55)
+    if not SESSION.Alive or not S.AutoBoss or not S.BossAbove or not HubRuntime.BossActive
+        or not M:canAct() or M.BossRecovering or M.BossRetreatCFrame or low
+        or not health or health.Health<=0 or not root or not humanoid or humanoid.Health<=0
+        or not M.BossHoverCheckedAt or os.clock()-M.BossHoverCheckedAt>.5 then
+        M:releaseBossHover(); return
+    end
+    local frame=M:bossHoverFrame(boss)
+    if frame then M:applyBossHover(root,humanoid,character,frame) else M:releaseBossHover() end
+end))
+-- END BOSS HOVER
+
 task.spawn(function()
     local currentBoss, nextScan, blockedSince = nil, 0, nil
     while SESSION.Alive and task.wait(.2) do
@@ -1138,7 +1205,7 @@ task.spawn(function()
                 M:setBossState("Desligado")
                 return
             end
-            if not M:bossMayMove() then M:setBossState("Pausado: " .. M:reasonText()); return end
+            if not M:bossMayMove() then M:releaseBossHover(); M:setBossState("Pausado: " .. M:reasonText()); return end
             if not findPunchTool() then
                 if HubRuntime.BossActive then finishBossFight(true) end
                 currentBoss, blockedSince = nil, nil
@@ -1248,6 +1315,7 @@ task.spawn(function()
             M.BossLastPosition = bossRoot(currentBoss).Position
             local retreat = M:bossRetreat(humanoid.Health, humanoid.MaxHealth)
             if retreat then
+                M:releaseBossHover()
                 if not M.BossRetreatCFrame then
                     for _, distance in ipairs({20, 28, 36}) do
                         for _, lateral in ipairs({0, 10, -10}) do
@@ -1276,7 +1344,7 @@ task.spawn(function()
                 end
                 return -- no punches while recovering; hold the chosen retreat location.
             end
-            local position = M:bossPosition(root, humanoid, currentBoss, character, S.BossDistance, 0)
+            local position = M:bossAttackPosition(root, humanoid, currentBoss, character)
             if not position then
                 blockedSince = blockedSince or os.clock()
                 M:setBossState("Sem piso seguro para atacar")
@@ -1290,6 +1358,7 @@ task.spawn(function()
                 return
             end
             blockedSince = nil
+            if S.BossAbove then M:applyBossHover(root, humanoid, character, position) end
             root.CFrame = position
             root.AssemblyLinearVelocity = Vector3.zero
             if not findPunchTool() then
@@ -1311,7 +1380,7 @@ task.spawn(function()
                         and HubRuntime.BossModel == target and hp and hp.Health > 0
                 end)
                 if not punched then M:setBossState(reason or "Soco indisponivel")
-                elseif os.clock() - M.BossLastDamageAt >= 8 then M:setBossState("Sem queda de vida ha 8s; ajuste a distancia")
+                elseif os.clock() - M.BossLastDamageAt >= 8 then M:setBossState("Sem queda de vida há 8s; reduza a altura / distância para alcançar")
                 else M:setBossState("Punch ativo: " .. currentBoss.Name) end
             end
         end)
@@ -1762,58 +1831,7 @@ local function fastStrengthBurst()
     return true
 end
 
-task.spawn(function()
-    local failures = 0
-    local windowStart = os.clock()
-    local windowStrength = numberStat("Strength")
-    local noGainWindows = 0
-    local windowRebirths = currentRebirths()
 
-    while SESSION.Alive and task.wait((M:farmPace())) do
-        if M:canAct() and S.TurboStrength and not HubRuntime.BossActive then
-            if fastStrengthBurst() then
-                failures = 0
-            else
-                failures += 1
-            end
-
-            if os.clock() - windowStart >= 2.5 then
-                local now = numberStat("Strength")
-                local gained = math.max(0, now - windowStrength)
-
-                local rebirths = currentRebirths()
-                if rebirths ~= windowRebirths then
-                    noGainWindows = 0
-                elseif gained > 0 then
-                    noGainWindows = 0
-                    setHubStatus("Força Rápida • +"..math.floor(gained).." em 2.5s")
-                else
-                    noGainWindows += 1
-                    setHubStatus("Força Rápida • aguardando ganho...")
-                end
-
-                windowRebirths = rebirths
-                windowStrength = now
-                windowStart = os.clock()
-
-                if noGainWindows >= 6 or failures >= 20 then
-                    S.TurboStrength = false
-                    noGainWindows = 0
-                    failures = 0
-                    setHubStatus("Força Rápida desligada: nenhum ganho detectado")
-                    if HubRuntime.RenderToggles then
-                        task.defer(HubRuntime.RenderToggles)
-                    end
-                end
-            end
-        else
-            failures = 0
-            noGainWindows = 0
-            windowStart = os.clock()
-            windowStrength = numberStat("Strength")
-        end
-    end
-end)
 
 local function getPetShopFolder()
     local shared = RS:FindFirstChild("shared")
@@ -1821,102 +1839,11 @@ local function getPetShopFolder()
     return runtime and runtime:FindFirstChild("cPetShopFolder")
 end
 
-local function findShopPetByNamePart(part)
-    local folder = getPetShopFolder()
-    if not folder then return nil end
 
-    part = string.lower(part or "")
-    for _, item in ipairs(folder:GetChildren()) do
-        if item:GetAttribute("IsPowerUp") ~= true
-            and string.find(string.lower(item.Name), part, 1, true) then
-            return item
-        end
-    end
 
-    return nil
-end
 
-local function buyShopPet(item)
-    if not item or not item.Parent then
-        setHubError("Pet não encontrado no catálogo atual")
-        return false
-    end
 
-    local remote = R.PetShop or rEvents:FindFirstChild("cPetShopRemote")
-    if not remote then
-        setHubError("cPetShopRemote não encontrado")
-        return false
-    end
 
-    local result = safeInvoke(remote, item)
-    if result == nil and HubRuntime.LastError ~= "Nenhum" then
-        return false
-    end
-
-    setHubStatus("Compra solicitada: "..item.Name)
-    return true
-end
-
-local function buyApexPet()
-    local apex = findShopPetByNamePart("apex")
-    if not apex then
-        setHubError("Apex não está disponível no catálogo deste servidor")
-        setHubStatus("Apex indisponível")
-        return false
-    end
-    return buyShopPet(apex)
-end
-
-local function detectNovaCrystalTitle()
-    local playerGui = LP:FindFirstChildOfClass("PlayerGui")
-    if not playerGui then return nil end
-    for _, widget in ipairs(playerGui:GetDescendants()) do
-        if (widget:IsA("TextLabel") or widget:IsA("TextButton"))
-            and string.find(string.lower(widget.Text), "nova phoenix", 1, true)
-            and not widget:FindFirstAncestor("710Hub_MuscleLegends") then
-            local parent = widget.Parent
-            while parent and parent ~= playerGui do
-                for _, label in ipairs(parent:GetDescendants()) do
-                    if label ~= widget and (label:IsA("TextLabel") or label:IsA("TextButton")) then
-                        local plain = string.gsub(label.Text, "<.->", "")
-                        local title = string.match(plain, "^%s*(.-)%s*$")
-                        if #title >= 8 and #title <= 60 and string.match(string.lower(title), "crystal$") then
-                            return title
-                        end
-                    end
-                end
-                parent = parent.Parent
-            end
-        end
-    end
-end
-
-local function novaInventoryCount()
-    local folder = LP:FindFirstChild("petsFolder")
-    if not folder then return nil end
-    local total = 0
-    for _, group in ipairs(folder:GetChildren()) do total += #group:GetChildren() end
-    return total
-end
-
-local function novaGems()
-    local stats = LP:FindFirstChild("leaderstats")
-    for _, container in ipairs({LP, stats or LP}) do
-        for _, name in ipairs({"Gems", "gems"}) do
-            local value = container:FindFirstChild(name)
-            if value and (value:IsA("NumberValue") or value:IsA("IntValue")) then return value.Value end
-        end
-    end
-end
-
-local function ownsNovaPhoenix()
-    local folder = LP:FindFirstChild("petsFolder")
-    if not folder then return false end
-    for _, pet in ipairs(folder:GetDescendants()) do
-        if string.lower(pet.Name) == "nova phoenix" then return true end
-    end
-    return false
-end
 
 local function allOwnedPets()
     local out = {}
@@ -1930,71 +1857,9 @@ local function allOwnedPets()
     return out
 end
 
-local rarityRank = {Basic=1,Rare=2,Epic=3,Unique=4,Advanced=5}
-local function petPower(p)
-    local score = 0
-    local foundStat = false
 
-    local function addNumeric(container, key)
-        local value = container and container:FindFirstChild(key)
-        if value and tonumber(value.Value) then
-            score += tonumber(value.Value)
-            foundStat = true
-        end
-    end
 
-    for _, key in ipairs({"strength","Strength","agility","Agility","durability","Durability"}) do
-        addNumeric(p.pet, key)
-    end
 
-    local perks = p.pet:FindFirstChild("perksFolder")
-    if perks then
-        for _, key in ipairs({"strength","Strength","agility","Agility","durability","Durability"}) do
-            addNumeric(perks, key)
-        end
-    end
-
-    local level = p.pet:FindFirstChild("level") or p.pet:FindFirstChild("Level")
-    if level and tonumber(level.Value) then
-        score += tonumber(level.Value) * 0.001
-    end
-
-    if not foundStat then
-        score += (rarityRank[p.rarity] or 0)
-    end
-
-    return score
-end
-
-local function petStrengthScore(p)
-    local score = 0
-    local found = false
-
-    local function add(container, key)
-        local value = container and container:FindFirstChild(key)
-        if value and tonumber(value.Value) then
-            score += tonumber(value.Value)
-            found = true
-        end
-    end
-
-    for _, key in ipairs({"strength","Strength"}) do
-        add(p.pet, key)
-    end
-
-    local perks = p.pet:FindFirstChild("perksFolder")
-    if perks then
-        for _, key in ipairs({"strength","Strength"}) do
-            add(perks, key)
-        end
-    end
-
-    if not found then
-        score = petPower(p)
-    end
-
-    return score
-end
 
 local function equippedPets()
     local set, slots = {}, 0
@@ -2008,74 +1873,25 @@ local function equippedPets()
     return set, slots
 end
 
-local function equipBestOwned()
-    if not SESSION.Alive or not M:canAct() then return false end
-    if not R.EquipPet then return end
-    local pets = allOwnedPets()
-    table.sort(pets, function(a,b) return petPower(a) > petPower(b) end)
-    local equipped, slots = equippedPets()
-    if slots <= 0 then slots = 3 end
 
-    for pet in pairs(equipped) do
-        safeFire(R.EquipPet, "unequipPet", pet)
-        task.wait(.12)
-    end
-    for i=1, math.min(slots, #pets) do
-        safeFire(R.EquipPet, "equipPet", pets[i].pet)
-        task.wait(.18)
-    end
-end
 
-local function equipBestStrengthOwned()
-    if not SESSION.Alive or not M:canAct() or M.PetEquipBusy then return false end
-    refreshRemotes()
-    if not R.EquipPet then return false end
-    local pets = allOwnedPets()
-    if #pets == 0 then return false end
-    local equipped, slots = equippedPets()
-    if slots <= 0 then return false end
-    table.sort(pets, function(a,b)
-        local sa, sb = petStrengthScore(a), petStrengthScore(b)
-        if sa ~= sb then return sa > sb end
-        if equipped[a.pet] ~= equipped[b.pet] then return equipped[a.pet] == true end
-        return tostring(a.pet) < tostring(b.pet)
-    end)
-    local desired = {}
-    for i = 1, math.min(slots, #pets) do desired[pets[i].pet] = true end
-    M.PetEquipBusy = true
-    local ok, result = pcall(function()
-        for pet in pairs(equipped) do
-            if not desired[pet] then
-                if not SESSION.Alive or not M:canAct() then return false end
-                if not safeFire(R.EquipPet, "unequipPet", pet) then return false end
-                task.wait(S.StabilityMode and .18 or .10)
-            end
-        end
-        for i = 1, math.min(slots, #pets) do
-            local pet = pets[i].pet
-            if not equipped[pet] then
-                if not SESSION.Alive or not M:canAct() then return false end
-                if not safeFire(R.EquipPet, "equipPet", pet) then return false end
-                task.wait(S.StabilityMode and .22 or .12)
-            end
-        end
-        return true
-    end)
-    M.PetEquipBusy = false
-    if not ok then setHubError(tostring(result)); return false end
-    return result
-end
 
-local function evolveReadyOwned()
+
+local function evolveReadyOwned(allowed)
+    local token = HubRuntime.Extras and HubRuntime.Extras.Token
     if not SESSION.Alive or not M:canAct() then return false end
     if not R.EvolvePet then return end
     local counts = {}
+    local worn = equippedPets()
     for _, entry in ipairs(allOwnedPets()) do
+        if not worn[entry.pet] and not entry.pet:GetAttribute("Locked") and not entry.pet:GetAttribute("Favorite") then
         counts[entry.pet.Name] = (counts[entry.pet.Name] or 0) + 1
+        end
     end
     for name,count in pairs(counts) do
         local tries = math.floor(count/5)
         for _=1,tries do
+            if not SESSION.Alive or not M:canAct() or (allowed and not allowed()) or (HubRuntime.Extras and HubRuntime.Extras.Token ~= token) then return false end
             safeFire(R.EvolvePet, "evolvePet", name)
             task.wait(.35)
         end
@@ -2098,11 +1914,24 @@ task.spawn(function()
 end)
 
 function M:attemptRebirth()
-    if not self:canRequestRebirth(numberStat("Strength"), currentRebirths()) then return end
+    local strength,before=numberStat("Strength"),currentRebirths()
+    if not self:canRequestRebirth(strength,before) then return end
+    if HubRuntime.FastRep and strength<HubRuntime.FastRep:rebirthRequirement() then return end
     self.LastRebirthRequest, self.RebirthInFlight = os.clock(), true
-    local ok, err = pcall(safeInvoke, R.Rebirth, "rebirthRequest")
+    local ok, err = pcall(function()
+        local response,_,sent=safeInvoke(R.Rebirth,"rebirthRequest")
+        local deadline=os.clock()+1.5
+        while sent and response~=false and currentRebirths()==before and os.clock()<deadline
+            and SESSION.Alive and S.Rebirth and self:canAct() do task.wait(.05) end
+        if currentRebirths()>before then
+            self.RebirthRefusals=0; self.RebirthRetryAt=nil
+        else
+            self.RebirthRefusals=math.min(3,(self.RebirthRefusals or 0)+1)
+            self.RebirthRetryAt=os.clock()+math.max(S.RebirthInterval,math.min(2,.5*2^(self.RebirthRefusals-1)))
+        end
+    end)
     self.RebirthInFlight = false
-    if not ok then setHubError(tostring(err)) end
+    if not ok then self.RebirthRetryAt=os.clock()+math.max(.5,S.RebirthInterval); setHubError(tostring(err)) end
 end
 
 task.spawn(function()
@@ -2133,13 +1962,7 @@ task.spawn(function()
     end
 end)
 
-task.spawn(function()
-    while SESSION.Alive and task.wait(2) do
-        if M:canAct() and S.AutoBestMachine and not HubRuntime.BossActive then
-            selectBestMachine()
-        end
-    end
-end)
+
 
 task.spawn(function()
     local failures = 0
@@ -2162,23 +1985,7 @@ task.spawn(function()
     end
 end)
 
-task.spawn(function()
-    while SESSION.Alive and task.wait(S.StabilityMode and .45 or .25) do
-        if S.StrengthRebirth and S.RebirthTarget and currentRebirths() >= S.RebirthTarget then
-            S.StrengthRebirth = false
-            if S.SmartObjective == "Rebirths" then S.SmartFarm = false end
-        end
-        if M:canAct() and S.StrengthRebirth and not HubRuntime.BossActive then
-            if not S.AutoMachine and not S.Train and not M:trainingMovement() then
-                local animated = activateTrainingTool()
-                if not animated then
-                    safeFire(getMuscleEvent(), "rep")
-                end
-            end
-            M:attemptRebirth()
-        end
-    end
-end)
+
 
 task.spawn(function()
     while SESSION.Alive and task.wait(2) do
@@ -2192,103 +1999,7 @@ task.spawn(function()
     end
 end)
 
-task.spawn(function()
-    while SESSION.Alive and task.wait(.1) do
-        if M:canAct() and S.Hatch then
-            safeInvoke(R.Crystal, "openCrystal", S.HatchCrystal)
-            task.wait(S.StabilityMode and math.max(S.HatchDelay, .70) or S.HatchDelay)
-        end
-    end
-end)
 
-task.spawn(function()
-    while SESSION.Alive and task.wait(.2) do
-        if S.AutoNovaPhoenix then
-            if not M:canAct() then
-                HubRuntime.NovaStatus = "Pausado: " .. M:reasonText()
-            elseif ownsNovaPhoenix() then
-                S.AutoNovaPhoenix = false
-                HubRuntime.NovaStatus = "Nova Phoenix encontrada no inventario; abertura parada"
-                M:log("Pets", HubRuntime.NovaStatus)
-            elseif HubRuntime.NovaAttempts >= S.NovaMaxOpens then
-                S.AutoNovaPhoenix = false
-                HubRuntime.NovaStatus = "Limite de " .. S.NovaMaxOpens .. " tentativas atingido; confira inventario e Gems"
-                M:log("Pets", HubRuntime.NovaStatus)
-            else
-                if not HubRuntime.NovaCrystalVerified then
-                    local observedTitle = detectNovaCrystalTitle()
-                    if observedTitle then
-                        S.NovaCrystal = observedTitle
-                        HubRuntime.NovaCrystalVerified = true
-                        M:log("Pets", "Cristal identificado na interface: " .. observedTitle)
-                    end
-                end
-                if not HubRuntime.NovaCrystalVerified then
-                    HubRuntime.NovaStatus = "Abra a janela do cristal Overcharged ou confirme o nome no campo abaixo"
-                else
-                    refreshRemotes()
-                    if not R.Crystal then
-                        S.AutoNovaPhoenix = false
-                        HubRuntime.NovaStatus = "Remote de cristal indisponivel neste servidor"
-                    elseif not novaInventoryCount() then
-                        HubRuntime.NovaStatus = "Aguardando inventario de pets carregar"
-                    else
-                        local crystal = string.match(S.NovaCrystal or "", "^%s*(.-)%s*$")
-                        local beforeCalls = HubRuntime.RemoteCalls
-                        local beforePets, beforeGems = novaInventoryCount(), novaGems()
-                        local result = safeInvoke(R.Crystal, "openCrystal", crystal)
-                        if HubRuntime.RemoteCalls == beforeCalls then
-                            HubRuntime.NovaStatus = "Abertura nao enviada: " .. tostring(HubRuntime.LastError)
-                        elseif result == false then
-                            S.AutoNovaPhoenix = false
-                            HubRuntime.NovaStatus = "Cristal recusado pelo jogo; confira nome, Gems e espaco"
-                        else
-                            HubRuntime.NovaAttempts += 1
-                            task.wait(math.max(S.HatchDelay, S.StabilityMode and .7 or .5))
-                            local afterPets, afterGems = novaInventoryCount(), novaGems()
-                            if (afterPets and beforePets and afterPets > beforePets)
-                                or (afterGems and beforeGems and afterGems < beforeGems) then
-                                HubRuntime.NovaNoProgress = 0
-                                HubRuntime.NovaStatus = "Abertura observada: " .. HubRuntime.NovaAttempts .. "/" .. S.NovaMaxOpens .. " em " .. crystal
-                            else
-                                HubRuntime.NovaNoProgress = (HubRuntime.NovaNoProgress or 0) + 1
-                                HubRuntime.NovaStatus = "Sem confirmacao da abertura " .. HubRuntime.NovaAttempts .. "/" .. S.NovaMaxOpens .. " em " .. crystal
-                                if HubRuntime.NovaNoProgress >= 6 then
-                                    S.AutoNovaPhoenix = false
-                                    HubRuntime.NovaStatus = "Parado: seis solicitacoes sem mudanca em pets/Gems. Confira nome do cristal e recursos."
-                                    M:log("Pets", HubRuntime.NovaStatus)
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
-end)
-
-task.spawn(function()
-    local lastEquip = 0
-    local lastEvolve = 0
-    while SESSION.Alive and task.wait(1) do
-        if M:canAct() and S.Hatch and S.AutoEquipAfterHatch and os.clock() - lastEquip >= 8 then
-            equipBestOwned()
-            lastEquip = os.clock()
-            setHubStatus("Melhores pets equipados automaticamente")
-        end
-        if M:canAct() and S.Hatch and S.AutoEvolveAfterHatch and os.clock() - lastEvolve >= 25 then
-            evolveReadyOwned()
-            lastEvolve = os.clock()
-            setHubStatus("Verificação de evolução concluída")
-        end
-    end
-end)
-
-task.spawn(function()
-    while SESSION.Alive and task.wait(2) do
-        if M:canAct() and S.Brawl and not HubRuntime.BossActive then safeFire(R.Brawl, "joinBrawl") end
-    end
-end)
 
 local function hasCharacter()
     local character = LP.Character
@@ -2336,10 +2047,7 @@ local function canChestFarm()
     return R.Chest ~= nil
 end
 
-local function canBrawl()
-    refreshRemotes()
-    return R.Brawl ~= nil
-end
+
 
 local function canHatch()
     refreshRemotes()
@@ -2376,17 +2084,12 @@ local function maxStrengthF2PTick()
 end
 
 task.spawn(function()
-    local lastPetRefresh = 0
     local lastStrength = numberStat("Strength")
     local lastMeasure = os.clock()
     local failures = 0
 
     while SESSION.Alive and task.wait((M:farmPace())) do
         if M:canAct() and S.MaxStrengthF2P then
-            if not S.PreserveFarmPets and os.clock() - lastPetRefresh >= 10 and not HubRuntime.BossActive then
-                pcall(equipBestStrengthOwned)
-                lastPetRefresh = os.clock()
-            end
 
             if maxStrengthF2PTick() then
                 failures = 0
@@ -2458,7 +2161,6 @@ local function runSelfTest()
     check("Máquinas disponíveis", canMachineFarm)
     check("Agilidade disponível", canAgilityFarm)
     check("Baús disponíveis", canChestFarm)
-    check("Brawl disponível", canBrawl)
     check("Cristais disponíveis", canHatch)
     check("Gerenciador de pets", canPetManager)
     check("Pet Shop disponível", canPetShop)
@@ -2466,11 +2168,10 @@ local function runSelfTest()
         local folder = workspace:FindFirstChild("areaTeleportParts")
         return folder ~= nil and #folder:GetDescendants() > 0
     end)
-    check("Lock Position disponível", hasCharacter)
     check("Modo desempenho disponível", function() return Lighting ~= nil end)
     check("Esteira recomendada encontrada", function() return bestTreadmill() ~= nil end)
     check("Máquina recomendada encontrada", function() return selectBestMachine() ~= nil end)
-    check("Apex no catálogo", function() return findShopPetByNamePart("apex") ~= nil end)
+    check("Catálogo da loja carregado", function() local folder=getPetShopFolder(); return folder~=nil and #folder:GetChildren()>0 end)
 
     local lines = {
         "710Hub "..SESSION.Version,
@@ -2493,7 +2194,7 @@ local function runSelfTest()
     for _, remote in pairs(R) do
         if remote then remoteCount += 1 end
     end
-    lines[#lines+1] = "Remotes encontrados: "..remoteCount.."/8"
+    lines[#lines+1] = "Remotes encontrados: "..remoteCount.."/7"
 
     HubRuntime.SelfTestPassed = passed
     HubRuntime.SelfTestFailed = failed
@@ -2507,73 +2208,9 @@ local function runSelfTest()
     return passed, failed, HubRuntime.SelfTestReport
 end
 
-local function applySmartObjective()
-    if not S.SmartFarm then return end
 
-    S.Train = false
-    S.Rebirth = false
-    S.AutoPunch = false
-    S.SmartRock = false
-    S.AutoMachine = false
-    S.AutoBestMachine = false
-    S.StrengthRebirth = false
-    S.TurboStrength = false
-    S.MaxStrengthF2P = false
-    S.AutoAgility = false
 
-    local ok = true
 
-    if S.SmartObjective == "Força" then
-        if canMachineFarm() or canTrain() then
-            S.MaxStrengthF2P = true
-        else
-            ok = false
-        end
-    elseif S.SmartObjective == "Durabilidade" then
-        if canRockFarm() and canPunch() then
-            S.AutoPunch = true
-            S.SmartRock = true
-        else
-            ok = false
-        end
-    elseif S.SmartObjective == "Agilidade" then
-        if canAgilityFarm() then
-            S.AutoAgility = true
-        else
-            ok = false
-        end
-    elseif S.SmartObjective == "Rebirths" then
-        if canRebirth() then
-            if canMachineFarm() then
-                S.AutoBestMachine = true
-                selectBestMachine()
-                S.AutoMachine = true
-            elseif canTrain() then
-                S.Train = true
-            else
-                ok = false
-            end
-            if ok then
-                S.StrengthRebirth = true
-            end
-        else
-            ok = false
-        end
-    end
-
-    if not ok then
-        S.SmartFarm = false
-        setHubStatus("Farm inteligente indisponível para este objetivo")
-    end
-end
-
-task.spawn(function()
-    while SESSION.Alive and task.wait(.8) do
-        if M:canAct() and S.SmartFarm and not HubRuntime.BossActive then
-            applySmartObjective()
-        end
-    end
-end)
 
 local function goalCurrentValue()
     if S.GoalStat == "Rebirths" then return currentRebirths() end
@@ -2823,6 +2460,9 @@ task.spawn(function()
 end)
 
 SESSION.Cleanup = function()
+    if HubRuntime.FastRep then HubRuntime.FastRep:cancel() end
+    if M.releaseBossHover then M:releaseBossHover() end
+    if HubRuntime.Extras then HubRuntime.Extras:stop() end
     M:cancelComparison()
     M:pause("Encerrado", true)
     if S.StabilityMode then
@@ -3001,70 +2641,7 @@ function M:bossDiagnostic()
     return table.concat(lines, "\n\n")
 end
 
-function M:beginComparison()
-    if self.Comparing then return false, "Comparacao ja em andamento" end
-    if not self:canAct() then return false, "Retome a sessao antes de comparar" end
-    local methods = {}
-    if canTrain() then
-        methods[#methods + 1] = {Name = "Ferramenta", Key = "Train"}
-        methods[#methods + 1] = {Name = "Rajada", Key = "TurboStrength"}
-    end
-    if canMachineFarm() then methods[#methods + 1] = {Name = "Maquina", Key = "AutoMachine"} end
-    if #methods < 2 then return false, "Sao necessarios dois metodos disponiveis" end
-    local snapshot = self:automationSnapshot()
-    self:clearAutomation()
-    finishBossFight(true)
-    self.BenchmarkToken += 1
-    local token = self.BenchmarkToken
-    self.Comparing = true
-    self.BestTraining = nil
-    self.BenchmarkResults = {}
-    task.spawn(function()
-        local ok, err = pcall(function()
-            for _, method in ipairs(methods) do
-                if not SESSION.Alive or self.BenchmarkToken ~= token or not self:canAct() then break end
-                self:clearAutomation()
-                S[method.Key] = true
-                if method.Key == "AutoMachine" then selectBestMachine() end
-                self.ComparisonStatus = "Medindo " .. method.Name .. " por 20 segundos"
-                local startTime, startStrength, startRebirths = os.clock(), numberStat("Strength"), currentRebirths()
-                local valid = true
-                while os.clock() - startTime < 20 do
-                    task.wait(.25)
-                    if not SESSION.Alive or self.BenchmarkToken ~= token or not self:canAct() then return end
-                    if currentRebirths() ~= startRebirths or numberStat("Strength") < startStrength or not S[method.Key] then
-                        valid = false
-                        break
-                    end
-                end
-                local elapsed = math.max(.1, os.clock() - startTime)
-                self.BenchmarkResults[#self.BenchmarkResults + 1] = {Name = method.Name, Valid = valid,
-                    Rate = math.max(0, numberStat("Strength") - startStrength) * 60 / elapsed}
-            end
-        end)
-        if self.BenchmarkToken == token then
-            self:restoreAutomation(snapshot)
-            self.Comparing = false
-            if not ok then
-                self.ComparisonStatus = "Comparacao interrompida: " .. tostring(err)
-            elseif not self:canAct() then
-                self.ComparisonStatus = "Comparacao interrompida por pausa; repita quando o personagem estiver pronto"
-            else
-                local best, validCount = nil, 0
-                for _, result in ipairs(self.BenchmarkResults) do
-                    if result.Valid then validCount += 1 end
-                    if result.Valid and result.Rate > 0 and (not best or result.Rate > best.Rate) then best = result end
-                end
-                self.BestTraining = validCount >= 2 and best and best.Name or nil
-                self.ComparisonStatus = validCount >= 2 and best and ("Melhor observado: " .. best.Name .. " (" .. math.floor(best.Rate) .. "/min)")
-                    or "Menos de duas amostras validas ou nenhum ganho; comparacao inconclusiva"
-            end
-            self:log("Comparacao", self.ComparisonStatus)
-            if HubRuntime.RenderToggles then HubRuntime.RenderToggles() end
-        end
-    end)
-    return true, "Comparacao iniciada; as rotinas anteriores serao restauradas"
-end
+
 
 do
     local generation, deathConnection = 0, nil
@@ -3214,7 +2791,8 @@ function M:pvpTick()
                     local good = M:playerKarma(player, {"goodKarma", "LightKarma"})
                     local evil = M:playerKarma(player, {"evilKarma", "DarkKarma"})
                     local reason
-                    if not otherRoot or not otherHum or otherHum.Health <= 0 then reason = "missing"
+                    if HubRuntime.Extras and not HubRuntime.Extras:pvpAllowed(player) then reason = "protected"
+                    elseif not otherRoot or not otherHum or otherHum.Health <= 0 then reason = "missing"
                     elseif model:FindFirstChildOfClass("ForceField") then reason = "protected"
                     elseif not S.PvpAny and (good == nil or evil == nil) then reason = "unknown"
                     elseif not M:pvpEligible(good, evil) then reason = "karma"
@@ -3256,6 +2834,7 @@ function M:pvpTick()
                 if (face - root.Position).Magnitude > .01 then root.CFrame = CFrame.lookAt(root.Position, face) end
                 local function allowed()
                     return (S.PvpAny or S.PvpGood or S.PvpEvil) and M.PvpTarget == target and not HubRuntime.BossActive
+                        and (not HubRuntime.Extras or HubRuntime.Extras:pvpAllowed(target))
                         and target.Character == targetRoot.Parent and targetHum.Health > 0
                         and not targetRoot.Parent:FindFirstChildOfClass("ForceField")
                         and (root.Position - targetRoot.Position).Magnitude <= attackRange
@@ -3277,6 +2856,888 @@ end)
 -- END MAINTENANCE RUNTIME
 end
 initializeMaintenance()
+
+-- BEGIN EXTRA RUNTIME
+-- Integrated options; never loads a third-party script at runtime.
+local function initializeEnhancements()
+    local X = {Token = 0, Saved = setmetatable({}, {__mode = "k"}),
+        Whitelist = {}, FriendCache = {}, FriendChecked = {}, Next = {}, Status = "Pronto", SelectedUserId = 0,
+        ShopName = "", ReturnPoint = nil}
+    HubRuntime.Extras = X
+    local UIS = game:GetService("UserInputService")
+
+    function X:remember(object, key, value)
+        if not object then return end
+        local saved = self.Saved[object]
+        if not saved then saved = {}; self.Saved[object] = saved end
+        if saved[key] == nil then saved[key] = {Value = object[key]} end
+        object[key] = value
+    end
+    function X:restore(object, key)
+        local saved = self.Saved[object]
+        if saved and saved[key] then
+            pcall(function() object[key] = saved[key].Value end)
+            saved[key] = nil
+        end
+    end
+    function X:selectedPlayer()
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player.UserId == self.SelectedUserId then return player end
+        end
+    end
+    function X:playerOptions()
+        local out = {}
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= LP then out[#out+1] = {Label = (player.DisplayName or player.Name) .. " (@" .. player.Name .. ")", Value = player.UserId} end
+        end
+        table.sort(out, function(a,b) return a.Label < b.Label end)
+        return out
+    end
+    function X:pvpAllowed(player)
+        local model=player.Character
+        if model and (model:FindFirstChildOfClass("ForceField") or model:FindFirstChild("spawnProtectionHighlight")) then return false end
+        local expires=model and model:GetAttribute("SpawnProtectedUntil")
+        if type(expires)=="number" then
+            local ok,now=pcall(function() return workspace:GetServerTimeNow() end)
+            if not ok or now<expires then return false end
+        end
+        if self.Whitelist[player.UserId] then return false end
+        if S.PvpOnlySelected and player.UserId ~= self.SelectedUserId then return false end
+        -- Friendship lookups are asynchronous and cached, never inside the attack loop.
+        if S.PvpProtectFriends and self.FriendCache[player.UserId] ~= false then return false end
+        return true
+    end
+    function X:refreshFriends()
+        for _, player in ipairs(Players:GetPlayers()) do
+            if not SESSION.Alive or not S.PvpProtectFriends then return end
+            if player ~= LP and (self.FriendCache[player.UserId] == nil or os.clock()-(self.FriendChecked[player.UserId] or 0) >= 30) then
+                local ok, friend = pcall(function() return LP:IsFriendsWith(player.UserId) end)
+                if ok then self.FriendCache[player.UserId] = friend == true; self.FriendChecked[player.UserId] = os.clock() end
+                task.wait(.1)
+            end
+        end
+    end
+    function X:fortuneCatalog()
+        local shared = RS:FindFirstChild("shared")
+        local catalogs = shared and shared:FindFirstChild("catalogs")
+        local chances = catalogs and catalogs:FindFirstChild("fortuneWheelChances")
+        return chances and chances:FindFirstChild("Fortune Wheel")
+    end
+    function X:spin()
+        local remote, catalog = rEvents:FindFirstChild("openFortuneWheelRemote"), self:fortuneCatalog()
+        if not remote or not remote:IsA("RemoteFunction") or not catalog then return false end
+        local before = HubRuntime.RemoteCalls
+        local result = safeInvoke(remote, "openFortuneWheel", catalog)
+        if HubRuntime.RemoteCalls == before then self.Status = "Giro aguardando sessão e limite de chamadas"; return false end
+        self.Status = result == false and "Roleta recusada; confira seus giros" or "Giro solicitado ao jogo"
+        if result == false then S.AutoWheel = false end
+        return result ~= false
+    end
+    local consumables = {
+        ["Protein Egg"] = "proteinEgg", ["Tropical Shake"] = "tropicalShake",
+        ["Energy Shake"] = "energyShake", ["Protein Bar"] = "proteinBar",
+        ["TOUGH Bar"] = "toughBar", ["Protein Shake"] = "proteinShake",
+        ["ULTRA Shake"] = "ultraShake", ["Energy Bar"] = "energyBar",
+    }
+    function X:consume()
+        local remote = getMuscleEvent()
+        if not remote or not remote:IsA("RemoteEvent") then return false end
+        for _, container in ipairs({LP.Character, getBackpack()}) do
+            if container then
+                for _, item in ipairs(container:GetChildren()) do
+                    local command = consumables[item.Name]
+                    local enabled = item.Name == "Protein Egg" and S.AutoEggs or item.Name ~= "Protein Egg" and S.AutoBoosts
+                    if command and enabled and item:IsA("Tool") and (self.Next[item] or 0) <= os.clock() then
+                        self.Next[item] = os.clock() + 3
+                        self.Status = "Uso solicitado: " .. item.Name
+                        return safeFire(remote, command, item)
+                    end
+                end
+            end
+        end
+        return false
+    end
+    function X:shopOptions()
+        local out, folder = {}, getPetShopFolder()
+        if folder then
+            for _, item in ipairs(folder:GetChildren()) do
+                out[#out+1] = {Label = (item:GetAttribute("IsPowerUp") == true and "Aura: " or "Pet: ") .. item.Name, Value = item.Name}
+            end
+        end
+        table.sort(out, function(a,b) return a.Label < b.Label end)
+        return out
+    end
+    function X:buyBatch()
+        if self.Buying then setHubStatus("Aguarde a compra atual terminar"); return end
+        local folder, remote = getPetShopFolder(), rEvents:FindFirstChild("cPetShopRemote")
+        local item = folder and folder:FindFirstChild(self.ShopName)
+        if not item or not remote or not remote:IsA("RemoteFunction") then setHubStatus("Selecione um item disponível na loja"); return end
+        self.Buying = true
+        local token, count, sent = self.Token, S.ShopCount, 0
+        local ok, err = pcall(function()
+            for _ = 1, count do
+                if not SESSION.Alive or token ~= self.Token or not M:canAct() or not item.Parent then break end
+                local before = HubRuntime.RemoteCalls
+                local response,_,sentOK = safeInvoke(remote, item)
+                if not sentOK then break end
+                if response == false or token ~= self.Token or not SESSION.Alive then break end
+                if HubRuntime.RemoteCalls > before then sent += 1 end
+                task.wait(.75)
+            end
+        end)
+        self.Buying = false
+        if not ok then setHubError(err) end
+        self.Status = string.format("Lote encerrado: %d/%d solicitações; confira o inventário", sent, count)
+        if SESSION.Alive then setHubStatus(self.Status) end
+    end
+    function X:petScore(entry, objective)
+        local score, found = 0, false
+        for _, container in ipairs({entry.pet, entry.pet:FindFirstChild("perksFolder")}) do
+            if container then
+                for _, child in ipairs(container:GetChildren()) do
+                    if string.lower(child.Name) == objective and (child:IsA("NumberValue") or child:IsA("IntValue")) then
+                        score += child.Value; found = true
+                    end
+                end
+                local value = container:GetAttribute(objective)
+                if type(value) == "number" then score += value; found = true end
+            end
+        end
+        return found and score or nil
+    end
+    function X:equipObjective()
+        if S.FastRep then return false end
+        if not SESSION.Alive or not M:canAct() or M.PetEquipBusy then return false end
+        refreshRemotes()
+        local candidates, equipped, slots = {}, equippedPets()
+        if not R.EquipPet or slots <= 0 then return false end
+        for _, entry in ipairs(allOwnedPets()) do
+            local score = self:petScore(entry, S.PetObjective)
+            if score then candidates[#candidates+1] = {Pet = entry.pet, Score = score} end
+        end
+        table.sort(candidates, function(a,b)
+            if a.Score ~= b.Score then return a.Score > b.Score end
+            if equipped[a.Pet] ~= equipped[b.Pet] then return equipped[a.Pet] == true end
+            return tostring(a.Pet) < tostring(b.Pet)
+        end)
+        if #candidates == 0 then self.Status = "Atributo dos pets indisponível: " .. S.PetObjective; return false end
+        -- Never remove pets when fewer readable candidates exist than occupied slots.
+        local occupied = 0; for _ in pairs(equipped) do occupied += 1 end
+        if #candidates < math.min(occupied, slots) then self.Status = "Atributos incompletos; confira seus pets"; return false end
+        local desired = {}
+        for index = 1, math.min(slots,#candidates) do desired[candidates[index].Pet] = true end
+        M.PetEquipBusy = true
+        local token = self.Token
+        local function active() return SESSION.Alive and token == self.Token and M:canAct() and not S.FastRep end
+        local ok, result = pcall(function()
+            for pet in pairs(equipped) do
+                if not desired[pet] then
+                    if not active() or not safeFire(R.EquipPet,"unequipPet",pet) then return false end
+                    task.wait(.15)
+                end
+            end
+            for index = 1, math.min(slots,#candidates) do
+                local pet = candidates[index].Pet
+                if not equipped[pet] then
+                    if not active() or not safeFire(R.EquipPet,"equipPet",pet) then return false end
+                    task.wait(.15)
+                end
+            end
+            return true
+        end)
+        M.PetEquipBusy = false
+        if not ok then setHubError(result); return false end
+        return result
+    end
+    function X:localEffects()
+        local character, camera = LP.Character, workspace.CurrentCamera
+        local hum = character and character:FindFirstChildOfClass("Humanoid")
+        if camera then
+            if S.SetFOV then self:remember(camera,"FieldOfView",S.CameraFOV) else self:restore(camera,"FieldOfView") end
+            local target = S.Spectate and self:selectedPlayer()
+            local targetHum = target and target.Character and target.Character:FindFirstChildOfClass("Humanoid")
+            if targetHum and targetHum.Health > 0 then self:remember(camera,"CameraSubject",targetHum)
+            else
+                self:restore(camera,"CameraSubject")
+                -- A saved humanoid may have been destroyed during a respawn.
+                if hum and camera.CameraSubject and not camera.CameraSubject.Parent then camera.CameraSubject = hum end
+            end
+        end
+        for object, saved in pairs(self.Saved) do
+            if object ~= camera then
+                if saved.FieldOfView then self:restore(object,"FieldOfView") end
+                if saved.CameraSubject then self:restore(object,"CameraSubject") end
+            end
+        end
+        self:shiftLock()
+    end
+    function X:stop()
+        self.Token += 1
+        for _, key in ipairs({"AutoWheel","AutoEggs","AutoBoosts","AutoBestPetObjective","AutoEvolveOwned", "SetSpeed","SetSize","SetFOV","InfiniteJump","AntiFling","Spectate","ShiftLock"}) do S[key] = false end
+        self.LastSafe = nil
+        for object, saved in pairs(self.Saved) do
+            local keys = {}; for key in pairs(saved) do keys[#keys+1] = key end
+            for _,key in ipairs(keys) do self:restore(object,key) end
+        end
+        local camera = workspace.CurrentCamera
+        if camera and camera.CameraSubject and not camera.CameraSubject.Parent then
+            local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
+            if hum then camera.CameraSubject = hum end
+        end
+    end
+    function X:shiftLock()
+        local character=LP.Character
+        local humanoid=character and character:FindFirstChildOfClass("Humanoid")
+        local root=character and character:FindFirstChild("HumanoidRootPart")
+        local camera=workspace.CurrentCamera
+        if S.ShiftLock then
+            self:remember(UIS,"MouseBehavior",Enum.MouseBehavior.LockCenter)
+            if humanoid then self:remember(humanoid,"CameraOffset",Vector3.new(1.75,.5,0)) end
+            if root and humanoid and humanoid.Health>0 and camera and M:canAct()
+                and not HubRuntime.BossActive and not M.PvpTarget and not S.AutoMachine and not S.AutoAgility then
+                self:remember(humanoid,"AutoRotate",false)
+                local look=camera.CFrame.LookVector
+                local flat=Vector3.new(look.X,0,look.Z)
+                if flat.Magnitude>.01 then root.CFrame=CFrame.lookAt(root.Position,root.Position+flat.Unit) end
+            end
+        else
+            self:restore(UIS,"MouseBehavior")
+            if humanoid then self:restore(humanoid,"CameraOffset"); self:restore(humanoid,"AutoRotate") end
+        end
+    end
+    function X:travel(frame)
+        local character = LP.Character
+        local root = character and character:FindFirstChild("HumanoidRootPart")
+        if not root then setHubStatus("Aguarde seu personagem"); return end
+        self.Token += 1
+        local token = self.Token
+        M:pause("Manual",true)
+        if HubRuntime.StopBoss then HubRuntime.StopBoss() end
+        M:stopPvp()
+        setHubStatus("Carregando destino...")
+        if workspace.StreamingEnabled then pcall(function() LP:RequestStreamAroundAsync(frame.Position,3) end) end
+        if not SESSION.Alive or self.Token ~= token or LP.Character ~= character then return end
+        local params = RaycastParams.new(); params.FilterType = Enum.RaycastFilterType.Exclude
+        params.FilterDescendantsInstances = {character}; params.RespectCanCollide = true
+        local floor = workspace:Raycast(frame.Position+Vector3.new(0,20,0),Vector3.new(0,-160,0),params)
+        if not floor then setHubStatus("Piso do destino indisponível; tente novamente após carregar"); return end
+        root.CFrame = frame
+        setHubStatus("Destino aplicado; use Retomar para continuar o farm")
+    end
+    function X:tick()
+        self:localEffects()
+        if not M:canAct() or M.Comparing then return end
+        local now, character = os.clock(), LP.Character
+        local hum = character and character:FindFirstChildOfClass("Humanoid")
+        local root = character and character:FindFirstChild("HumanoidRootPart")
+        if not hum or hum.Health <= 0 or not root then return end
+        local remote = rEvents:FindFirstChild("changeSpeedSizeRemote")
+        if remote and remote:IsA("RemoteFunction") and now >= (self.Next.Character or 0) then
+            self.Next.Character = now + 2
+            if S.SetSize then safeInvoke(remote,"changeSize",S.CharacterSize) end
+            if S.SetSpeed and SESSION.Alive and M:canAct() then safeInvoke(remote,"changeSpeed",S.CharacterSpeed) end
+        end
+        if S.AntiFling then
+            local velocity, angular = root.AssemblyLinearVelocity, root.AssemblyAngularVelocity
+            if velocity and angular and (velocity.Magnitude > 160 or angular.Magnitude > 100) then
+                root.AssemblyLinearVelocity = Vector3.zero; root.AssemblyAngularVelocity = Vector3.zero
+                if self.LastSafe and self.LastSafe.Root == root and now-self.LastSafe.Time < 2
+                    and not HubRuntime.BossActive and not M.PvpTarget then root.CFrame = self.LastSafe.Frame end
+            else self.LastSafe = {Root=root,Frame=root.CFrame,Time=now} end
+        else self.LastSafe = nil end
+        if S.AutoWheel and now >= (self.Next.Wheel or 0) then self.Next.Wheel = now+5; self:spin() end
+        if not SESSION.Alive or not M:canAct() then return end
+        if S.AutoEggs or S.AutoBoosts then self:consume() end
+        if S.AutoBestPetObjective and now >= (self.Next.Pets or 0) and not HubRuntime.BossActive then
+            self.Next.Pets = now+10; self:equipObjective()
+        end
+        if S.AutoEvolveOwned and not S.FastRep and now >= (self.Next.Evolve or 0) then
+            self.Next.Evolve = now+5; evolveReadyOwned(function() return S.AutoEvolveOwned and not S.FastRep end)
+        end
+    end
+    if UIS.JumpRequest then
+        trackConnection(UIS.JumpRequest:Connect(function()
+            if not SESSION.Alive or not S.InfiniteJump or not M:canAct() then return end
+            local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
+            if hum and hum.Health > 0 then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
+        end))
+    end
+    if RunService.RenderStepped then trackConnection(RunService.RenderStepped:Connect(function()
+        if SESSION.Alive and S.ShiftLock then X:shiftLock() end
+    end)) end
+    task.spawn(function()
+        while SESSION.Alive do
+            local ok, err = pcall(function() X:tick() end)
+            if not ok then setHubError("Opções extras: " .. tostring(err)) end
+            task.wait(.5)
+        end
+    end)
+    task.spawn(function()
+        while SESSION.Alive do
+            if S.PvpProtectFriends then X:refreshFriends() end
+            task.wait(5)
+        end
+    end)
+end
+initializeEnhancements()
+-- END EXTRA RUNTIME
+
+-- BEGIN CLEAN RUNTIME
+local function initializeCleanRuntime()
+    local C={HatchToken=0,HatchSent=0,HatchUnconfirmed=0,HatchStatus="Desligado"}
+    HubRuntime.Clean=C
+    C.Modes={"Fast Rep (packs)","Automático","Peso","Flexões","Abdominais","Parada de mãos","Máquina","Pedras","Esteira"}
+    C.ModeKeys={
+        ["Fast Rep (packs)"]="FastRep",
+        ["Automático"]="MaxStrengthF2P",["Peso"]="TrainWeight",["Flexões"]="TrainPushups",
+        ["Abdominais"]="TrainSitups",["Parada de mãos"]="TrainHandstands",
+        ["Máquina"]="AutoMachine",["Pedras"]="SmartRock",["Esteira"]="AutoAgility",
+    }
+    C.FarmKeys={"FastRep","Train","TrainWeight","TrainPushups","TrainSitups","TrainHandstands","TurboStrength",
+        "MaxStrengthF2P","AutoMachine","AutoBestMachine","SmartRock","AutoPunch","AutoAgility","SmartFarm","StrengthRebirth"}
+    function C:farming()
+        for _,key in ipairs(self.FarmKeys) do if S[key] then return true end end
+        return false
+    end
+    function C:clearFarm()
+        for _,key in ipairs(self.FarmKeys) do S[key]=false end
+        if HubRuntime.FastRep then HubRuntime.FastRep:cancel() end
+    end
+    function C:available(mode)
+        if mode=="Fast Rep (packs)" then return hasCharacter() and getMuscleEvent()~=nil end
+        if mode=="Máquina" then return canMachineFarm() end
+        if mode=="Pedras" then return canRockFarm() and canPunch() end
+        if mode=="Esteira" then return canAgilityFarm() and bestTreadmill()~=nil end
+        if mode=="Automático" then return canTrain() or canMachineFarm() end
+        local movement=({Peso="Weight",["Flexões"]="Pushups",Abdominais="Situps",["Parada de mãos"]="Handstands"})[mode]
+        return movement~=nil and findTrainingTool(movement)~=nil
+    end
+    function C:startFarm()
+        if not self:available(S.FarmMode) then setHubStatus("Método indisponível: "..S.FarmMode); return false end
+        M:cancelComparison(); self:clearFarm()
+        local key=self.ModeKeys[S.FarmMode]
+        S[key]=true; M:resolveConflicts(key)
+        if key=="SmartRock" then S.AutoPunch=true end
+        setHubStatus("Treino selecionado: "..S.FarmMode)
+        return true
+    end
+    function C:setMode(mode)
+        if not table.find(self.Modes,mode) then return false end
+        local running=self:farming()
+        self:clearFarm(); S.FarmMode=mode
+        if running then return self:startFarm() end
+        return true
+    end
+    function C:applyPreset(name)
+        if name~="Ultra combinado" and name~="Ultra rápido" and name~="Força acumulada" and name~="Rebirth rápido" then return false end
+        self:clearFarm()
+        S.FarmMode="Fast Rep (packs)"; S.FastRepProfile="Intensivo"
+        S.Rebirth=name=="Rebirth rápido"
+        S.FastRepLimit=(name=="Ultra rápido" or name=="Ultra combinado") and 10000 or S.Rebirth and 450 or 659
+        if name=="Ultra rápido" then S.FastRepProfile="Ultra (lotes)" end
+        if name=="Ultra combinado" then S.FastRepProfile="Combinado" end
+        S.RebirthInterval=0
+        if S.Rebirth and S.RebirthTarget and currentRebirths()>=S.RebirthTarget then
+            S.Rebirth=false
+            setHubStatus("Meta de rebirth já atingida; aumente ou remova a meta para continuar")
+        end
+        if S.Rebirth then M:resolveConflicts("Rebirth") end
+        return self:startFarm()
+    end
+    function C:pvpActive() return S.PvpAny or S.PvpGood or S.PvpEvil end
+    function C:startPvp()
+        if not findPunchTool() then setHubStatus("Punch indisponível"); return false end
+        S.PvpAny,S.PvpGood,S.PvpEvil=false,false,false
+        local key=S.PvpFilter=="Karma bom" and "PvpGood" or S.PvpFilter=="Karma ruim" and "PvpEvil" or "PvpAny"
+        S.PvpOnlySelected=S.PvpFilter=="Selecionado"
+        if S.PvpOnlySelected and not HubRuntime.Extras:selectedPlayer() then setHubStatus("Selecione um jogador presente"); return false end
+        S[key]=true; M:resolveConflicts(key)
+        if not S.AutoBoss and HubRuntime.BossActive and HubRuntime.StopBoss then HubRuntime.StopBoss() end
+        return true
+    end
+    function C:setFilter(value)
+        local running=self:pvpActive()
+        S.PvpAny,S.PvpGood,S.PvpEvil=false,false,false; M:stopPvp()
+        S.PvpFilter=value; S.PvpOnlySelected=value=="Selecionado"
+        if running then return self:startPvp() end
+        return true
+    end
+    function C:stopHatch()
+        self.HatchToken+=1; S.Hatch=false
+    end
+    function C:startHatch()
+        self.HatchToken+=1; self.HatchSent=0; self.HatchUnconfirmed=0
+        self.HatchStatus="Aguardando abertura"; S.Hatch=true
+    end
+    function C:targetOwned()
+        local wanted=string.lower(S.HatchTargetPet or "")
+        if wanted=="" then return false end
+        for _,entry in ipairs(allOwnedPets()) do if string.lower(entry.pet.Name)==wanted then return true end end
+        return false
+    end
+    function C:hatchTick()
+        if not S.Hatch or not SESSION.Alive or not M:canAct() or M.Comparing or HubRuntime.BossActive then return end
+        if self:targetOwned() then self:stopHatch(); self.HatchStatus="Pet alvo encontrado; abertura parada"; return end
+        if self.HatchSent>=S.HatchMaxOpens then self:stopHatch(); self.HatchStatus="Limite de aberturas atingido"; return end
+        refreshRemotes()
+        if not R.Crystal or not R.Crystal:IsA("RemoteFunction") then self:stopHatch(); self.HatchStatus="Canal de cristal indisponível"; return end
+        local token=self.HatchToken
+        local beforePets,beforeGems=#allOwnedPets(),numberStat("Gems")
+        local beforeCalls=HubRuntime.RemoteCalls
+        local result,_,sent=safeInvoke(R.Crystal,"openCrystal",S.HatchCrystal)
+        if token~=self.HatchToken or not S.Hatch or not SESSION.Alive then return end
+        if result==false then self:stopHatch(); self.HatchStatus="Abertura recusada pelo jogo"; return end
+        if not sent or HubRuntime.RemoteCalls==beforeCalls then
+            if HubRuntime.RemoteCalls>beforeCalls then self:stopHatch(); self.HatchStatus="Erro na abertura: "..HubRuntime.LastError end
+            return
+        end
+        self.HatchSent+=1
+        task.wait(math.max(.5,S.HatchDelay))
+        if token~=self.HatchToken or not S.Hatch or not SESSION.Alive then return end
+        if #allOwnedPets()>beforePets or numberStat("Gems")<beforeGems then self.HatchUnconfirmed=0
+        else self.HatchUnconfirmed+=1 end
+        self.HatchStatus=string.format("%d/%d solicitações; confirmação no inventário: %s",self.HatchSent,S.HatchMaxOpens,
+            self.HatchUnconfirmed==0 and "observada" or "aguardando")
+        if self.HatchUnconfirmed>=6 then self:stopHatch(); self.HatchStatus="Parado: seis aberturas sem mudança observada" end
+        if self.HatchSent>=S.HatchMaxOpens then self:stopHatch(); self.HatchStatus="Limite atingido; confira o inventário" end
+    end
+    function C:destinations()
+        local result,seen={},{}
+        local function add(label,frame)
+            local key=string.lower(label)
+            if not seen[key] then seen[key]=true; result[#result+1]={Label=label,Value=frame} end
+        end
+        local loaded=workspace:FindFirstChild("areaTeleportParts")
+        if loaded then for _,part in ipairs(loaded:GetDescendants()) do if part:IsA("BasePart") then add(part.Name,part.CFrame+Vector3.new(0,4,0)) end end end
+        for _,point in ipairs({
+            {"Tiny Island",-37.1,9.2,1919},{"Main Island",16.07,9.08,133.8},{"Beach",-8,9,-169.2},
+            {"Overcharged Gym",-2941.766,151.797,4994.552},{"Industrial Gym",-5254.681641,58.342850,4931.850586},
+            {"Jungle Gym",-8543,6.8,2400},{"Muscle King Gym",-8665.4,17.21,-5792.9},
+            {"Legends Gym",4516,991.5,-3856},{"Infernal Gym",-6759,7.36,-1284},
+            {"Mythical Gym",2250,7.37,1073.2},{"Frost Gym",-2623,7.36,-409},
+        }) do add(point[1],CFrame.new(point[2],point[3],point[4])) end
+        table.sort(result,function(a,b) return a.Label<b.Label end)
+        if HubRuntime.Extras.ReturnPoint then table.insert(result,1,{Label="Posição salva nesta sessão",Value=HubRuntime.Extras.ReturnPoint}) end
+        return result
+    end
+    task.spawn(function()
+        while SESSION.Alive do
+            local ok,err=pcall(function() C:hatchTick() end)
+            if not ok then C:stopHatch(); C.HatchStatus="Erro: "..tostring(err); setHubError(C.HatchStatus) end
+            task.wait(.1)
+        end
+    end)
+    task.spawn(function()
+        while SESSION.Alive and task.wait(.5) do
+            if S.StopAt and M:canAct() and not M.Comparing and os.clock()>=S.StopAt then stopAllAutomations(); setHubStatus("Tempo de sessão encerrado") end
+        end
+    end)
+end
+initializeCleanRuntime()
+-- END CLEAN RUNTIME
+
+-- BEGIN FAST REP RUNTIME
+local function initializeFastRep()
+    local F={Token=0,Tokens=0,Rate=200,Sent=0,ActiveSeconds=0,BirthFailures=0,
+        Gains={Strength=0,Durability=0,Rebirths=0},Recent={},Status="Parado"}
+    HubRuntime.FastRep=F
+    -- Bonus definitions observed in the readable Silence farming source and Mystery catalog.
+    -- Replicated perks take precedence. Reading this table never equips or unequips a pet.
+    F.Bonuses={
+        ["Omega Overlord"]={20,0,0,0},["Swift Samurai"]={15,0,0,0},
+        ["Powercore Hound"]={0,25,15,0},["Titanium Hydra"]={0,0,0,2},
+        ["Tribal Overlord"]={0,0,0,2},["Inferno Unicorn"]={0,25,25,0},
+        ["Inferno Drake"]={40,0,0,0},["Common Boss Pet"]={5,0,0,0},
+        ["Rare Boss Pet"]={7,0,0,0},["Epic Boss Pet"]={10,0,0,0},
+        ["Rainbow Boss Pet"]={10,7,0,0},["Legendary Boss Pet"]={10,10,0,0},
+        ["Mythic Boss Pet"]={10,20,0,0},
+    }
+    function F:active()
+        local hum=LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
+        return SESSION.Alive and S.FastRep and M:canAct() and not HubRuntime.BossActive
+            and not M.PvpTarget and hum and hum.Health>0
+    end
+    function F:cancel()
+        self:restoreMovement()
+        self.Token+=1; self.Tokens=0; self.BatchTokens=0; self.NextPets=0
+        self.LastControl=nil; self.RateSignature=nil; self.Rate=200; self.NextBirth=nil; self.BirthFailures=0
+        self.BirthResult=nil; self.Trial=nil; self.Status="Parado"
+    end
+    function F:limits()
+        local explore=S.FastRepProfile=="Explorar limite"
+        local combined=S.FastRepProfile=="Combinado"
+        local ultra=S.FastRepProfile=="Ultra (lotes)"
+        local intensive=S.FastRepProfile=="Intensivo" or ultra or combined
+        local ceiling=S.StabilityMode and 200 or (intensive or explore) and 10000 or 659
+        if S.Rebirth then ceiling=math.min(ceiling,450) end
+        return math.min(S.FastRepLimit,ceiling),S.StabilityMode and 8 or combined and 24 or ultra and 350 or (intensive or explore) and 256 or 24
+    end
+    function F:waitingBirth()
+        local pending=self.PendingBirth
+        local goalReached=S.RebirthTarget and currentRebirths()>=S.RebirthTarget
+        return S.Rebirth and not goalReached and (pending and currentRebirths()<=pending.Before
+            or numberStat("Strength")>=self:rebirthRequirement())
+    end
+    function F:sendBurst(count,lane)
+        local event=getMuscleEvent()
+        if not event then S.FastRep=false; self:cancel(); self.Status="Canal de reps indisponível"; return 0 end
+        local character,started,sent=LP.Character,os.clock(),0
+        local spent=self.SendSpent or 0
+        for _=1,count do
+            if not SESSION.Alive or not S.FastRep or not M:canAct() or HubRuntime.BossActive
+                or M.PetEquipBusy or LP.Character~=character or spent+os.clock()-started>=.004 then break end
+            local ok,err=pcall(function() event:FireServer("rep") end)
+            if not ok then S.FastRep=false; self:cancel(); setHubError(err); break end
+            sent+=1; self.Sent+=1; HubRuntime.RemoteCalls+=1
+        end
+        self.SendSpent=spent+os.clock()-started
+        if lane=="classic" then self.ClassicSent=(self.ClassicSent or 0)+sent end
+        if lane=="batch" then self.BatchSent=(self.BatchSent or 0)+sent end
+        return sent
+    end
+    function F:combinedBatch(dt)
+        if S.FastRepProfile~="Combinado" or not self:active() or M.PetEquipBusy then
+            self.BatchTokens=0; return
+        end
+        local limit=self:limits()
+        local remainder=math.max(0,math.min(self.Rate,limit)-math.min(659,self.Rate,limit))
+        local burst=self:ultraTiming()
+        self.BatchTokens=math.min(burst,(self.BatchTokens or 0)+remainder*math.clamp(dt,0,.1))
+        local sent=self:sendBurst(math.floor(self.BatchTokens),"batch")
+        self.BatchTokens=math.max(0,(self.BatchTokens or 0)-sent)
+    end
+    function F:restoreMovement()
+        local saved=self.Movement
+        self.Movement=nil
+        if saved and saved.Script.Parent then pcall(function() saved.Script.Enabled=saved.Enabled end) end
+    end
+    function F:prepareMovement()
+        local character=LP.Character
+        if self.Movement and (self.Movement.Character~=character or not self.Movement.Script.Parent) then self:restoreMovement() end
+        if self.Movement then return end
+        local script=character and character:FindFirstChild("bodyMovementScript")
+        if not script or not script:IsA("LocalScript") then return end
+        local ok,enabled=pcall(function() return script.Enabled end)
+        if ok and type(enabled)=="boolean" and pcall(function() script.Enabled=false end) then
+            self.Movement={Script=script,Enabled=enabled,Character=character}
+        end
+    end
+    function F:ultraTiming()
+        local now=os.clock()
+        if now>=(self.NextPing or 0) then
+            self.NextPing=now+.5
+            local ok,ping=pcall(function() return game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValue() end)
+            self.Ping=ok and type(ping)=="number" and ping==ping and ping>=0 and ping<math.huge and ping or 80
+            self.HasPing=ok and type(ping)=="number" and ping==ping and ping>=0 and ping<math.huge
+        end
+        local limit,burst=self:limits()
+        if S.FastRepProfile=="Combinado" then
+            limit=math.max(0,math.min(self.Rate,limit)-math.min(659,self.Rate,limit))
+            burst=S.StabilityMode and 8 or 350
+            if limit==0 then return 0,.05 end
+        end
+        local ping=self.Ping or 80
+        local pingBatch=ping<80 and 500 or ping<150 and 300 or ping<250 and 100 or 50
+        burst=math.min(burst,pingBatch)
+        -- Tokens already pace the configured rate. Waiting for a full batch here
+        -- adds a second limiter: task.wait resumes on a Heartbeat, so e.g. 35ms
+        -- becomes two 30-FPS frames and discards elapsed credit at the burst cap.
+        local delay=math.max(1/60,math.clamp(ping/2500,.001,.1))
+        return burst,delay
+    end
+    function F:startTrial(limit)
+        local rates={}
+        for _,rate in ipairs({250,400,500,659,1000,1500,2500,3295,5000,7500,10000}) do
+            if rate<=limit then rates[#rates+1]=rate end
+        end
+        if rates[#rates]~=limit then rates[#rates+1]=limit end
+        self.Trial={Rates=rates,Index=1,Seconds=0,Records={},Stale=0,BestScore=-1,
+            BestRate=rates[1],Target=rates[1],Objective=S.Rebirth and "Rebirths" or "Strength"}
+        self.Rate=rates[1]
+    end
+    function F:trialTick(dt)
+        local trial=self.Trial
+        if not trial or trial.Done then return end
+        trial.Seconds+=dt
+        -- Let replication settle, then compare ten active seconds at each requested rate.
+        if trial.Seconds<2 then return end
+        if not trial.Baseline then
+            trial.Baseline={Seconds=trial.Seconds,Strength=self.Gains.Strength,
+                Rebirths=self.Gains.Rebirths,Sent=self.Sent}
+            return
+        end
+        local duration=trial.Seconds-trial.Baseline.Seconds
+        if duration<10 then return end
+        local stat=trial.Objective
+        local score=(self.Gains[stat]-trial.Baseline[stat])/duration
+        if stat=="Rebirths" and score==0 then
+            -- Do not compare a strength proxy against a completed rebirth measurement.
+            self.Trial.Note="Aguardando rebirth observado para comparar esta etapa"
+            return
+        end
+        local record={Target=trial.Target,SentRate=(self.Sent-trial.Baseline.Sent)/duration,
+            Score=score,Stat=stat,Seconds=duration}
+        trial.Records[#trial.Records+1]=record
+        if trial.BestScore<0 or score>trial.BestScore*1.05 then
+            trial.BestScore=score; trial.BestRate=trial.Target; trial.Stale=0
+        else trial.Stale+=1 end
+        if trial.Stale>=2 or trial.Index>=#trial.Rates then
+            trial.Done=true; self.Rate=trial.BestRate
+            trial.Note=trial.Stale>=2 and "Duas etapas sem melhora; melhor taxa retomada" or "Teto local explorado"
+        else
+            trial.Index+=1; trial.Target=trial.Rates[trial.Index]
+            trial.Seconds=0; trial.Baseline=nil; trial.Note=nil; self.Rate=trial.Target
+        end
+        self.Tokens=0
+    end
+    function F:bonus(pet,index)
+        local aliases=({{"repSpeed","repSpeedBonus","repSpeedPercent"},{"strengthMultiplier","strengthBonus"},
+            {"durabilityMultiplier","durabilityBonus"},{"rebirth","rebirths","rebirthBonus"}})[index]
+        local perks=pet:FindFirstChild("perksFolder")
+        for _,container in ipairs({perks or pet,pet}) do
+            for _,name in ipairs(aliases) do
+                local value=container:FindFirstChild(name)
+                local n=value and (value:IsA("NumberValue") or value:IsA("IntValue")) and tonumber(value.Value) or container:GetAttribute(name)
+                if type(n)=="number" and n==n and n>=0 then return n end
+            end
+        end
+        return (self.Bonuses[pet.Name] or {})[index] or 0
+    end
+    function F:equippedBonuses()
+        local pets,slots=equippedPets()
+        local speed,birth=0,0
+        for pet in pairs(pets) do
+            if typeof(pet)=="Instance" then
+                speed+=self:bonus(pet,1); birth+=self:bonus(pet,4)
+            end
+        end
+        self.PetSpeed=speed; self.PetSlots=slots; self.PetBirth=birth
+        return speed,birth,slots
+    end
+    function F:rebirthRequirement()
+        for _,name in ipairs({"rebirthStrengthRequirement","RebirthRequirement"}) do
+            local value=LP:FindFirstChild(name)
+            if value and (value:IsA("NumberValue") or value:IsA("IntValue")) then
+                local number=tonumber(value.Value)
+                if number and number==number and number>=0 and number<math.huge then return number end
+            end
+        end
+        -- Muscle Legends formula used by Silence; a refused request backs off.
+        return 5000+currentRebirths()*2550
+    end
+    function F:rebirth()
+        if not self:active() or not S.Rebirth or self.Busy or M.RebirthInFlight or M.PetEquipBusy
+            or not M:canRequestRebirth(numberStat("Strength"),currentRebirths())
+            or os.clock()<(self.NextBirth or 0)
+            or numberStat("Strength")<self:rebirthRequirement() then return end
+        local token,before=self.Token,currentRebirths()
+        self.Busy=true; M.RebirthInFlight=true
+        local pending={Started=os.clock(),Before=before,Phase="resposta"}
+        self.PendingBirth=pending
+        task.spawn(function()
+        local ok,err=pcall(function()
+            self.Status="Fast rebirth; mantendo seus pets equipados"
+            if token~=self.Token or not self:active() or not S.Rebirth then return end
+            refreshRemotes(); M.LastRebirthRequest=os.clock()
+            local response,_,sent=safeInvoke(R.Rebirth,"rebirthRequest")
+            pending.Phase="estatística"
+            if token~=self.Token or not self:active() then return end
+            local deadline=os.clock()+1.5
+            while sent and response~=false and currentRebirths()==before and os.clock()<deadline
+                and token==self.Token and self:active() do task.wait(.05) end
+            if token~=self.Token or not self:active() then return end
+            if currentRebirths()>before then
+                self.BirthFailures=0; self.NextBirth=nil; M.RebirthRetryAt=nil
+                self.BirthResult="Rebirth confirmado"
+                if S.RebirthTarget and currentRebirths()>=S.RebirthTarget then S.Rebirth=false end
+                self.Status="Rebirth confirmado; retomando treino"
+            else
+                self:retryBirth(response==false and "Recusado pelo jogo" or "Sem confirmação na estatística")
+            end
+        end)
+        M.RebirthInFlight=false; self.Busy=false
+        if self.PendingBirth==pending then self.PendingBirth=nil end
+        if token==self.Token then
+            if not ok then self:retryBirth("Erro na solicitação"); setHubError(err) end
+        end
+        end)
+    end
+    function F:retryBirth(message)
+        self.BirthFailures=math.min(3,(self.BirthFailures or 0)+1)
+        local delay=math.max(S.RebirthInterval,math.min(2,.5*2^(self.BirthFailures-1)))
+        self.NextBirth=os.clock()+delay; self.BirthResult=message
+    end
+    function F:rebirthStatus()
+        if not S.Rebirth then return "Rebirth desligado / meta encerrada" end
+        if not self:active() then return "Pausado; aguardando retomar treino / personagem" end
+        if self.Busy then
+            local pending=self.PendingBirth
+            local elapsed=pending and os.clock()-pending.Started or 0
+            local observed=pending and currentRebirths()>pending.Before
+            return string.format("%s | aguardando %s há %.1fs",observed and "Rebirth observado; treino contínuo" or "Treino contínuo durante rebirth",
+                pending and pending.Phase or "confirmação",elapsed)
+        end
+        if numberStat("Strength")<self:rebirthRequirement() then return "Treinando até a força necessária para rebirth" end
+        local nextRequest=math.max(self.NextBirth or 0,M.RebirthRetryAt or 0,(M.LastRebirthRequest or -math.huge)+S.RebirthInterval)
+        local localWait=S.RebirthInterval==0 and "sem espera local" or string.format("intervalo local %.2fs",S.RebirthInterval)
+        return string.format("%s | %s | espera restante: %.2fs",self.BirthResult or "Pronto para pedir rebirth",localWait,math.max(0,nextRequest-os.clock()))
+    end
+    function F:sample(dt,active)
+        local values={Strength=numberStat("Strength"),Durability=numberStat("Durability"),Rebirths=currentRebirths()}
+        if active then self.ActiveSeconds+=dt end
+        if active and self.Previous and self.WasActive then
+            for key,value in pairs(values) do self.Gains[key]+=math.max(0,value-self.Previous[key]) end
+        end
+        self.Previous=values; self.WasActive=active
+        local now=os.clock()
+        -- Gains remain sampled per frame; the displayed rolling window needs only four points/s.
+        if not self.LastRecentAt or now-self.LastRecentAt>=.25 then
+            self.LastRecentAt=now
+            self.Recent[#self.Recent+1]={At=now,Sent=self.Sent,
+                Strength=self.Gains.Strength,Durability=self.Gains.Durability,Rebirths=self.Gains.Rebirths}
+            while #self.Recent>1 and self.Recent[2].At<now-10 do table.remove(self.Recent,1) end
+        end
+    end
+    function F:frame(dt)
+        self.SendSpent=0
+        local elapsed=tonumber(dt)
+        if not elapsed or elapsed~=elapsed or elapsed<0 or elapsed==math.huge then elapsed=1/60 end
+        dt=math.clamp(elapsed,0,.1)
+        local active=self:active()==true
+        -- Limit catch-up sends, but include a frozen frame in gain measurements.
+        self:sample(elapsed,active)
+        if not active or M.PetEquipBusy then
+            self:restoreMovement()
+            self.Tokens=0; self.BatchTokens=0; self.LastControl=nil
+            if S.FastRep then
+                local reason=HubRuntime.BossActive and "boss em combate" or M.PetEquipBusy and "encerrando transação de pets"
+                    or not M:canAct() and M:reasonText() or "aguardando personagem"
+                self.Status="Pausado: "..reason
+            end
+            return
+        end
+        if S.FastRepProfile=="Ultra (lotes)" or S.FastRepProfile=="Combinado" then self:prepareMovement() else self:restoreMovement() end
+        local now=os.clock()
+        if now>=(self.NextPets or 0) then self:equippedBonuses(); self.NextPets=now+5 end
+        local strength,durability=numberStat("Strength"),numberStat("Durability")
+        local limit,burst=self:limits()
+        local signature=tostring(S.FastRepProfile)..":"..tostring(limit)..":"..tostring(S.Rebirth)
+        if self.RateSignature~=signature then
+            self.RateSignature=signature; self.Tokens=0; self.BatchTokens=0
+            self.Trial=nil
+            self.Rate=(S.FastRepProfile=="Intensivo" or S.FastRepProfile=="Ultra (lotes)" or S.FastRepProfile=="Combinado") and limit or math.min(200,limit)
+            if S.FastRepProfile=="Explorar limite" then self:startTrial(limit) end
+        end
+        self:trialTick(elapsed)
+        if self.Trial then limit=math.min(limit,self.Trial.Done and self.Trial.BestRate or self.Trial.Target) end
+        self.WaitingForBirth=self:waitingBirth()==true
+        if not self.LastControl then
+            self.LastControl=now; self.ControlStrength=strength; self.ControlDurability=durability; self.ControlBirths=currentRebirths(); self.NoProgress=0
+        elseif now-self.LastControl>=.5 then
+            if strength>self.ControlStrength or durability>self.ControlDurability or currentRebirths()>self.ControlBirths then
+                self.NoProgress=0; self.Rate=math.min(limit,self.Rate*(S.FastRepProfile~="Adaptativo" and 1.25 or 1.12))
+            else
+                self.NoProgress+=now-self.LastControl
+                if self.NoProgress>=2 then self.Rate=math.max(40,self.Rate*.65); self.Tokens=0 end
+                if self.NoProgress>=10 and not (S.Rebirth and (self.WaitingForBirth or self.Busy or M.RebirthInFlight)) then
+                    S.FastRep=false; S.Rebirth=false; self:cancel(); self.Status="Parado: 10s sem ganho observado"; return
+                end
+            end
+            self.LastControl=now; self.ControlStrength=strength; self.ControlDurability=durability; self.ControlBirths=currentRebirths()
+        end
+        self.Rate=math.min(self.Rate,limit)
+        if S.FastRepProfile=="Ultra (lotes)" then burst=self:ultraTiming() end
+        local combined=S.FastRepProfile=="Combinado"
+        local frameRate=combined and math.min(659,self.Rate) or self.Rate
+        self.Tokens=math.min(burst,self.Tokens+frameRate*dt)
+        local sent=self:sendBurst(math.floor(self.Tokens),combined and "classic" or nil)
+        self.Tokens=math.max(0,self.Tokens-sent)
+        if S.FastRep then self.Status=string.format("Fast Rep %s: %.0f pedidos/s alvo | bônus de velocidade: %s%%",S.FastRepProfile,self.Rate,tostring(self.PetSpeed or 0)) end
+    end
+    function F:report()
+        local function compact(value)
+            for _,unit in ipairs({{1e18,"Qi"},{1e15,"Qa"},{1e12,"T"},{1e9,"B"},{1e6,"M"},{1e3,"K"}}) do
+                if math.abs(value)>=unit[1] then return string.format("%.2f%s",value/unit[1],unit[2]) end
+            end
+            return string.format("%.2f",value)
+        end
+        local first=self.Recent[1]; local seconds=first and os.clock()-first.At or 0
+        local rate=seconds>0 and (self.Sent-first.Sent)/seconds or 0
+        local strengthPace=seconds>0 and (self.Gains.Strength-first.Strength)/seconds or 0
+        local function estimate(target)
+            if numberStat("Strength")>=target then return "atingida" end
+            if S.Rebirth then return "rebirth ativo consome a força; use Força acumulada" end
+            if strengthPace<=0 then return "aguardando ganho medido" end
+            local remaining=(target-numberStat("Strength"))/strengthPace
+            if remaining<60 then return string.format("~%.1fs",remaining) end
+            if remaining<3600 then return string.format("~%.1fmin",remaining/60) end
+            return string.format("~%.1fh",remaining/3600)
+        end
+        local lines={self.Status,self:rebirthStatus(),
+            "Força para rebirth: "..compact(numberStat("Strength")).." / "..compact(self:rebirthRequirement()),
+            "Seus pets equipados são preservados durante força e fast rebirth.",
+            string.format("Pets atuais: %d slots | velocidade estimada: %s%% | bônus de rebirth estimado: %s%%",self.PetSlots or 0,tostring(self.PetSpeed or 0),tostring(self.PetBirth or 0)),
+            string.format("Pedidos enviados: %.1f/s | total: %d | tempo ativo: %.1fs",rate,self.Sent,self.ActiveSeconds),
+            "Ganhos medidos nos valores da conta; pedidos enviados não equivalem a reps aceitas."}
+        if S.FastRepProfile=="Ultra (lotes)" or S.FastRepProfile=="Combinado" then
+            local batch,delay=self:ultraTiming()
+            lines[#lines+1]=string.format("Ultra: até %d reps/lote | intervalo %.3fs | ping %s | sem troca de pets",batch,delay,
+                self.HasPing and string.format("%.0fms",self.Ping) or "indisponível; referência 80ms")
+            lines[#lines+1]="Ping somente medido. O intervalo pode aumentar até o próximo ciclo do jogo; confira os ganhos medidos abaixo."
+        end
+        if S.FastRepProfile=="Combinado" then
+            lines[#lines+1]=string.format("Combinado: clássico até 659/s + lotes no restante do teto total.\nPedidos da sessão: clássico %d | lotes %d",self.ClassicSent or 0,self.BatchSent or 0)
+        end
+        lines[#lines+1]="Estimativa no ritmo recente: 1T "..estimate(1e12).." | 1Qa "..estimate(1e15)..". Depende do ganho atual se manter."
+        if self.Trial then
+            local trial=self.Trial
+            lines[#lines+1]=string.format("Exploração: etapa %d/%d | alvo: %d/s | melhor: %d/s\n%s",trial.Index,#trial.Rates,trial.Target,trial.BestRate,
+                trial.Note or "Aumentando por etapas e comparando o ganho observado")
+            for _,row in ipairs(trial.Records) do
+                lines[#lines+1]=string.format("Alvo %d/s | enviado %.1f/s | %s: %s/s",row.Target,row.SentRate,row.Stat,compact(row.Score))
+            end
+        end
+        for _,key in ipairs({"Strength","Durability","Rebirths"}) do
+            local pace=seconds>0 and (self.Gains[key]-first[key])/seconds or 0
+            local average=self.ActiveSeconds>0 and self.Gains[key]/self.ActiveSeconds or 0
+            lines[#lines+1]=string.format("%s: %s | ganho: %s\nÚltimos 10s: %s/s | %s/min | %s/h | %s/d\nMédia ativa: %s/s",key,compact(numberStat(key)),compact(self.Gains[key]),compact(pace),compact(pace*60),compact(pace*3600),compact(pace*86400),compact(average))
+        end
+        return table.concat(lines,"\n\n")
+    end
+    local ordinary=M.attemptRebirth
+    function M:attemptRebirth() if S.FastRep then return F:rebirth() end; return ordinary(self) end
+    trackConnection(RunService.Heartbeat:Connect(function(dt)
+        if not SESSION.Alive then return end
+        if S.FastRepProfile=="Ultra (lotes)" then return end
+        local ok,err=pcall(function() F:frame(dt) end)
+        if not ok then S.FastRep=false; F:cancel(); setHubError("Fast Rep: "..tostring(err)) end
+    end))
+    task.spawn(function()
+        local previous=os.clock()
+        while SESSION.Alive do
+            local now=os.clock()
+            if S.FastRepProfile=="Ultra (lotes)" then
+                local ok,err=pcall(function() F:frame(now-previous) end)
+                if not ok then S.FastRep=false; F:cancel(); setHubError("Ultra: "..tostring(err)) end
+                previous=now
+                local _,delay=F:ultraTiming()
+                task.wait(S.FastRep and math.min(delay,.1) or .05)
+            elseif S.FastRepProfile=="Combinado" then
+                local ok,err=pcall(function() F:combinedBatch(now-previous) end)
+                if not ok then S.FastRep=false; F:cancel(); setHubError("Combinado: "..tostring(err)) end
+                previous=now
+                local _,delay=F:ultraTiming()
+                task.wait(S.FastRep and math.min(delay,.1) or .05)
+            else
+                previous=now; task.wait(.05)
+            end
+        end
+        F:restoreMovement()
+    end)
+
+end
+initializeFastRep()
+-- END FAST REP RUNTIME
 
 local function initializeUI()
 local TweenService = game:GetService("TweenService")
@@ -3628,9 +4089,15 @@ function UI:refresh(resetScroll, animate)
 end
 function UI:resize()
     local viewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(800, 700)
-    self.Width = math.max(280, math.min(980, viewport.X - 28))
-    local height = math.max(300, math.min(760, viewport.Y - 40))
-    self.Compact = self.Width < 680
+    if self.Mini then
+        local position = self.Mini.Position
+        self.Mini.Position = UDim2.fromOffset(
+            math.clamp(position.X.Scale*viewport.X+position.X.Offset,0,math.max(0,viewport.X-58)),
+            math.clamp(position.Y.Scale*viewport.Y+position.Y.Offset,0,math.max(0,viewport.Y-48)))
+    end
+    self.Width = math.min(980, math.max(1, viewport.X - 28))
+    local height = math.min(760, math.max(1, viewport.Y - 24))
+    self.Compact = self.Width < 680 or (UIS.TouchEnabled and height < 560)
     self.Short = height < 560
     local left = self.Compact and 20 or 224
     self.ContentWidth = self.Width - left - 20
@@ -3659,19 +4126,19 @@ function UI:resize()
     scroll.Size = UDim2.new(0,self.ContentWidth,1,self.Compact and -412 or -366)
     if self.Nav then
         self.Nav.Position = UDim2.fromOffset(self.Compact and 20 or 28,self.Compact and 190 or 234)
-        self.Nav.Size = self.Compact and UDim2.new(1,-40,0,39) or UDim2.new(0,168,1,-349)
+        self.Nav.Size = self.Compact and UDim2.new(1,-40,0,44) or UDim2.new(0,168,1,-349)
         self.Nav.ScrollingDirection = self.Compact and Enum.ScrollingDirection.X or Enum.ScrollingDirection.Y
         self.Nav.AutomaticCanvasSize = self.Compact and Enum.AutomaticSize.X or Enum.AutomaticSize.Y
         self.NavLayout.FillDirection = self.Compact and Enum.FillDirection.Horizontal or Enum.FillDirection.Vertical
         for category,tab in pairs(self.Tabs) do
-            tab.Size = UDim2.fromOffset(self.Compact and 108 or 168,self.Compact and 36 or 42)
+            tab.Size = UDim2.fromOffset(self.Compact and 108 or 168,44)
             if self.TabBadges[category] then self.TabBadges[category].Visible = not self.Compact end
             if self.TabLabels[category] then self.TabLabels[category].Size = UDim2.new(1,self.Compact and -42 or -72,0,16) end
         end
     end
     if self.Search then
         self.Search.Position = UDim2.fromOffset(left,self.Compact and 236 or 249)
-        self.Search.Size = UDim2.new(0,self.ContentWidth-50,0,38)
+        self.Search.Size = UDim2.new(0,self.ContentWidth-50,0,44)
     end
     if self.Larger then self.Larger.Position = UDim2.new(1,-60,0,self.Compact and 236 or 249) end
     for _, stat in ipairs(self.Stats) do
@@ -3689,14 +4156,24 @@ function UI:resize()
         self.NavCaption.Position = UDim2.fromOffset(34,108)
         self.PageTitle.Position = UDim2.fromOffset(left,94)
         self.PageHint.Position = UDim2.fromOffset(left,124)
-        scroll.Position = UDim2.fromOffset(left,self.Compact and 184 or 202)
-        scroll.Size = UDim2.new(0,self.ContentWidth,1,self.Compact and -252 or -270)
+        scroll.Position = UDim2.fromOffset(left,self.Compact and 196 or 208)
+        scroll.Size = UDim2.new(0,self.ContentWidth,1,self.Compact and -264 or -276)
         if self.Nav then
-            self.Nav.Position = UDim2.fromOffset(self.Compact and 20 or 28,self.Compact and 92 or 136)
-            self.Nav.Size = self.Compact and UDim2.new(1,-40,0,36) or UDim2.new(0,168,1,-253)
+            self.Nav.Position = UDim2.fromOffset(self.Compact and 20 or 28,self.Compact and 88 or 136)
+            self.Nav.Size = self.Compact and UDim2.new(1,-40,0,44) or UDim2.new(0,168,1,-253)
         end
-        if self.Search then self.Search.Position = UDim2.fromOffset(left,self.Compact and 136 or 154) end
-        if self.Larger then self.Larger.Position = UDim2.new(1,-60,0,self.Compact and 136 or 154) end
+        if self.Search then self.Search.Position = UDim2.fromOffset(left,self.Compact and 140 or 154) end
+        if self.Larger then self.Larger.Position = UDim2.new(1,-60,0,self.Compact and 140 or 154) end
+    end
+    if height < 300 then
+        self.PageTitle.Visible = false; self.PageHint.Visible = false
+        if self.Compact then
+            if self.Nav then self.Nav.Position = UDim2.fromOffset(20,64) end
+            if self.Search then self.Search.Position = UDim2.fromOffset(left,112) end
+            if self.Larger then self.Larger.Position = UDim2.new(1,-60,0,112) end
+            scroll.Position = UDim2.fromOffset(left,160)
+            scroll.Size = UDim2.new(0,self.ContentWidth,1,-228)
+        end
     end
     for _, entry in ipairs(searchEntries) do if entry.Resize then entry.Resize() end end
 end
@@ -3744,15 +4221,15 @@ do
     empty.TextSize = 16; empty.TextColor3 = COLORS.Muted; empty.TextWrapped = true
     empty.BackgroundTransparency = 1; empty.Visible = false; empty.Parent = scroll; UI.Empty = empty
     local bottom = Instance.new("Frame")
-    bottom.Size = UDim2.new(1, -40, 0, 44); bottom.Position = UDim2.new(0, 20, 1, -60)
+    bottom.Size = UDim2.new(1, -40, 0, 52); bottom.Position = UDim2.new(0, 20, 1, -60)
     bottom.BackgroundColor3 = COLORS.Panel; bottom.BorderSizePixel = 0; bottom.Parent = main; addCorner(bottom, 10)
     local pause = Instance.new("TextButton")
-    pause.Size = UDim2.fromOffset(90, 32); pause.Position = UDim2.new(1, -198, 0, 5)
+    pause.Size = UDim2.fromOffset(90, 44); pause.Position = UDim2.new(1, -198, 0, 5)
     pause.TextSize = 13; pause.Font = Enum.Font.GothamBold; pause.BackgroundColor3 = COLORS.GreenDark
     pause.TextColor3 = COLORS.Green; pause.BorderSizePixel = 0; pause.Parent = bottom; addCorner(pause, 8)
     pause.Activated:Connect(function() M:pause("Manual", not M.Reasons.Manual) end)
     local stop = Instance.new("TextButton")
-    stop.Size = UDim2.fromOffset(96, 32); stop.Position = UDim2.new(1, -102, 0, 5)
+    stop.Size = UDim2.fromOffset(96, 44); stop.Position = UDim2.new(1, -102, 0, 5)
     stop.Text = "Parar tudo"; stop.TextSize = 13; stop.Font = Enum.Font.GothamBold
     stop.TextColor3 = COLORS.Red; stop.BackgroundColor3 = Color3.fromRGB(47, 27, 36)
     stop.BorderSizePixel = 0; stop.Parent = bottom; addCorner(stop, 8)
@@ -3861,7 +4338,7 @@ local function card(titleText, description, callback, accentColor, availableFn)
         local isToggle = b:GetAttribute("IsToggle") == true
         local reserve = isToggle and 108 or 36
         action.Visible = not isToggle
-        local width = math.max(80, UI.ContentWidth - 43 - reserve)
+        local width = math.max(1, UI.ContentWidth - 43 - reserve)
         t.TextSize = UI.LargeText and 16 or 14; d.TextSize = UI.LargeText and 13 or 11
         local service = game:GetService("TextService")
         local th = service:GetTextSize(t.Text, t.TextSize, t.Font, Vector2.new(width, 10000)).Y + 4
@@ -3910,18 +4387,11 @@ HubRuntime.RenderToggles = renderAllToggles
 
 local toggleTitles = {}
 local function resolveToggleConflicts(key)
-    if key == "AutoNovaPhoenix" and S.AutoNovaPhoenix then
-        HubRuntime.NovaAttempts = 0
-        HubRuntime.NovaNoProgress = 0
-        HubRuntime.NovaStatus = "Aguardando identificacao do cristal Overcharged"
-    elseif key == "AutoNovaPhoenix" then
-        HubRuntime.NovaStatus = "Parado pelo usuario"
-    end
+    if key == "AutoBestPetObjective" and S.AutoBestPetObjective then S.PreserveFarmPets = true end
     local disabled = M:resolveConflicts(key)
     local names = {}
     for _, other in ipairs(disabled) do
         if other == "AutoBoss" and HubRuntime.StopBoss then HubRuntime.StopBoss() end
-        if other == "AutoNovaPhoenix" then HubRuntime.NovaStatus = "Parado: outra abertura de cristal foi ligada" end
         if (other == "PvpGood" or other == "PvpEvil") and M.stopPvp then M:stopPvp() end
         if other == "LockPosition" then lockedCFrame = nil end
         names[#names + 1] = toggleTitles[other] or other
@@ -3996,6 +4466,30 @@ mini.BorderSizePixel = 0; mini.Text = "710"; mini.TextColor3 = COLORS.Green
 mini.TextSize = 18; mini.Font = Enum.Font.GothamBlack; mini.Visible = false; mini.Parent = gui
 addCorner(mini, 13); addStroke(mini, COLORS.Cyan, 1.5, .15)
 attachBrandLogo(mini)
+UI.Mini = mini
+local miniDragged = false
+do
+    local pointer, origin, position
+    mini.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+            pointer, origin, position = input, input.Position, mini.Position
+            miniDragged = false
+        end
+    end)
+    trackConnection(UIS.InputChanged:Connect(function(input)
+        if not pointer or not (input == pointer or input.UserInputType == Enum.UserInputType.MouseMovement) then return end
+        local delta = input.Position - origin
+        if delta.Magnitude < 6 and not miniDragged then return end
+        miniDragged = true
+        local viewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(800,700)
+        mini.Position = UDim2.fromOffset(
+            math.clamp(position.X.Scale*viewport.X+position.X.Offset+delta.X,0,math.max(0,viewport.X-58)),
+            math.clamp(position.Y.Scale*viewport.Y+position.Y.Offset+delta.Y,0,math.max(0,viewport.Y-48)))
+    end))
+    trackConnection(UIS.InputEnded:Connect(function(input)
+        if input == pointer or input.UserInputType == Enum.UserInputType.MouseButton1 then pointer = nil end
+    end))
+end
 local menuOpen = true
 local function hideMenu()
     menuOpen = false; main.Visible = false; shadow.Visible = false; mini.Visible = true
@@ -4005,7 +4499,7 @@ local function showMenu()
     UI:refresh(false, true)
 end
 minimize.Activated:Connect(hideMenu)
-mini.Activated:Connect(showMenu)
+mini.Activated:Connect(function() if not miniDragged then showMenu() end end)
 
 trackConnection(UIS.InputBegan:Connect(function(input, processed)
     if not SESSION.Alive or processed then return end
@@ -4017,290 +4511,6 @@ trackConnection(UIS.InputBegan:Connect(function(input, processed)
         renderAllToggles()
     end
 end))
-
--- conteúdo em português --------------------------------------------------------
-section("FARM", "Automatizações principais para evoluir sua conta.")
-
-for _, movement in ipairs({
-    {"Peso automatico", "Weight", "TrainWeight"},
-    {"Flexoes automaticas", "Pushups", "TrainPushups"},
-    {"Abdominais automaticos", "Situps", "TrainSitups"},
-    {"Parada de maos automatica", "Handstands", "TrainHandstands"},
-}) do
-    toggle(movement[1], "Usa somente " .. movement[2] .. ". Desliga treinos conflitantes; se a ferramenta faltar, aguarda sem trocar de movimento.", movement[3])
-end
-
-toggle(
-    "Força Rápida",
-    "Equipa Weight/Pushups/Situps/Handstands e envia rajadas curtas de treino; desliga sozinho se a Strength não subir.",
-    "TurboStrength",
-    canTrain
-)
-
-toggle(
-    "Força F2P Máxima",
-    "Equipa automaticamente os melhores pets de Strength que você já possui e usa o melhor treino disponível sem precisar de pacote pago.",
-    "MaxStrengthF2P",
-    function() return canTrain() or canMachineFarm() end
-)
-
-toggle(
-    "Rebirth automático",
-    "Tenta rebirth imediatamente sempre que possível, sem delay artificial do 710Hub. O servidor ainda controla o momento válido.",
-    "Rebirth",
-    canRebirth
-)
-
-local rebirthSteps = {0,10,50,100,500}
-local rebirthStepIndex = 1
-card(
-    "Meta de rebirth: sem limite",
-    "Define até quantos rebirths a automação deve continuar a partir de agora.",
-    function(_,titleLabel)
-        rebirthStepIndex = rebirthStepIndex % #rebirthSteps + 1
-        local add = rebirthSteps[rebirthStepIndex]
-        if add == 0 then
-            S.RebirthTarget = nil
-            titleLabel.Text = "Meta de rebirth: sem limite"
-        else
-            S.RebirthTarget = currentRebirths() + add
-            titleLabel.Text = "Meta de rebirth: +"..add.." (até "..math.floor(S.RebirthTarget)..")"
-        end
-    end,
-    COLORS.Yellow
-)
-
-toggle(
-    "Soco automático animado",
-    "Usa a ferramenta Punch e alterna as duas mãos mantendo a animação do personagem.",
-    "AutoPunch",
-    canPunch
-)
-
-toggle(
-    "Farm inteligente de pedras",
-    "Procura automaticamente a pedra mais forte que sua Durability atual consegue usar.",
-    "SmartRock",
-    canRockFarm
-)
-
-toggle(
-    "Coletar baús automaticamente",
-    "Tenta resgatar os baús conhecidos do mapa em intervalos regulares.",
-    "Chests",
-    canChestFarm
-)
-
-toggle(
-    "Entrar no Brawl automaticamente",
-    "Tenta entrar no evento Brawl sempre que ele estiver disponível.",
-    "Brawl",
-    canBrawl
-)
-
-section("BOSSES", "Espera um boss aparecer, vai até ele automaticamente, ataca e depois retorna ao ponto anterior.")
-
-toggle(
-    "Auto Kill Boss / farm de boss",
-    "Monitora spawns e prioriza Rainbow > Mítico > Lendário > Épico > Raro > Comum. Troca de alvo quando surgir um mais raro.",
-    "AutoBoss",
-    canAutoBoss
-)
-
-toggle("Coletar drops do boss", "Procura novos baus e drops perto do boss; tenta contato ou interacao de coleta disponivel, e observa a tela de recompensa antes de retornar.", "BossAutoLoot")
-
-local _, bossStatusTitle, bossStatusDesc = card(
-    "Boss: aguardando spawn",
-    "O scanner procura bosses por nome, pasta, atributos e indicadores visuais.",
-    function() end,
-    COLORS.Red
-)
-
-task.spawn(function()
-    while SESSION.Alive and task.wait(.5) do
-        if HubRuntime.BossActive then
-            local boss = HubRuntime.BossModel
-            local hum = boss and bossHumanoid(boss)
-            bossStatusTitle.Text = "Boss: "..HubRuntime.BossTarget
-            bossStatusDesc.Text = (M.BossState or "") .. " | " .. (hum
-                and ("Vida atual: "..math.floor(hum.Health).." / "..math.floor(hum.MaxHealth))
-                or "Vida indisponivel")
-        elseif S.AutoBoss then
-            bossStatusTitle.Text = "Boss: " .. (M.BossState or "aguardando spawn")
-            bossStatusDesc.Text = "Mortes observadas: " .. HubRuntime.BossDeathsObserved .. " | " .. (M.BossLootResult or "Aguardando spawn")
-        else
-            bossStatusTitle.Text = "Boss: Auto Boss desligado"
-            bossStatusDesc.Text = "Ative a opção acima para começar a monitorar os spawns."
-        end
-    end
-end)
-
-
-do
-    card("Distancia do boss: " .. S.BossDistance, "Alterna a distancia de ataque entre 3, 5 e 7 studs.", function(_, titleLabel)
-        S.BossDistance = S.BossDistance == 3 and 5 or (S.BossDistance == 5 and 7 or 3)
-        titleLabel.Text = "Distancia do boss: " .. S.BossDistance
-    end, COLORS.Yellow)
-    toggle("Retornar depois do boss", "Volta ao ponto anterior quando o combate termina.", "BossReturn")
-end
-
-section("MÁQUINAS", "Treino usando as máquinas detectadas diretamente no mapa atual.")
-
-local machineIndex = 1
-local function machineNames()
-    local infos = scanMachines()
-    local names = {}
-    for _,info in ipairs(infos) do
-        names[#names+1] = info.name
-    end
-    return names
-end
-
-local namesAtLoad = machineNames()
-if #namesAtLoad > 0 and not S.SelectedMachine then
-    S.SelectedMachine = namesAtLoad[1]
-end
-
-local _, machineTitle = card(
-    "Máquina: "..(S.SelectedMachine or "nenhuma encontrada"),
-    "Clique para alternar entre Bench, Squat, Press, Throw e outras máquinas detectadas.",
-    function(_,titleLabel)
-        local names = machineNames()
-        if #names == 0 then
-            titleLabel.Text = "Máquina: nenhuma encontrada"
-            S.SelectedMachine = nil
-            return
-        end
-        machineIndex = machineIndex % #names + 1
-        S.SelectedMachine = names[machineIndex]
-        titleLabel.Text = "Máquina: "..S.SelectedMachine
-    end,
-    COLORS.Yellow,
-    function() return #scanMachines() > 0 end
-)
-
-card(
-    "Ir até a máquina selecionada",
-    "Teleporta seu personagem para perto do assento da máquina escolhida.",
-    function()
-        useSelectedMachine(true)
-    end,
-    COLORS.Green,
-    canMachineFarm
-)
-
-toggle(
-    "Treino automático na máquina",
-    "Usa repetidamente a máquina selecionada e envia o treino ligado ao interactSeat dela.",
-    "AutoMachine",
-    canMachineFarm
-)
-
-toggle(
-    "Selecionar melhor máquina",
-    "Escolhe automaticamente a máquina de maior nível detectada no servidor.",
-    "AutoBestMachine",
-    canMachineFarm
-)
-
-card(
-    "Escolher melhor máquina agora",
-    "Analisa os nomes e níveis das máquinas carregadas e seleciona a melhor opção encontrada.",
-    function()
-        local info = selectBestMachine()
-        machineTitle.Text = "Máquina: "..(info and info.name or "nenhuma encontrada")
-    end,
-    COLORS.Yellow,
-    canMachineFarm
-)
-
-toggle(
-    "Ciclo Força + Rebirth",
-    "Mantém o treino ativo e tenta rebirth continuamente para acelerar o ciclo de evolução.",
-    "StrengthRebirth",
-    function() return canRebirth() and (canMachineFarm() or canTrain()) end
-)
-
-card(
-    "Atualizar lista de máquinas",
-    "Reescaneia o machinesFolder caso o servidor tenha carregado novas máquinas.",
-    function(_,titleLabel)
-        local names = machineNames()
-        machineIndex = 1
-        S.SelectedMachine = names[1]
-        machineTitle.Text = "Máquina: "..(S.SelectedMachine or "nenhuma encontrada")
-    end,
-    COLORS.Yellow,
-    function() return #scanMachines() > 0 end
-)
-
-task.spawn(function()
-    while SESSION.Alive and task.wait(1) do
-        if S.SelectedMachine then
-            machineTitle.Text = "Máquina: "..S.SelectedMachine
-        end
-    end
-end)
-
-section("AGILIDADE", "Farm automático de Agility usando a melhor esteira disponível para sua estatística atual.")
-
-toggle(
-    "Auto Agilidade / Esteira",
-    "Vai para a melhor esteira liberada pela sua Agility e mantém o personagem correndo nela.",
-    "AutoAgility",
-    canAgilityFarm
-)
-
-local _, treadmillTitle, treadmillDesc = card(
-    "Esteira recomendada: calculando...",
-    "O 710Hub troca automaticamente para uma esteira melhor quando sua Agility aumenta.",
-    function() end,
-    COLORS.Green,
-    canAgilityFarm
-)
-
-task.spawn(function()
-    while SESSION.Alive and task.wait(1) do
-        local tm = bestTreadmill()
-        if tm then
-            treadmillTitle.Text = "Esteira recomendada: "..tm.name
-            treadmillDesc.Text = "Agility atual: "..math.floor(numberStat("Agility")).." • Requisito usado: "..tm.minAgility
-        end
-    end
-end)
-
-section("FARM INTELIGENTE", "Escolha um objetivo e o hub configura automaticamente o método adequado.")
-
-local smartObjectives = {"Força","Durabilidade","Agilidade","Rebirths"}
-local smartObjectiveIndex = 1
-local _, smartObjectiveTitle = card(
-    "Objetivo: "..S.SmartObjective,
-    "Clique para alternar entre Força, Durabilidade, Agilidade e Rebirths.",
-    function(_,titleLabel)
-        smartObjectiveIndex = smartObjectiveIndex % #smartObjectives + 1
-        S.SmartObjective = smartObjectives[smartObjectiveIndex]
-        titleLabel.Text = "Objetivo: "..S.SmartObjective
-        if S.SmartFarm then
-            applySmartObjective()
-            renderAllToggles()
-        end
-    end,
-    COLORS.Yellow
-)
-
-local smartFarmButton = toggle(
-    "Farm inteligente automático",
-    "Ativa apenas as funções necessárias para o objetivo selecionado e ajusta o método automaticamente.",
-    "SmartFarm",
-    function() return canTrain() or canMachineFarm() or canRockFarm() or canAgilityFarm() or canRebirth() end
-)
-
-smartFarmButton.Activated:Connect(function()
-    if S.SmartFarm then
-        applySmartObjective()
-        renderAllToggles()
-    end
-end)
 
 local function field(title, value, callback)
     local frame = Instance.new("Frame")
@@ -4339,8 +4549,8 @@ local function field(title, value, callback)
         label.Position = UDim2.fromOffset(12, 9)
         label.Size = UDim2.new(1, -24, 0, height)
         input.Position = UDim2.fromOffset(12, height + 15)
-        input.Size = UDim2.new(1, -24, 0, 38)
-        frame.Size = UDim2.new(1, -9, 0, height + 65)
+        input.Size = UDim2.new(1, -24, 0, 44)
+        frame.Size = UDim2.new(1, -9, 0, height + 71)
     end
     entry.Resize()
     input.FocusLost:Connect(function()
@@ -4350,973 +4560,288 @@ local function field(title, value, callback)
     end)
     return input
 end
-section("PETS E CRISTAIS", "Funções para abrir cristais, comprar pets disponíveis e organizar sua coleção.")
 
-local _, apexTitle, apexDesc = card(
-    "Comprar pet Apex",
-    "Procura Apex no catálogo atual do Pet Shop e solicita uma compra usando o sistema normal da loja.",
-    function(_,titleLabel,descLabel)
-        local apex = findShopPetByNamePart("apex")
-        if not apex then
-            titleLabel.Text = "Apex indisponível neste servidor"
-            descLabel.Text = "Nenhum pet com 'Apex' foi encontrado em cPetShopFolder."
-            setHubStatus("Apex indisponível")
-            return
-        end
-
-        titleLabel.Text = "Comprar "..apex.Name
-        descLabel.Text = "Compra solicitada. É necessário ter Gems e espaço no inventário."
-        buyShopPet(apex)
-    end,
-    COLORS.Yellow,
-    function() return canPetShop() and findShopPetByNamePart("apex") ~= nil end
-)
-
-card("Obter Nova Phoenix", "Se estiver no Pet Shop, solicita compra como Apex. Caso contrario, inicia a abertura do cristal Overcharged com limite de tentativas.", function()
-    local item = findShopPetByNamePart("nova phoenix")
-    if item then
-        buyShopPet(item)
-        return
+-- BEGIN CLEAN UI
+local function cleanUI()
+    local C,X=HubRuntime.Clean,HubRuntime.Extras
+    local registry={}; UI.Catalog=registry
+    local function register(id,kind,title,object,key)
+        assert(not registry[id],"Opção duplicada: "..id)
+        local item={Id=id,Kind=kind,Title=title,Object=object,Key=key}
+        registry[id]=item; object.Name=id
+        return item
     end
-    if not canHatch() then setHubStatus("Cristal indisponivel neste servidor"); return end
-    S.AutoNovaPhoenix = true
-    resolveToggleConflicts("AutoNovaPhoenix")
-    renderAllToggles()
-    setHubStatus("Nova Phoenix nao esta no Pet Shop; abra a janela do cristal Overcharged")
-end, COLORS.Yellow)
-
-toggle(
-    "Abrir Overcharged ate Nova Phoenix",
-    "Abre o cristal do evento e para ao obter Nova Phoenix ou chegar ao limite. Cada abertura pode gastar Gems; 1% nao garante o pet.",
-    "AutoNovaPhoenix",
-    canHatch
-)
-
-local novaCrystalInput = field("Nome exato do cristal Overcharged", S.NovaCrystal, function(value)
-    local name = string.match(value or "", "^%s*(.-)%s*$")
-    if #name < 3 or #name > 60 then return false, "Digite o nome exato mostrado no cristal (3 a 60 caracteres)" end
-    if S.AutoNovaPhoenix then return false, "Pare a abertura antes de trocar o cristal" end
-    S.NovaCrystal = name
-    HubRuntime.NovaCrystalVerified = true
-    return true
-end)
-local novaMaxInput = field("Maximo de aberturas da Nova Phoenix", S.NovaMaxOpens, function(value)
-    local count = tonumber(value)
-    if not count or count % 1 ~= 0 or count < 1 or count > 1000 then return false, "Use um inteiro entre 1 e 1000" end
-    S.NovaMaxOpens = count
-    return true
-end)
-local _, _, novaStatusDesc = card("Estado da Nova Phoenix", "Desligado", function()
-    setHubStatus(HubRuntime.NovaStatus)
-end, COLORS.Yellow)
-task.spawn(function()
-    while SESSION.Alive and task.wait(2) do
-        novaStatusDesc.Text = HubRuntime.NovaStatus
-        if not novaCrystalInput:IsFocused() then novaCrystalInput.Text = S.NovaCrystal end
-        if not novaMaxInput:IsFocused() then novaMaxInput.Text = tostring(S.NovaMaxOpens) end
+    local function action(id,title,desc,fn,available)
+        local object,label,detail=card(title,desc,fn,COLORS.Green,available)
+        local item=register(id,"action",title,object); item.TitleLabel=label; item.Detail=detail
+        return item
     end
-end)
-
-task.spawn(function()
-    while SESSION.Alive and task.wait(2) do
-        local apex = findShopPetByNamePart("apex")
-        if apex then
-            apexTitle.Text = "Comprar "..apex.Name
-            apexDesc.Text = "Disponível no Pet Shop atual • requer Gems e espaço no inventário."
-        else
-            apexTitle.Text = "Comprar pet Apex"
-            apexDesc.Text = "Apex não foi encontrado no catálogo atual."
-        end
+    local function switch(id,title,desc,key,available,after)
+        local object=toggle(title,desc,key,available)
+        local item=register(id,"toggle",title,object,key)
+        if after then object.Activated:Connect(function() after(S[key]); renderAllToggles() end) end
+        return item
     end
-end)
-
-toggle(
-    "Abrir cristal automaticamente",
-    "Abre repetidamente o cristal selecionado abaixo.",
-    "Hatch",
-    canHatch
-)
-
-local crystals = {
-    "Blue Crystal","Green Crystal","Mythical Crystal","Frost Crystal",
-    "Inferno Crystal","Legends Crystal","Muscle Elite Crystal","Galaxy Oracle Crystal","Jungle Crystal"
-}
-local crystalIndex = 1
-card(
-    "Cristal selecionado: "..crystals[crystalIndex],
-    "Clique para alternar entre os cristais disponíveis.",
-    function(_,titleLabel)
-        crystalIndex = crystalIndex % #crystals + 1
-        S.HatchCrystal = crystals[crystalIndex]
-        titleLabel.Text = "Cristal selecionado: "..S.HatchCrystal
-    end,
-    COLORS.Yellow,
-    canHatch
-)
-
-card(
-    "Abrir 1 cristal",
-    "Abre uma vez o cristal atualmente selecionado.",
-    function()
-        safeInvoke(R.Crystal,"openCrystal",S.HatchCrystal)
-    end,
-    COLORS.Yellow,
-    canHatch
-)
-
-card(
-    "Equipar melhores pets de Força",
-    "Ordena seus pets pelo bônus de Strength e equipa os melhores disponíveis para o farm F2P.",
-    function()
-        if equipBestStrengthOwned() then
-            setHubStatus("Melhores pets de Força equipados")
-        else
-            setHubStatus("Não foi possível equipar pets de Força")
-        end
-    end,
-    COLORS.Yellow,
-    canPetManager
-)
-
-card(
-    "Equipar melhores pets",
-    "Ordena seus pets e tenta equipar os mais fortes que você já possui.",
-    equipBestOwned,
-    COLORS.Green,
-    canPetManager
-)
-
-card(
-    "Evoluir pets prontos",
-    "Procura grupos de pets repetidos e tenta evoluir quando houver quantidade suficiente.",
-    evolveReadyOwned,
-    COLORS.Green,
-    function() refreshRemotes(); return R.EvolvePet ~= nil and LP:FindFirstChild("petsFolder") ~= nil end
-)
-
-toggle(
-    "Auto-equip após hatch",
-    "Enquanto o Auto Hatch estiver ligado, atualiza periodicamente os melhores pets equipados.",
-    "AutoEquipAfterHatch",
-    function() return canHatch() and canPetManager() end
-)
-
-toggle(
-    "Auto-evoluir após hatch",
-    "Verifica periodicamente pets repetidos enquanto estiver abrindo cristais.",
-    "AutoEvolveAfterHatch",
-    function() refreshRemotes(); return canHatch() and R.EvolvePet ~= nil and LP:FindFirstChild("petsFolder") ~= nil end
-)
-
-section("TELEPORTES", "Navegação rápida usando os pontos de teleporte encontrados no mapa.")
-
-local tpNames = {}
-local tpParts = {}
-local area = workspace:FindFirstChild("areaTeleportParts")
-if area then
-    for _,obj in ipairs(area:GetDescendants()) do
-        if obj:IsA("BasePart") then
-            tpNames[#tpNames+1] = obj.Name
-            tpParts[obj.Name] = obj
-        end
+    local function input(id,title,value,callback)
+        local object=field(title,value,callback); register(id,"input",title,object)
+        return object
     end
-    table.sort(tpNames)
-end
-
-local tpIndex = 1
-card(
-    "Destino: "..(tpNames[1] or "nenhum encontrado"),
-    "Clique para trocar o destino do teleporte.",
-    function(_,titleLabel)
-        if #tpNames == 0 then return end
-        tpIndex = tpIndex % #tpNames + 1
-        titleLabel.Text = "Destino: "..tpNames[tpIndex]
-    end,
-    COLORS.Yellow,
-    function() return #tpNames > 0 end
-)
-
-card(
-    "Ir para o destino",
-    "Move seu personagem até o ponto selecionado acima.",
-    function()
-        local part = tpParts[tpNames[tpIndex]]
-        local character = LP.Character
-        local root = character and character:FindFirstChild("HumanoidRootPart")
-        if part and root then
-            root.CFrame = part.CFrame + Vector3.new(0,4,0)
-        end
-    end,
-    COLORS.Green,
-    function() return #tpNames > 0 end
-)
-
-section("PERFIS RÁPIDOS", "Atalhos que combinam várias funções para objetivos diferentes.")
-
-card(
-    "Perfil: Força",
-    "Ativa automaticamente o método de força disponível mais consistente nesta sessão.",
-    function()
-        stopAllAutomations()
-        if canMachineFarm() or canTrain() then
-            S.MaxStrengthF2P = true
-            pcall(equipBestStrengthOwned)
-        end
-        renderAllToggles()
-        setHubStatus("Perfil de Força ativado • F2P Máxima")
-    end,
-    COLORS.Green,
-    function() return canMachineFarm() or canTrain() end
-)
-
-card(
-    "Perfil: Durabilidade",
-    "Ativa soco + melhor pedra compatível com sua Durability atual.",
-    function()
-        stopAllAutomations()
-        S.AutoPunch = true
-        S.SmartRock = true
-        renderAllToggles()
-        setHubStatus("Perfil de Durabilidade ativado")
-    end,
-    COLORS.Green,
-    function() return canRockFarm() and canPunch() end
-)
-
-card(
-    "Perfil: Pets",
-    "Ativa Auto Hatch e, quando disponível, atualização automática dos melhores pets.",
-    function()
-        stopAllAutomations()
-        S.Hatch = true
-        if canPetManager() then
-            S.AutoEquipAfterHatch = true
-        end
-        renderAllToggles()
-        setHubStatus("Perfil de Pets ativado")
-    end,
-    COLORS.Yellow,
-    canHatch
-)
-
-card(
-    "Perfil: Rebirths",
-    "Combina treino disponível com tentativas de rebirth e mantém o ciclo automaticamente.",
-    function()
-        stopAllAutomations()
-        if canMachineFarm() then
-            S.AutoBestMachine = true
-            selectBestMachine()
-            S.AutoMachine = true
-        else
-            S.Train = true
-        end
-        S.StrengthRebirth = true
-        renderAllToggles()
-        setHubStatus("Perfil de Rebirths ativado")
-    end,
-    COLORS.Yellow,
-    function() return canRebirth() and (canMachineFarm() or canTrain()) end
-)
-
-card(
-    "Perfil: Rebirth F2P Máximo",
-    "Equipa melhores pets de Strength, ativa Força F2P Máxima e tenta rebirth assim que o servidor permitir.",
-    function()
-        stopAllAutomations()
-        pcall(equipBestStrengthOwned)
-        S.MaxStrengthF2P = true
-        S.Rebirth = true
-        renderAllToggles()
-        setHubStatus("Rebirth F2P Máximo ativado")
-    end,
-    COLORS.Yellow,
-    function() return canRebirth() and (canTrain() or canMachineFarm()) end
-)
-
-section("METAS", "Defina um objetivo e o hub para automaticamente quando alcançar o valor.")
-
-local goalStats = {"Strength","Agility","Durability","Rebirths"}
-local goalStatIndex = 1
-local goalAdds = {
-    Strength = {10000,100000,1000000,10000000},
-    Agility = {1000,5000,20000,50000},
-    Durability = {10000,100000,1000000,10000000},
-    Rebirths = {10,50,100,500},
-}
-local goalAddIndex = 0
-
-local _, goalStatTitle = card(
-    "Estatística da meta: Strength",
-    "Clique para alternar entre Strength, Agility, Durability e Rebirths.",
-    function(_,titleLabel)
-        goalStatIndex = goalStatIndex % #goalStats + 1
-        S.GoalStat = goalStats[goalStatIndex]
-        goalAddIndex = 0
-        S.GoalValue = nil
-        titleLabel.Text = "Estatística da meta: "..S.GoalStat
-    end,
-    COLORS.Yellow
-)
-
-local _, goalValueTitle = card(
-    "Definir meta: clique para escolher",
-    "Cria uma meta relativa ao seu valor atual.",
-    function(_,titleLabel)
-        local choices = goalAdds[S.GoalStat]
-        goalAddIndex = goalAddIndex % #choices + 1
-        local add = choices[goalAddIndex]
-        S.GoalValue = goalCurrentValue() + add
-        titleLabel.Text = "Meta: "..S.GoalStat.." = "..math.floor(S.GoalValue)
-        setHubStatus("Meta configurada: +"..add.." em "..S.GoalStat)
-    end,
-    COLORS.Green
-)
-
-toggle(
-    "Parar ao atingir a meta",
-    "Quando o valor definido for alcançado, todas as automações são desligadas.",
-    "GoalEnabled"
-)
-
-section("SESSÃO", "Informações úteis sobre seu progresso desde que o 710Hub foi iniciado.")
-
-local startTime = os.clock()
-local startRebirths = currentRebirths()
-local startAgility = numberStat("Agility")
-local startDurability = numberStat("Durability")
-local lastStrength = numberStat("Strength")
-local totalStrength = 0
-
-local _, sessionTitle, sessionDesc = card(
-    "Sessão: iniciando...",
-    "Calculando seus ganhos.",
-    function() end,
-    COLORS.Green
-)
-
-local _, efficiencyTitle, efficiencyDesc = card(
-    "Eficiência: calculando...",
-    "Mede os ganhos por minuto da sessão atual.",
-    function() end,
-    COLORS.Yellow
-)
-
-local function compactNumber(n)
-    n = tonumber(n) or 0
-    local a = math.abs(n)
-    if a >= 1e12 then return string.format("%.2fT", n/1e12) end
-    if a >= 1e9 then return string.format("%.2fB", n/1e9) end
-    if a >= 1e6 then return string.format("%.2fM", n/1e6) end
-    if a >= 1e3 then return string.format("%.1fK", n/1e3) end
-    return tostring(math.floor(n))
-end
-
-task.spawn(function()
-    while SESSION.Alive and task.wait(1) do
-        local elapsed = math.max(1, os.clock() - startTime)
-        local minutes = math.max(1/60, elapsed/60)
-
-        local strengthNow = numberStat("Strength")
-        if strengthNow >= lastStrength then
-            totalStrength += (strengthNow - lastStrength)
-        end
-        lastStrength = strengthNow
-
-        local rebirthGain = math.max(0, currentRebirths() - startRebirths)
-        local agilityGain = math.max(0, numberStat("Agility") - startAgility)
-        local durabilityGain = math.max(0, numberStat("Durability") - startDurability)
-
-        local strengthPerMin = totalStrength / minutes
-        local agilityPerMin = agilityGain / minutes
-        local durabilityPerMin = durabilityGain / minutes
-        local rebirthPerMin = rebirthGain / minutes
-
-        sessionTitle.Text = string.format(
-            "Sessão: %02d:%02d:%02d",
-            math.floor(elapsed/3600),
-            math.floor((elapsed%3600)/60),
-            math.floor(elapsed%60)
-        )
-
-        sessionDesc.Text = "Força: +"..compactNumber(totalStrength)
-            .." • Agility: +"..compactNumber(agilityGain)
-            .." • Rebirths: +"..compactNumber(rebirthGain)
-
-        efficiencyTitle.Text = "Eficiência • Força/min: "..compactNumber(strengthPerMin)
-            .." • Reb/min: "..string.format("%.2f", rebirthPerMin)
-
-        efficiencyDesc.Text = "Agility/min: "..compactNumber(agilityPerMin)
-            .." • Durability/min: "..compactNumber(durabilityPerMin)
-            .." • Objetivo: "..S.SmartObjective
-    end
-end)
-
-section("DIAGNÓSTICO", "Mostra o estado das partes principais do 710Hub em tempo real.")
-
-local _, diagTitle, diagDesc = card(
-    "Status: verificando...",
-    "Inicializando diagnóstico.",
-    function() end,
-    COLORS.Green
-)
-
-task.spawn(function()
-    while SESSION.Alive and task.wait(1) do
-        local remoteCount = 0
-        for _, remote in pairs(R) do
-            if remote then remoteCount += 1 end
-        end
-
-        local muscleOK = getMuscleEvent() ~= nil
-        local machineCount = #scanMachines()
-
-        diagTitle.Text = "Status: "..HubRuntime.Status
-        local selfTest = HubRuntime.SelfTestPassed
-            and (" • Teste: "..HubRuntime.SelfTestPassed.." OK/"..HubRuntime.SelfTestFailed.." OFF")
-            or ""
-        diagDesc.Text = "Remotes: "..remoteCount.."/8"
-            .." • muscleEvent: "..(muscleOK and "OK" or "AUSENTE")
-            .." • Máquinas: "..machineCount
-            .." • Respawns: "..HubRuntime.Respawns
-            .." • FPS: "..math.floor(HubRuntime.AvgFPS)
-            .." • Chamadas: "..HubRuntime.RemoteCalls
-            .." • Cortadas: "..HubRuntime.SkippedRemoteCalls
-            ..selfTest
-    end
-end)
-
-local _, selfTestTitle, selfTestDesc = card(
-    "Executar autoteste do 710Hub",
-    "Verifica funções e dependências sem gastar Gems, abrir cristais ou fazer rebirth.",
-    function(_,titleLabel,descLabel)
-        titleLabel.Text = "Autoteste em andamento..."
-        descLabel.Text = "Verificando personagem, remotes, máquinas, pets e executor."
-        local passed, failed = runSelfTest()
-        titleLabel.Text = "Autoteste: "..passed.." OK • "..failed.." indisponíveis"
-        descLabel.Text = failed == 0
-            and "Todas as dependências verificáveis estão disponíveis nesta sessão."
-            or "Abra o console ou use Copiar relatório para ver quais itens falharam."
-    end,
-    COLORS.Green
-)
-
-card(
-    "Copiar relatório do autoteste",
-    "Copia o diagnóstico completo para você colar aqui caso alguma função não esteja funcionando.",
-    function(_,titleLabel,descLabel)
-        if not HubRuntime.SelfTestReport then
-            runSelfTest()
-        end
-
-        if type(setclipboard) == "function" then
-            local ok = pcall(function()
-                setclipboard(HubRuntime.SelfTestReport)
-            end)
-            titleLabel.Text = ok and "Relatório copiado" or "Falha ao copiar relatório"
-            descLabel.Text = ok
-                and "Cole o relatório na conversa para eu analisar."
-                or "O executor não permitiu acesso à área de transferência."
-        else
-            titleLabel.Text = "Clipboard indisponível"
-            descLabel.Text = "O relatório completo foi enviado ao console do executor."
-        end
-    end,
-    COLORS.Yellow
-)
-
-card(
-    "Último erro",
-    "Exibe o último erro capturado pelas chamadas protegidas do hub.",
-    function(_,titleLabel,descLabel)
-        titleLabel.Text = "Último erro capturado"
-        descLabel.Text = HubRuntime.LastError
-    end,
-    COLORS.Yellow
-)
-
-section("UTILIDADES", "Controles gerais do 710Hub.")
-
-local lockButton = toggle(
-    "Travar posição",
-    "Mantém seu personagem parado exatamente no ponto atual até você desligar.",
-    "LockPosition",
-    hasCharacter
-)
-
-lockButton.Activated:Connect(function()
-    if S.LockPosition then
-        captureLockPosition()
-    else
-        lockedCFrame = nil
-    end
-end)
-
-card(
-    "Atualizar posição travada",
-    "Salva sua posição atual como o novo ponto fixo quando o Travar posição estiver ligado.",
-    function()
-        if S.LockPosition then
-            captureLockPosition()
-        end
-    end,
-    COLORS.Yellow
-)
-
-local stabilityButton = toggle(
-    "Modo Estável / Anti-Travamento",
-    "Limita chamadas, desacelera loops pesados, otimiza gráficos e reage automaticamente a quedas fortes de FPS.",
-    "StabilityMode"
-)
-
-stabilityButton.Activated:Connect(function()
-    -- O toggle altera S.StabilityMode antes deste callback. Reaplicamos pelo
-    -- controlador para salvar/restaurar os valores corretamente.
-    local desired = S.StabilityMode
-    S.StabilityMode = not desired
-    setStabilityMode(desired)
-    renderAllToggles()
-end)
-
-local _, stabilityInfoTitle, stabilityInfoDesc = card(
-    "Estabilidade: monitorando",
-    "Mostra FPS médio e quantas chamadas foram cortadas pelo limitador de carga.",
-    function() end,
-    COLORS.Yellow
-)
-
-task.spawn(function()
-    while SESSION.Alive and task.wait(1) do
-        stabilityInfoTitle.Text = "Estabilidade • FPS: "..math.floor(HubRuntime.AvgFPS)
-        stabilityInfoDesc.Text = "Chamadas cortadas: "..HubRuntime.SkippedRemoteCalls
-            .." • Proteções acionadas: "..HubRuntime.StabilityTrips
-            .." • Modo: "..(S.StabilityMode and "ESTÁVEL" or "NORMAL")
-    end
-end)
-
-local performanceButton, performanceTitle, performanceDesc = card(
-    "Modo desempenho: OFF",
-    "Reduz partículas, pós-processamento, sombras, água e qualidade gráfica local para aliviar GPU/CPU.",
-    function(_,titleLabel)
-        setPerformanceMode(not S.PerformanceMode)
-        titleLabel.Text = "Modo desempenho: "..(S.PerformanceMode and "ON" or "OFF")
-    end,
-    COLORS.Green
-)
-
-task.spawn(function()
-    while SESSION.Alive and task.wait(1) do
-        performanceTitle.Text = "Modo desempenho: "..(S.PerformanceMode and "ON" or "OFF")
-        performanceDesc.Text = S.PerformanceMode
-            and "Otimização gráfica local ativa • efeitos pesados reduzidos."
-            or "Reduz partículas, pós-processamento, sombras, água e qualidade gráfica local para aliviar GPU/CPU."
-    end
-end)
-
-card(
-    "Reentrar no servidor",
-    "Reconecta sua conta ao mesmo jogo caso a sessão fique travada.",
-    function()
-        stopAllAutomations()
-        setHubStatus("Reconectando...")
-        pcall(function()
-            TeleportService:Teleport(game.PlaceId, LP)
+    local function numeric(id,title,key,low,high,integer)
+        return input(id,title,S[key],function(text)
+            local value=tonumber((text:gsub(",",".")))
+            if not value or value~=value or value<low or value>high or integer and value%1~=0 then
+                return false,"Use "..low.." a "..high..(integer and " (inteiro)" or "")
+            end
+            S[key]=value; return true
         end)
-    end,
-    COLORS.Yellow
-)
-
-card(
-    "Parar todas as automações",
-    "Desliga treino, rebirth, baús, cristais e Brawl de uma vez.",
-    function()
-        stopAllAutomations()
-        renderAllToggles()
-    end,
-    COLORS.Red
-)
-
-card(
-    "Minimizar 710Hub",
-    "Esconde o painel e mantém o ícone 710 na tela para reabrir.",
-    hideMenu,
-    COLORS.Yellow
-)
-
-local footer = Instance.new("TextLabel")
-footer.Size = UDim2.new(1,-6,0,36)
-footer.BackgroundTransparency = 1
-footer.Text = "Modo Estável reduz carga • RightShift abre/fecha • END para tudo"
-footer.TextColor3 = COLORS.Muted
-footer.Font = Enum.Font.Gotham
-footer.TextSize = 9
-footer.Parent = scroll
-footer.Visible = false
-
-setHubStatus("Pronto • "..SESSION.Version)
-print("[710Hub] Muscle Legends carregado • stability build • "..SESSION.Version)
-
-
--- Controles de progressao reaproveitam os metodos de treino existentes.
-section("PROGRESSAO", "Rebirths por objetivo, treino posterior e parada por tempo.")
-do
-    local targetAdds = {10, 25, 50, 100}
-    local targetIndex = 1
-    card("Ciclo: +10 rebirths, depois forca", "Clique para escolher a quantidade antes de iniciar o ciclo.", function(_, titleLabel)
-        targetIndex = targetIndex % #targetAdds + 1
-        titleLabel.Text = "Ciclo: +" .. targetAdds[targetIndex] .. " rebirths, depois forca"
-    end, COLORS.Yellow)
-    card("Iniciar ciclo de progressao", "Treina e tenta rebirth ate a meta; depois continua somente o treino de forca.", function()
-        stopAllAutomations()
-        S.ProgressionTarget = currentRebirths() + targetAdds[targetIndex]
-        S.RebirthTarget = S.ProgressionTarget
-        S.MaxStrengthF2P = true
-        S.Rebirth = true
-        setHubStatus("Ciclo iniciado: meta de " .. S.ProgressionTarget .. " rebirths")
-        renderAllToggles()
-    end, COLORS.Green, function() return canRebirth() and (canTrain() or canMachineFarm()) end)
-    card("Otimizar pets para forca agora", "Equipa os melhores pets de forca que voce ja possui.", function()
-        local equipped = equipBestStrengthOwned()
-        setHubStatus(equipped and "Pets de forca equipados" or "Pets de forca indisponiveis")
-    end, COLORS.Green, canPetManager)
-
-    local durations = {0, 15, 30, 60, 120}
-    local durationIndex = 1
-    local _, timerTitle, timerDescription = card("Parada automatica: desligada", "Clique para escolher 15, 30, 60 ou 120 minutos; clique novamente para desligar.", function()
-        durationIndex = durationIndex % #durations + 1
-        local minutes = durations[durationIndex]
-        S.StopAt = minutes > 0 and (os.clock() + minutes * 60) or nil
-    end, COLORS.Yellow)
-    local _, rateTitle, rateDescription = card("Rendimento: medindo", "Estimativa baseada na variacao observada; nao cria multiplicadores.", function() end, COLORS.Green)
-    task.spawn(function()
-        local lastStrength, lastRebirths = numberStat("Strength"), currentRebirths()
-        local lastSample, sampleStarted = os.clock(), os.clock()
-        local strengthGain, rebirthGain = 0, 0
-        while SESSION.Alive and task.wait(1) do
-            local now = os.clock()
-            local strength, rebirths = numberStat("Strength"), currentRebirths()
-            -- Ignora a queda de forca causada pelo rebirth.
-            strengthGain += math.max(0, strength - lastStrength)
-            rebirthGain += math.max(0, rebirths - lastRebirths)
-            lastStrength, lastRebirths = strength, rebirths
-            if now - lastSample >= 10 then
-                local elapsed = math.max(1, now - sampleStarted)
-                rateTitle.Text = string.format("Forca/min: %.0f | Rebirths/h: %.1f", strengthGain * 60 / elapsed, rebirthGain * 3600 / elapsed)
-                rateDescription.Text = "Media observada desde a abertura. Mortes de bosses observadas: " .. HubRuntime.BossDeathsObserved
-                lastSample = now
-            end
-            if S.StopAt and M:canAct() and not M.Comparing then
-                local remaining = math.max(0, math.ceil(S.StopAt - now))
-                timerTitle.Text = string.format("Parada em %02d:%02d", math.floor(remaining / 60), remaining % 60)
-                if remaining == 0 then
-                    stopAllAutomations()
-                    setHubStatus("Tempo configurado encerrado")
-                end
-            else
-                timerTitle.Text = S.StopAt and "Parada automatica: pausada" or "Parada automatica: desligada"
-            end
-            timerDescription.Text = "Iniciar um novo perfil cancela o temporizador; configure o tempo depois do perfil."
-            if M:canAct() and not M.Comparing and S.ProgressionTarget and rebirths >= S.ProgressionTarget then
-                S.ProgressionTarget = nil
-                S.Rebirth = false
-                S.StrengthRebirth = false
-                S.SmartFarm = false
-                S.MaxStrengthF2P = true
-                setHubStatus("Meta de rebirth atingida: continuando treino de forca")
-                renderAllToggles()
-            end
-        end
-    end)
-end
-
--- BEGIN MAINTENANCE UI
--- Inserted inside initializeUI; isolated function keeps Luau register use bounded.
-local function maintenanceUI()
-    local function showReport(title, body)
-        local old = gui:FindFirstChild("MaintenanceReport")
-        if old then old:Destroy() end
-        local frame = Instance.new("Frame")
-        frame.Name = "MaintenanceReport"
-        frame.Size = UDim2.new(.85, 0, .75, 0)
-        frame.Position = UDim2.new(.075, 0, .125, 0)
-        frame.BackgroundColor3 = COLORS.Panel
-        frame.ZIndex = 20
-        frame.Parent = gui
-        addCorner(frame, 12)
-        local close = Instance.new("TextButton")
-        close.Text = title .. "  |  Fechar"
-        close.TextSize = 15
-        close.Font = Enum.Font.GothamBold
-        close.Size = UDim2.new(1, 0, 0, 36)
-        close.TextColor3 = COLORS.White
-        close.BackgroundColor3 = COLORS.GreenDark
-        close.ZIndex = 21
-        close.Parent = frame
-        close.Activated:Connect(function() frame:Destroy() end)
-        local reportScroll = Instance.new("ScrollingFrame")
-        reportScroll.Position = UDim2.fromOffset(8, 42)
-        reportScroll.Size = UDim2.new(1, -16, 1, -50)
-        reportScroll.BackgroundTransparency = 1
-        reportScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-        reportScroll.CanvasSize = UDim2.new()
-        reportScroll.ZIndex = 21
-        reportScroll.Parent = frame
-        local text = Instance.new("TextBox")
-        text.Size = UDim2.new(1, -12, 0, 0)
-        text.AutomaticSize = Enum.AutomaticSize.Y
-        text.Text = type(body) == "function" and body() or body
-        if type(body) == "function" then
-            task.spawn(function()
-                while SESSION.Alive and frame.Parent do
-                    local ok, value = pcall(body)
-                    if ok then text.Text = value end
-                    task.wait(.5)
-                end
-            end)
-        end
-        text.TextEditable = false
-        text.ClearTextOnFocus = false
-        text.MultiLine = true
-        text.TextWrapped = true
-        text.TextXAlignment = Enum.TextXAlignment.Left
-        text.TextYAlignment = Enum.TextYAlignment.Top
-        text.TextColor3 = COLORS.White
-        text.BackgroundTransparency = 1
-        text.TextSize = 16
-        text.Font = Enum.Font.Code
-        text.ZIndex = 22
-        text.Parent = reportScroll
     end
-    section("CONTROLE E PERFIS", "Salve configuracoes e suspenda o farm sem perder suas escolhas.")
-    local _, stateTitle, stateDesc = card("Estado da sessao", "", function() end, COLORS.Yellow)
-    card("Pausar / Retomar", "Mantem as opcoes. Pausas por morte ou vida baixa terminam quando o personagem estiver pronto.", function()
-        M:pause("Manual", not M.Reasons.Manual)
-        renderAllToggles()
-    end, COLORS.Yellow)
-    local _, profileTitle = card("Perfil: slot " .. M.ProfileSlot, "Clique para alternar entre os tres slots.", function(_, title)
-        M.ProfileSlot = M.ProfileSlot % 3 + 1
-        title.Text = "Perfil: slot " .. M.ProfileSlot
-    end, COLORS.Yellow)
-    card("Salvar perfil", "O ultimo perfil salvo sera restaurado em pausa ao abrir. Disco quando disponivel; senao, memoria da sessao.", function()
-        local _, message = M:saveProfile()
-        setHubStatus(message)
-        showReport("Perfil", message)
-    end, COLORS.Green)
-    card("Carregar perfil", "Restaura este slot em pausa. Clique em Retomar para iniciar as rotinas salvas.", function()
-        local _, message = M:loadProfile()
-        setHubStatus(message)
-        renderAllToggles()
-    end, COLORS.Green)
-    toggle("Retomar depois de morrer", "Espera Humanoid e personagem prontos; desligado exige Retomar manualmente.", "ResumeAfterDeath")
-
-    section("PROTECAO E BOSSES", "Prioridade de alvo e espera por recuperacao de vida.")
-    toggle("Movimentacao defensiva no boss", "Recua apos perder vida e aguarda no ponto escolhido. Vida baixa usa os limites configurados abaixo. Nao preve ataques.", "BossDefense")
-    card("Chances e historico dos bosses", "Comum 50%, Raro 30%, Epico 15%, Lendario 4%, Mitico 1%. Mostra historico observado; nao preve o sorteio.", function()
-        showReport("Chances dos bosses", M:bossOddsReport())
-    end, COLORS.Yellow)
-    local _, _, observedBossDesc = card("Bosses observados agora", "Procurando...", function()
-        M:observeBosses()
-        showReport("Bosses no mapa", M.VisibleBossText)
-    end, COLORS.Yellow)
-    card("Diagnosticar boss proximo", "Mostra nomes, vida e motivo de reconhecimento dos NPCs ate 150 studs. Abra perto do boss.", function()
-        showReport("Diagnostico de bosses", M:bossDiagnostic())
-    end, COLORS.Yellow)
-    field("Boss preferido (desempate por nome)", S.BossPreference, function(value)
-        value = value:match("^%s*(.-)%s*$")
-        if #value < 1 or #value > 150 then return false, "Nome precisa ter entre 1 e 150 caracteres" end
-        S.BossPreference = value
-        M:log("Boss", "Preferencia: " .. value)
-        return true, "Preferencia aplicada somente aos bosses reconhecidos"
-    end)
-    toggle("Protecao de vida baixa", "Pausa o combate abaixo do limite e espera recuperar. Retorna ao ponto inicial se o retorno estiver ligado.", "HealthGuard")
-    field("Pausar boss abaixo de vida (%)", S.HealthLow, function(value)
-        local n = tonumber(value)
-        if not n or n ~= n or n < 5 or n > 60 then return false, "Use de 5 a 60%" end
-        S.HealthLow = n; return true
-    end)
-    field("Retomar boss acima de vida (%)", S.HealthResume, function(value)
-        local n = tonumber(value)
-        if not n or n ~= n or n < 65 or n > 100 then return false, "Use de 65 a 100%" end
-        S.HealthResume = n; return true
-    end)
-    toggle("Alertar farm sem progresso", "Observa forca e rebirth; ignora pausas e combate com boss.", "StallAlerts")
-    field("Tempo sem progresso para alertar (segundos)", S.StallSeconds, function(value)
-        local n = tonumber(value)
-        if not n or n ~= n or n < 30 or n > 600 then return false, "Use de 30 a 600 segundos" end
-        S.StallSeconds = n; return true
-    end)
-
-    section("PVP E KARMA", "Combate contra jogadores proximos; o jogo decide o dano e os ganhos.")
-    toggle("PvP: qualquer jogador", "Aproxima e usa Punch no jogador vivo mais proximo, sem filtro de karma. Ignora protecao de spawn.", "PvpAny")
-    toggle("PvP: karma bom", "Busca jogadores com mais karma ruim que bom. Desliga apenas rotinas incompativeis; ignora karma desconhecido e neutros.", "PvpGood")
-    toggle("PvP: karma ruim", "Busca jogadores com mais karma bom que ruim. Desliga apenas rotinas incompativeis; ignora karma desconhecido e neutros.", "PvpEvil")
-    field("Raio de busca PvP (studs)", S.PvpRadius, function(value)
-        local number = tonumber(value)
-        if not number or number ~= number or number < 10 or number > 500 then return false, "Use de 10 a 500 studs" end
-        S.PvpRadius = number; return true
-    end)
-    field("Distancia do soco (studs)", S.PvpAttackRange, function(value)
-        local number = tonumber(value)
-        if not number or number ~= number or number < 1.5 or number > 5 then return false, "Use de 1.5 a 5 studs" end
-        S.PvpAttackRange = number; return true
-    end)
-    local _, _, pvpStatus = card("Estado do PvP", "Desligado", function()
-        showReport("PvP ao vivo", function() return (M.PvpStatus or "Desligado") .. "\n\n" .. (M.PvpDiagnostic or "Ligue um modo para analisar os jogadores.") .. "\n\nNao garante kills ou karma. Use Parar tudo para encerrar. Perfis carregados nao iniciam PvP automaticamente." end)
-    end, COLORS.Yellow)
-
-    section("METAS E COMPARACAO", "Metas digitadas e recomendacao baseada em treino observado.")
-    field("Meta absoluta da estatistica selecionada em METAS", S.GoalValue, function(value)
-        local ok, message = M:setGoal(value)
-        return ok, message or ("Meta definida para " .. S.GoalStat .. "; ative a parada por meta em METAS")
-    end)
-    field("Rebirths adicionais no ciclo personalizado", 25, function(value)
-        local n = tonumber(value)
-        if not n or n ~= n or n % 1 ~= 0 or n < 1 or n > 1000000 then return false, "Use um inteiro de 1 a 1000000" end
-        M.CustomRebirths = n; return true
-    end)
-    card("Iniciar ciclo personalizado", "Faz a quantidade digitada de rebirths e depois continua o treino de forca.", function()
-        stopAllAutomations()
-        S.ProgressionTarget = currentRebirths() + (M.CustomRebirths or 25)
-        S.RebirthTarget = S.ProgressionTarget
-        S.MaxStrengthF2P, S.Rebirth = true, true
-        renderAllToggles()
-    end, COLORS.Green, function() return canRebirth() and (canTrain() or canMachineFarm()) end)
-    card("Comparar metodos de treino", "Mede ate tres metodos por 20s cada. Suspende rebirth e outras rotinas durante a medicao.", function()
-        local _, message = M:beginComparison()
-        setHubStatus(message)
-    end, COLORS.Green)
-    card("Resultado da comparacao", "Mostra taxas observadas; amostras interrompidas nao contam como recomendacao.", function()
-        local lines = {M.ComparisonStatus or "Nenhuma comparacao realizada"}
-        for _, result in ipairs(M.BenchmarkResults) do
-            lines[#lines + 1] = result.Name .. ": " .. (result.Valid and (math.floor(result.Rate) .. " forca/min") or "amostra invalida")
-        end
-        showReport("Comparacao", table.concat(lines, "\n"))
-    end, COLORS.Yellow)
-    toggle("Preservar meus pets no F2P", "Impede a troca periodica de pets pelo farm F2P Maximo. Equipar pets manualmente pelo menu continua disponivel.", "PreserveFarmPets")
-    section("RENDIMENTO E PLANEJAMENTO", "Acompanhe ganhos reais e organize os ciclos de treino.")
-    card("Velocidade do farm", "Clique: Normal / Rapido / Turbo. Ajusta Forca Rapida e o treino em rajada do F2P; nao multiplica a forca concedida pelo servidor.", function(_, title, detail)
-        if M.Comparing then setHubStatus("Aguarde a comparacao terminar"); return end
-        S.FarmCustom, M.BestTraining = false, nil
-        S.FarmSpeed = math.floor(S.FarmSpeed or 2) % 3 + 1
-        local names = {"Normal", "Rapido", "Turbo"}
-        local delay, burst = M:farmPace()
-        title.Text = "Velocidade do farm: " .. names[S.FarmSpeed]
-        detail.Text = string.format("Ate %d tentativas de rep por ciclo de %.2fs. Modo Estavel reduz o ritmo. Compare o rendimento real abaixo.", burst, delay)
-        setHubStatus("Velocidade: " .. names[S.FarmSpeed])
-    end, COLORS.Green)
-
-    field("Intervalo do farm (ms)", S.FarmIntervalMs, function(value)
-        return M:setFarmTiming("FarmIntervalMs", value)
-    end)
-    field("Repeticoes por ciclo", S.FarmReps, function(value)
-        return M:setFarmTiming("FarmReps", value)
-    end)
-    local _, paceTitle, paceDesc = card("Ritmo aplicado", "", function() end, COLORS.Yellow)
-
-    local _, rateTitle, rateDesc = card("Rendimento recente", "Aguardando pelo menos 10 segundos de treino.", function()
-        showReport("Rendimento", "A taxa usa ate 60 segundos de observacoes. Pausas, rebirth e quedas de forca reiniciam a janela.\nA previsao depende de manter o mesmo ritmo; nao e garantia de ganho.")
-    end, COLORS.Yellow)
-    field("Forca desejada para a previsao (nao para o treino)", 1000000, function(value)
-        local n = tonumber(value)
-        if not n or n ~= n or n < 1 or n > 1e15 then return false, "Use um numero entre 1 e 1e15" end
-        M.PlanningTarget = n
-        return true, "Previsao atualizada"
-    end)
-    toggle("Esperar forca minima antes do rebirth", "O valor abaixo e um limite escolhido por voce, nao o requisito oficial do jogo.", "RebirthGuard")
-    field("Forca minima para tentar rebirth", S.RebirthFloor, function(value)
-        local n = tonumber(value)
-        if not n or n ~= n or n < 0 or n > 1e15 then return false, "Use de 0 a 1e15" end
-        S.RebirthFloor = n; return true
-    end)
-    field("Intervalo entre tentativas de rebirth (segundos)", S.RebirthInterval, function(value)
-        local n = tonumber(value)
-        if not n or n ~= n or n < .5 or n > 30 then return false, "Use de 0.5 a 30 segundos" end
-        S.RebirthInterval = n; return true
-    end)
-    card("Aplicar melhor treino medido", "Usa o resultado da ultima comparacao concluida. Desliga somente rotinas incompativeis com o treino escolhido.", function()
-        local key = ({Ferramenta = "Train", Rajada = "TurboStrength", Maquina = "AutoMachine"})[M.BestTraining]
-        if not key or M.Comparing then setHubStatus("Conclua uma comparacao valida primeiro"); return end
-        if not (key == "AutoMachine" and canMachineFarm() or key ~= "AutoMachine" and canTrain()) then
-            setHubStatus("O metodo medido nao esta disponivel agora"); return
-        end
-        if key == "AutoMachine" then selectBestMachine() end
-        S[key] = true
-        resolveToggleConflicts(key)
-        renderAllToggles()
-        setHubStatus("Treino aplicado: " .. M.BestTraining)
-    end, COLORS.Green)
-    toggle("Pausas programadas", "Conta apenas tempo ativo. Preserva suas opcoes e retoma depois do descanso; outras pausas continuam valendo.", "BreakEnabled")
-    field("Descansar a cada quantos minutos ativos", S.BreakEvery, function(value)
-        local n = tonumber(value)
-        if not n or n ~= n or n < 1 or n > 240 then return false, "Use de 1 a 240 minutos" end
-        S.BreakEvery = n; M:resetBreak(); return true
-    end)
-    field("Duracao do descanso (minutos)", S.BreakMinutes, function(value)
-        local n = tonumber(value)
-        if not n or n ~= n or n < 1 or n > 60 then return false, "Use de 1 a 60 minutos" end
-        S.BreakMinutes = n; M:resetBreak(); return true
-    end)
-    card("Terminar descanso atual", "Reinicia o contador de descanso. Nao remove pausa manual, respawn ou protecao de vida.", function()
-        M:resetBreak()
-        setHubStatus("Contador de descanso reiniciado")
-    end, COLORS.Yellow)
-    section("BONUS OFICIAIS", "Codigos e beneficios publicados na pagina do Muscle Legends.")
-    for _, code in ipairs({"megalift50", "speedy50", "spacegems50", "ultimate250"}) do
-        card("Codigo: " .. code, "Clique para copiar e resgate na tela de codigos do jogo. A validade depende do servidor.", function()
-            local copied = type(setclipboard) == "function" and pcall(setclipboard, code)
-            if copied then setHubStatus("Codigo copiado: " .. code) else showReport("Codigo para copiar", code) end
-        end, COLORS.Yellow)
+    local function modal(title)
+        local old=main:FindFirstChild("710Hub_Choice"); if old then old:Destroy() end
+        local overlay=Instance.new("Frame")
+        overlay.Name="710Hub_Choice"; overlay.Size=UDim2.fromScale(1,1); overlay.ZIndex=20
+        overlay.BackgroundColor3=COLORS.Black; overlay.BackgroundTransparency=.08
+        overlay.BorderSizePixel=0; overlay.Active=true; overlay.Parent=main; addCorner(overlay,14)
+        local label=UI:label(overlay,title,16,COLORS.White)
+        label.Position=UDim2.fromOffset(16,12); label.Size=UDim2.new(1,-86,0,44); label.TextWrapped=true; label.ZIndex=21
+        local close=Instance.new("TextButton")
+        close.Size=UDim2.fromOffset(48,44); close.Position=UDim2.new(1,-62,0,12)
+        close.Text="×"; close.TextSize=24; close.BackgroundColor3=COLORS.Panel2; close.TextColor3=COLORS.White
+        close.ZIndex=22; close.Parent=overlay; addCorner(close,8)
+        close.Activated:Connect(function() overlay:Destroy() end)
+        return overlay
     end
-    card("Como obter bonus oficiais", "Consulte os beneficios antes de escolher seu treino.", function()
-        showReport("Bonus oficiais", "A pagina do jogo informa:\n\nPremium: 2x forca no treino, +2 giros diarios, 2x recompensas de bau e +1 espaco de pet.\nGrupo Scriptbloxian Studios: bau do grupo e +1 giro diario.\n\nO 710Hub nao compra beneficios nem altera multiplicadores. Confira a elegibilidade dentro do jogo.\nFonte: https://www.roblox.com/games/3623096087/Muscle-Legends\nConsultado em 27/09/2026.")
-    end, COLORS.Yellow)
-    section("HISTORICO E COMPATIBILIDADE", "Eventos recentes e recursos disponiveis nesta sessao.")
-    card("Diagnostico da logo", "Confira se a imagem foi baixada e se o ambiente oferece imagens locais.", function()
-        showReport("Logo neon", (M.LogoStatus or "Aguardando carregamento") .. "\nVersao: " .. SESSION.Version)
-    end, COLORS.Yellow)
-    card("Abrir historico da sessao", "Ganhos observados, mortes, pausas e ultimos 150 eventos.", function()
-        showReport("Historico", M:report())
-    end, COLORS.Green)
-    card("Exportar historico", "Grava 710hub_historico.txt quando permitido. O relatorio tambem pode ser selecionado e copiado.", function()
-        local report = M:report()
-        if type(writefile) == "function" then
-            local ok = pcall(writefile, "710hub_historico.txt", report)
-            setHubStatus(ok and "Historico exportado" or "Falha ao gravar historico")
+    local function report(title,body)
+        local overlay=modal(title)
+        local list=Instance.new("ScrollingFrame")
+        list.Position=UDim2.fromOffset(16,70); list.Size=UDim2.new(1,-32,1,-86)
+        list.CanvasSize=UDim2.new(); list.AutomaticCanvasSize=Enum.AutomaticSize.Y
+        list.ScrollBarThickness=5; list.BackgroundTransparency=1; list.BorderSizePixel=0; list.ZIndex=21; list.Parent=overlay
+        local text=Instance.new("TextBox")
+        text.Text=type(body)=="function" and body() or body; text.TextEditable=false; text.ClearTextOnFocus=false; text.MultiLine=true; text.TextWrapped=true
+        text.Size=UDim2.new(1,-12,0,0); text.AutomaticSize=Enum.AutomaticSize.Y; text.TextSize=14
+        text.TextXAlignment=Enum.TextXAlignment.Left; text.TextYAlignment=Enum.TextYAlignment.Top
+        text.Font=Enum.Font.Gotham; text.TextColor3=COLORS.White; text.BackgroundTransparency=1; text.ZIndex=22; text.Parent=list
+        if type(body)=="function" then task.spawn(function()
+            while SESSION.Alive and overlay.Parent do text.Text=body(); task.wait(1) end
+        end) end
+    end
+    local function choose(title,options,callback)
+        local overlay=modal(title)
+        local search=Instance.new("TextBox")
+        search.Name="OptionSearch"; search.Text=""; search.PlaceholderText="Pesquisar opção..."; search.ClearTextOnFocus=false
+        search.Position=UDim2.fromOffset(16,64); search.Size=UDim2.new(1,-32,0,44)
+        search.TextSize=16; search.TextColor3=COLORS.White; search.BackgroundColor3=COLORS.Panel2
+        search.ZIndex=22; search.Parent=overlay; addCorner(search,8)
+        local list=Instance.new("ScrollingFrame")
+        list.Position=UDim2.fromOffset(16,116); list.Size=UDim2.new(1,-32,1,-132)
+        list.CanvasSize=UDim2.new(); list.AutomaticCanvasSize=Enum.AutomaticSize.Y
+        list.BackgroundTransparency=1; list.BorderSizePixel=0; list.ScrollBarThickness=5; list.ZIndex=21; list.Parent=overlay
+        local layout=Instance.new("UIListLayout"); layout.Padding=UDim.new(0,6); layout.Parent=list
+        local rows={}
+        for index,option in ipairs(options) do
+            local button=Instance.new("TextButton")
+            button.Name="Option_"..index; button.Text=option.Label; button.TextWrapped=true
+            button.Size=UDim2.new(1,-10,0,52); button.TextSize=14; button.TextColor3=COLORS.White
+            button.BackgroundColor3=COLORS.Panel2; button.LayoutOrder=index; button.ZIndex=22; button.Parent=list; addCorner(button,8)
+            rows[#rows+1]={Object=button,Text=UI:normalize(option.Label)}
+            button.Activated:Connect(function() overlay:Destroy(); callback(option.Value) end)
         end
-        showReport("Historico", report)
-    end, COLORS.Yellow)
-    card("Verificar compatibilidade agora", "Inspeciona objetos e recursos; nao confirma que o servidor aceitara as acoes.", function()
-        showReport("Compatibilidade", M:checkCompatibility())
-    end, COLORS.Green)
+        local empty=UI:label(list,"Nenhuma opção disponível",14,COLORS.Muted)
+        empty.Size=UDim2.new(1,-10,0,52); empty.ZIndex=22
+        local function filter()
+            local count,query=0,UI:normalize(search.Text)
+            for _,row in ipairs(rows) do row.Object.Visible=row.Text:find(query,1,true)~=nil; if row.Object.Visible then count+=1 end end
+            empty.Visible=count==0; list.CanvasPosition=Vector2.new()
+        end
+        search:GetPropertyChangedSignal("Text"):Connect(filter); filter()
+    end
+    UI.Choose=choose; UI.Report=report
+    local function choices(id,title,desc,values,callback,available)
+        return action(id,title,desc,function()
+            local items=type(values)=="function" and values() or values
+            choose(title,items,callback)
+        end,available)
+    end
+    local function strings(values)
+        local out={}; for _,value in ipairs(values) do out[#out+1]={Label=value,Value=value} end; return out
+    end
+    local function group(name,category,desc) UI.Groups[name]=category; section(name,desc) end
+
+    group("TREINO","Farm","Um controlador de treino, com método escolhido e limites de carga.")
+    choices("farm_preset","Configuração rápida","Ultra combinado: clássico + lotes juntos. Ultra rápido: lotes/ping. Força acumulada: 659/s. Rebirth rápido: prioridade à confirmação. Seus pets são mantidos.",strings({"Ultra combinado","Ultra rápido","Força acumulada","Rebirth rápido"}),function(value) C:applyPreset(value); UI:syncFields(); renderAllToggles() end)
+    choices("farm_method","Método de treino","Fast Rep ajusta o ritmo pelos ganhos reais; Automático escolhe máquina ou ferramenta.",strings(C.Modes),function(mode) C:setMode(mode); renderAllToggles() end)
+    local farm=action("farm_start","Iniciar / parar treino","Inicia o método selecionado; aguarda durante combate com boss.",function()
+        if C:farming() then C:clearFarm() else C:startFarm() end
+        renderAllToggles()
+    end)
+    choices("machine_select","Máquina do treino","Lista atual do mapa; aparece ao escolher o método Máquina.",function()
+        local out={}; for _,machine in ipairs(scanMachines()) do out[#out+1]={Label=machine.name,Value=machine.name} end; return out
+    end,function(name) S.SelectedMachine=name end,function() return S.FarmMode=="Máquina" and canMachineFarm() end)
+    choices("rep_profile","Envio de reps","Combinado soma clássico e lotes dentro do teto total; Ultra usa lotes/ping; Explorar mede ganhos. Seus pets são preservados.",strings({"Combinado","Ultra (lotes)","Explorar limite","Intensivo","Adaptativo"}),function(value) S.FastRepProfile=value; HubRuntime.FastRep:cancel() end)
+    numeric("fast_rep_limit","Fast Rep: teto local de pedidos/s (40–10000)","FastRepLimit",40,10000,true)
+    local pace=action("farm_pace","Rendimento do Fast Rep","Força, durabilidade, rebirths e pedidos enviados; atualiza a cada segundo sem alterar seus pets.",function() report("Rendimento observado",function() return HubRuntime.FastRep:report() end) end)
+    input("farm_interval","Outros métodos: intervalo em rajada (ms)",S.FarmIntervalMs,function(value) return M:setFarmTiming("FarmIntervalMs",value) end)
+    input("farm_reps","Outros métodos: reps por ciclo em rajada",S.FarmReps,function(value) return M:setFarmTiming("FarmReps",value) end)
+    switch("rebirth_auto","Fast rebirth / rebirth automático","Mantém o treino de força durante resposta e confirmação, com um pedido de rebirth por vez. Zero remove a espera local. Seus pets são mantidos.","Rebirth",canRebirth)
+    numeric("rebirth_interval","Espera local do rebirth (0 = sem cooldown)","RebirthInterval",0,30)
+    input("rebirth_target","Meta absoluta de rebirths (0 = sem limite)",S.RebirthTarget or 0,function(value)
+        local n=tonumber(value); if not n or n~=n or n%1~=0 or n<0 or n>1e15 then return false,"Use um inteiro de 0 a 1e15" end
+        S.RebirthTarget=n>0 and n or nil; return true
+    end)
+    switch("chests_auto","Coletar baús","Solicita somente os baús conhecidos; o jogo valida elegibilidade e intervalo.","Chests",canChestFarm)
+    switch("wheel_auto","Roleta automática","No máximo um pedido a cada 5 segundos; usa os giros da conta.","AutoWheel",function() return X:fortuneCatalog()~=nil and rEvents:FindFirstChild("openFortuneWheelRemote")~=nil end)
+    switch("eggs_auto","Consumir Protein Eggs","Consome ovos possuídos, um item por vez.","AutoEggs")
+    switch("boosts_auto","Consumir shakes e barras","Consome itens possuídos, com intervalo por item.","AutoBoosts")
+
+    group("BOSS","Bosses","Uma rotina de ataque com prioridade de raridade e recuperação de vida.")
+    switch("boss_auto","Auto Kill Boss / farm de boss","Reconhece bosses carregados, acompanha o alvo e usa Punch.","AutoBoss",canAutoBoss)
+    switch("boss_above","Atacar acima do boss de cabeça para baixo","Mantém a pose invertida acima da cabeça; a altura precisa permitir alcance do soco.","BossAbove")
+    numeric("boss_height","Altura / distância do boss (studs)","BossDistance",2,12)
+    switch("boss_loot","Coletar drops do boss","Tenta interagir com recompensas novas próximas do boss.","BossAutoLoot")
+    switch("boss_return","Retornar depois do boss","Retorna ao ponto salvo no início do combate.","BossReturn")
+    switch("boss_defense","Recuar após dano","Libera a pose invertida e aguarda após perder vida.","BossDefense")
+    switch("health_guard","Proteção de vida baixa","Suspende ataque para recuperação antes de continuar.","HealthGuard")
+    input("health_limits","Vida: recuar / retomar (%)",S.HealthLow.." / "..S.HealthResume,function(text)
+        local low,high=text:match("^%s*(%d+)%s*/%s*(%d+)%s*$"); low,high=tonumber(low),tonumber(high)
+        if not low or not high or low<5 or low>60 or high<65 or high>100 then return false,"Exemplo: 55 / 85; recuo 5–60, retomada 65–100" end
+        S.HealthLow,S.HealthResume=low,high; return true
+    end)
+    local boss=action("boss_status","Estado do boss","Aguardando",function() report("Boss",M:bossDiagnostic()) end)
+
+    group("JOGADORES","PvP","Um controlador de PvP, com proteção de contas e filtro de karma.")
+    choices("player_select","Selecionar jogador","Usa UserId; nome de exibição e @usuário ajudam a identificar a conta.",function() return X:playerOptions() end,function(id) X.SelectedUserId=id end)
+    choices("pvp_filter","Filtro do PvP","Todos, karma bom, karma ruim ou apenas a conta selecionada.",strings({"Todos","Karma bom","Karma ruim","Selecionado"}),function(value) C:setFilter(value); renderAllToggles() end)
+    local pvp=action("pvp_start","Iniciar / parar PvP","Aproxima e usa Punch; ignora spawn protegido e contas da lista de proteção.",function()
+        if C:pvpActive() then S.PvpAny,S.PvpGood,S.PvpEvil=false,false,false; M:stopPvp() else C:startPvp() end
+        renderAllToggles()
+    end)
+    switch("pvp_friends","Proteger amigos no PvP","Consultas de amizade ocorrem fora do combate; pendentes ficam protegidas.","PvpProtectFriends")
+    action("player_protect","Proteger / liberar jogador","Alterna a proteção da conta selecionada nesta sessão.",function()
+        local player=X:selectedPlayer(); if not player then setHubStatus("Selecione um jogador presente"); return end
+        X.Whitelist[player.UserId]=not X.Whitelist[player.UserId] and true or nil
+        setHubStatus(X.Whitelist[player.UserId] and "Conta protegida" or "Proteção removida")
+    end)
+    switch("spectate","Observar jogador","Acompanha a câmera do alvo; restaura ao desligar ou se ele sair.","Spectate")
+    action("player_stats","Ver estatísticas do jogador","Exibe apenas os valores replicados e a vida atual.",function()
+        local player=X:selectedPlayer(); if not player then setHubStatus("Selecione um jogador presente"); return end
+        local lines={"@"..player.Name.." | UserId: "..player.UserId}
+        for _,key in ipairs({"Strength","Durability","Agility","Rebirths","goodKarma","evilKarma"}) do lines[#lines+1]=key..": "..tostring(M:playerKarma(player,{key}) or "indisponível") end
+        local hum=player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+        lines[#lines+1]=hum and string.format("Vida: %.0f / %.0f",hum.Health,hum.MaxHealth) or "Personagem ausente"
+        report("Jogador",table.concat(lines,"\n"))
+    end)
+
+    group("COLEÇÃO E CRISTAIS","Pets","Um gerenciador de pets, abertura com limite e compra manual por lote.")
+    choices("pet_attribute","Prioridade dos pets","Usa atributos legíveis dos pets possuídos; preserva a coleção se faltarem dados.",{
+        {Label="Força",Value="strength"},{Label="Durabilidade",Value="durability"},{Label="Agilidade",Value="agility"},
+    },function(value) S.PetObjective=value; if S.AutoBestPetObjective then X:equipObjective() end end)
+    switch("pets_auto","Equipar melhores pets automaticamente","Aplica a prioridade agora e reavalia a cada 10 segundos.","AutoBestPetObjective",canPetManager,function(enabled)
+        if enabled then S.PreserveFarmPets=true; X:equipObjective() end
+    end)
+    switch("evolve_auto","Evoluir pets repetidos","Usa grupos de cinco; preserva pets equipados, bloqueados e favoritos.","AutoEvolveOwned",function() return R.EvolvePet~=nil end)
+    choices("crystal_select","Cristal para abrir","Lista de cristais conhecidos; confirme preço e elegibilidade no jogo.",strings({
+        "Blue Crystal","Green Crystal","Mythical Crystal","Frost Crystal","Inferno Crystal","Legends Crystal",
+        "Muscle Elite Crystal","Galaxy Oracle Crystal","Jungle Crystal","Charged Crystal",
+    }),function(name) if S.Hatch then C:stopHatch() end; S.HatchCrystal=name end,canHatch)
+    numeric("hatch_limit","Máximo de aberturas (1 a 100)","HatchMaxOpens",1,100,true)
+    input("hatch_target","Pet alvo opcional (nome exato)",S.HatchTargetPet,function(value)
+        local name=value:match("^%s*(.-)%s*$"); if #name>80 then return false,"Use até 80 caracteres" end
+        if S.Hatch then return false,"Pare a abertura antes de mudar o alvo" end
+        S.HatchTargetPet=name; return true
+    end)
+    switch("hatch_auto","Abrir cristal com limite","Para no limite, ao encontrar o alvo ou após recusas/falta de progresso.","Hatch",canHatch,function(enabled) if enabled then C:startHatch() else C:stopHatch() end end)
+    local hatch=action("hatch_status","Estado das aberturas","Desligado",nil)
+    choices("shop_select","Selecionar pet ou aura da loja","Catálogo atual, sem inventar itens nem usar nomes aproximados.",function() return X:shopOptions() end,function(name) X.Token+=1; X.ShopName=name end,canPetShop)
+    numeric("shop_count","Quantidade de compras (1 a 20)","ShopCount",1,20,true)
+    action("shop_buy","Comprar lote selecionado","Gasta a moeda do jogo; uma compra por vez, com cancelamento das restantes.",function() X:buyBatch() end,canPetShop)
+
+    group("OBJETIVOS","Metas","Uma meta de parada e um temporizador da sessão.")
+    choices("goal_stat","Estatística da meta","Escolha qual valor encerra as automações.",strings({"Strength","Durability","Agility","Rebirths"}),function(value) S.GoalStat=value end)
+    input("goal_value","Valor absoluto da meta",S.GoalValue or "",function(value) return M:setGoal(value) end)
+    switch("goal_enabled","Parar ao atingir a meta","Encerra as rotinas quando o valor configurado for observado.","GoalEnabled",function() return S.GoalValue~=nil end)
+    input("stop_minutes","Encerrar após minutos ativos (0 = desligado)",0,function(value)
+        local minutes=tonumber((value:gsub(",",".")))
+        if not minutes or minutes~=minutes or minutes<0 or minutes>240 then return false,"Use 0 a 240 minutos" end
+        S.StopAt=minutes>0 and os.clock()+minutes*60 or nil; return true
+    end)
+
+    group("PERFIS SALVOS","Perfis","Três configurações; o carregamento começa em pausa.")
+    choices("profile_slot","Slot do perfil","Escolha um dos três slots.",strings({"1","2","3"}),function(value) M.ProfileSlot=tonumber(value) end)
+    action("profile_save","Salvar perfil","Salva a configuração na sessão ou em disco quando disponível.",function() local _,message=M:saveProfile(); report("Perfil",message) end)
+    action("profile_load","Carregar perfil","Restaura configurações em pausa; PvP não inicia automaticamente.",function()
+        X.Token+=1; C:stopHatch(); local _,message=M:loadProfile(); report("Perfil",message)
+        if UI.SyncFields then UI.SyncFields() end
+        renderAllToggles()
+    end)
+    switch("resume_death","Retomar depois de morrer","Aguarda personagem e ferramentas; desligado requer Retomar manualmente.","ResumeAfterDeath")
+
+    group("SESSÃO E DIAGNÓSTICO","Sessão","Estado real das rotinas, histórico e verificação de dependências.")
+    local status=action("session_status","Estado da sessão","Inicializando",nil)
+    action("history","Histórico da sessão","Mostra eventos, pausas e ganhos observados em um único relatório.",function() report("Histórico",M:report()) end)
+    action("self_test","Verificar dependências","Confere objetos e APIs; não compra itens nem concede atributos.",function()
+        local _,_,body=runSelfTest(); report("Dependências",body)
+    end)
+
+    group("PREFERÊNCIAS E NAVEGAÇÃO","Ajustes","Controles reversíveis para celular e PC.")
+    choices("teleport","Teleportar","Lista única: pontos carregados, academias conhecidas e posição salva.",function() return C:destinations() end,function(frame) task.spawn(function() X:travel(frame) end) end)
+    action("save_position","Salvar posição atual","Adiciona seu ponto atual à lista de teleportes desta sessão.",function()
+        local root=LP.Character and LP.Character:FindFirstChild("HumanoidRootPart"); if root then X.ReturnPoint=root.CFrame; setHubStatus("Posição salva") end
+    end)
+    local stable=switch("stability","Modo estável","Limita chamadas e reduz carga quando os FPS caem.","StabilityMode",nil,function(desired)
+        S.StabilityMode=not desired; setStabilityMode(desired)
+    end)
+    switch("performance","Reduzir efeitos gráficos","Reduz efeitos locais e restaura as propriedades ao desligar.","PerformanceMode",nil,function(desired)
+        S.PerformanceMode=not desired; setPerformanceMode(desired)
+    end)
+    numeric("character_speed","Velocidade do personagem", "CharacterSpeed",1,500)
+    switch("speed_enabled","Aplicar velocidade","Solicita o valor a cada 2 segundos; o jogo valida o limite.","SetSpeed",function() return rEvents:FindFirstChild("changeSpeedSizeRemote")~=nil end)
+    numeric("character_size","Tamanho do personagem", "CharacterSize",1,100)
+    switch("size_enabled","Aplicar tamanho","Usa o canal conhecido de alteração de tamanho.","SetSize",function() return rEvents:FindFirstChild("changeSpeedSizeRemote")~=nil end)
+    numeric("camera_fov","Campo de visão", "CameraFOV",30,120)
+    switch("fov_enabled","Aplicar campo de visão","Restaura o FOV anterior ao desligar ou encerrar.","SetFOV")
+    switch("shiftlock","Shiftlock","Trava o cursor e desloca a câmera; clique novamente para liberar.","ShiftLock")
+    switch("jump","Pulo contínuo","Usa o comando de salto do Roblox, incluindo o botão de celular.","InfiniteJump")
+    switch("antifling","Proteção contra arremesso","Reage a velocidades anormais sem disputar posicionamento de combate.","AntiFling")
+    action("rejoin","Reentrar na sessão","Para as rotinas e solicita retorno ao servidor atual.",function()
+        stopAllAutomations(); TeleportService:TeleportToPlaceInstance(game.PlaceId,game.JobId,LP)
+    end)
+    action("close","Encerrar 710Hub","Para as rotinas, restaura efeitos e remove o painel.",function() stopAllAutomations(); SESSION.Cleanup() end)
+
+    function UI:syncFields()
+        for id,key in pairs({fast_rep_limit="FastRepLimit",farm_interval="FarmIntervalMs",farm_reps="FarmReps",rebirth_interval="RebirthInterval",
+            boss_height="BossDistance",hatch_limit="HatchMaxOpens",hatch_target="HatchTargetPet",shop_count="ShopCount",
+            character_speed="CharacterSpeed",character_size="CharacterSize",camera_fov="CameraFOV"}) do
+            registry[id].Object.Text=tostring(S[key]); registry[id].Object.TextColor3=COLORS.White
+        end
+        registry.rebirth_target.Object.Text=tostring(S.RebirthTarget or 0)
+        registry.goal_value.Object.Text=tostring(S.GoalValue or "")
+        registry.health_limits.Object.Text=S.HealthLow.." / "..S.HealthResume
+    end
+    UI.SyncFields=function() UI:syncFields() end
+
     task.spawn(function()
         while SESSION.Alive do
-            task.wait(.5)
-            if not SESSION.Alive then break end
-            stateTitle.Text = M.Comparing and "Comparando treinos" or ("Sessao: " .. M:reasonText())
-            stateDesc.Text = M.Comparing and (M.ComparisonStatus or "Medindo...")
-                or (M.Stalled and "ALERTA: farm sem progresso. Abra o diagnostico." or HubRuntime.Status)
-            profileTitle.Text = "Perfil: slot " .. M.ProfileSlot
-            pvpStatus.Text = M.PvpStatus or "Desligado"
-            local interval, reps = M:farmPace()
-            paceTitle.Text = string.format("%d reps por ciclo | intervalo %.0f ms", reps, interval * 1000)
-            paceDesc.Text = (S.FarmCustom and "Personalizado" or "Preset")
-                .. string.format(" | teto geral: %d chamadas/s | chamadas cortadas: %d", S.StabilityMode and 45 or 160, HubRuntime.SkippedRemoteCalls)
-                .. "\nAplica-se a Forca Rapida e a rajada F2P. Modo Estavel pode reduzir os valores. Intervalos dependem dos frames; reps aceitas dependem do servidor."
-            observedBossDesc.Text = M.VisibleBossText or "Procurando..."
-            local rate = M:strengthRate()
-            local target = M.PlanningTarget or 1000000
-            local eta = M:eta(numberStat("Strength"), target)
-            rateTitle.Text = rate and string.format("Forca recente: %.0f / minuto", rate) or "Rendimento: coletando amostras"
-            local estimate = eta == 0 and "atingida" or (eta and string.format("aprox. %.1f min", eta / 60) or "aguardando ritmo de treino")
-            rateDesc.Text = string.format("Meta: %.0f | %s", target, estimate)
-            if M.BreakUntil then
-                rateDesc.Text ..= string.format("\nDescanso: %.0fs restantes", math.max(0, M.BreakUntil - os.clock()))
-            end
+            pace.Detail.Text=HubRuntime.FastRep.Status.." | "..HubRuntime.FastRep:rebirthStatus()
+            farm.Detail.Text="Método: "..S.FarmMode.." | "..(C:farming() and "Ativo" or "Desligado")
+            pvp.Detail.Text="Filtro: "..S.PvpFilter.." | "..(M.PvpStatus or "Desligado")
+            boss.Detail.Text=(M.BossState or "Aguardando").." | "..HubRuntime.BossTarget
+            hatch.Detail.Text=C.HatchStatus
+            status.Detail.Text=M:reasonText().." | FPS: "..math.floor(HubRuntime.AvgFPS).." | "..HubRuntime.Status
+                .."\nÚltimo erro: "..HubRuntime.LastError
+            registry.pet_attribute.Detail.Text="Prioridade: "..S.PetObjective.." | usa valores legíveis dos pets possuídos"
+            registry.crystal_select.Detail.Text="Cristal: "..S.HatchCrystal.." | confira preço e elegibilidade no jogo"
+            registry.shop_select.Detail.Text="Selecionado: "..(X.ShopName~="" and X.ShopName or "nenhum item")
+            local player=X:selectedPlayer()
+            registry.player_select.Detail.Text=player and ("@"..player.Name.." | UserId: "..player.UserId) or "Nenhum jogador presente selecionado"
+            registry.goal_stat.Detail.Text="Estatística: "..S.GoalStat
+            registry.profile_slot.Detail.Text="Slot ativo: "..M.ProfileSlot
+            task.wait(1)
         end
     end)
+    setHubStatus("Pronto • "..SESSION.Version)
 end
-maintenanceUI()
--- END MAINTENANCE UI
+cleanUI()
+-- END CLEAN UI
 
 -- Busca global: ignora acentos e procura em todas as categorias.
 do
@@ -5339,7 +4864,7 @@ do
     larger.BackgroundColor3 = COLORS.Panel2; larger.TextColor3 = COLORS.Cyan
     larger.Text = "A+"; larger.TextSize = 18; larger.Font = Enum.Font.GothamBold
     larger.BorderSizePixel = 0; larger.Parent = main; addCorner(larger, 10)
-    larger.Size = UDim2.fromOffset(40,38)
+    larger.Size = UDim2.fromOffset(40,44)
     larger.TextSize = 13
     UI.Larger = larger
     larger.Activated:Connect(function()
