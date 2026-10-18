@@ -66,7 +66,7 @@ end
 
 local SESSION = {
     Alive = true,
-    Version = "2026.10-timing.44",
+    Version = "2026.10-rebirth.45",
     Connections = {},
 }
 
@@ -153,7 +153,7 @@ local S = {
     HatchCrystal="Blue Crystal", FarmSpeed=2, PreserveFarmPets=false, FarmCustom=false, FarmIntervalMs=100, FarmReps=4, RepDelay=.065, HatchDelay=.45,
     RebirthTarget=nil, SelectedMachine=nil,
     LastRebirthAttempt=0,
-    RebirthGuard=false, RebirthFloor=0, RebirthInterval=.5,
+    RebirthGuard=false, RebirthFloor=0, RebirthInterval=0,
     BreakEnabled=false, BreakEvery=30, BreakMinutes=5,
     BossAutoLoot=true, BossDefense=true, BossAbove=true, BossDistance=2, BossReturn=true, BossPreference="Qualquer",
     ResumeAfterDeath=true, HealthGuard=true, HealthLow=55, HealthResume=85,
@@ -207,7 +207,7 @@ return function(settings, clock)
         FarmIntervalMs = {1, 5000}, FarmReps = {1, 160}, FarmSpeed = {1, 3}, HatchMaxOpens = {1, 100}, PvpRadius = {10, 500}, PvpAttackRange = {1.5, 5}, RepDelay = {.05, 5}, HatchDelay = {.1, 30}, BossDistance = {2, 12},
         HealthLow = {5, 60}, HealthResume = {65, 100}, StallSeconds = {30, 600},
         GoalValue = {1, 1e15}, RebirthTarget = {1, 1e15}, ProgressionTarget = {1, 1e15},
-        RebirthFloor = {0, 1e15}, RebirthInterval = {.5, 30}, BreakEvery = {1, 240}, BreakMinutes = {1, 60},
+        RebirthFloor = {0, 1e15}, RebirthInterval = {0, 30}, BreakEvery = {1, 240}, BreakMinutes = {1, 60},
     }
     local choices = {
         FastRepProfile={"Combinado","Ultra (lotes)","Explorar limite","Intensivo","Adaptativo"},
@@ -466,9 +466,10 @@ return function(settings, clock)
     end
     function M:canRequestRebirth(strength, rebirths)
         if not self:canAct() or self.Comparing or self.RebirthInFlight then return false end
+        if clock() < (self.RebirthRetryAt or -math.huge) then return false end
         if settings.RebirthTarget and rebirths >= settings.RebirthTarget then return false end
         if settings.RebirthGuard and strength < (settings.RebirthFloor or 0) then return false end
-        return clock() - (self.LastRebirthRequest or -math.huge) >= (settings.RebirthInterval or 1)
+        return clock() - (self.LastRebirthRequest or -math.huge) >= (settings.RebirthInterval or 0)
     end
     function M:resetBreak()
         self.ActiveSeconds, self.BreakUntil = 0, nil
@@ -1913,11 +1914,24 @@ task.spawn(function()
 end)
 
 function M:attemptRebirth()
-    if not self:canRequestRebirth(numberStat("Strength"), currentRebirths()) then return end
+    local strength,before=numberStat("Strength"),currentRebirths()
+    if not self:canRequestRebirth(strength,before) then return end
+    if HubRuntime.FastRep and strength<HubRuntime.FastRep:rebirthRequirement() then return end
     self.LastRebirthRequest, self.RebirthInFlight = os.clock(), true
-    local ok, err = pcall(safeInvoke, R.Rebirth, "rebirthRequest")
+    local ok, err = pcall(function()
+        local response,_,sent=safeInvoke(R.Rebirth,"rebirthRequest")
+        local deadline=os.clock()+1.5
+        while sent and response~=false and currentRebirths()==before and os.clock()<deadline
+            and SESSION.Alive and S.Rebirth and self:canAct() do task.wait(.05) end
+        if currentRebirths()>before then
+            self.RebirthRefusals=0; self.RebirthRetryAt=nil
+        else
+            self.RebirthRefusals=math.min(3,(self.RebirthRefusals or 0)+1)
+            self.RebirthRetryAt=os.clock()+math.max(S.RebirthInterval,math.min(2,.5*2^(self.RebirthRefusals-1)))
+        end
+    end)
     self.RebirthInFlight = false
-    if not ok then setHubError(tostring(err)) end
+    if not ok then self.RebirthRetryAt=os.clock()+math.max(.5,S.RebirthInterval); setHubError(tostring(err)) end
 end
 
 task.spawn(function()
@@ -3222,7 +3236,7 @@ local function initializeCleanRuntime()
         S.FastRepLimit=(name=="Ultra rápido" or name=="Ultra combinado") and 10000 or S.Rebirth and 450 or 659
         if name=="Ultra rápido" then S.FastRepProfile="Ultra (lotes)" end
         if name=="Ultra combinado" then S.FastRepProfile="Combinado" end
-        S.RebirthInterval=.5
+        S.RebirthInterval=0
         if S.Rebirth and S.RebirthTarget and currentRebirths()>=S.RebirthTarget then
             S.Rebirth=false
             setHubStatus("Meta de rebirth já atingida; aumente ou remova a meta para continuar")
@@ -3382,7 +3396,7 @@ local function initializeFastRep()
         return sent
     end
     function F:combinedBatch(dt)
-        if S.FastRepProfile~="Combinado" or not self:active() or M.PetEquipBusy or self:waitingBirth() then
+        if S.FastRepProfile~="Combinado" or not self:active() or M.PetEquipBusy then
             self.BatchTokens=0; return
         end
         local limit=self:limits()
@@ -3533,7 +3547,7 @@ local function initializeFastRep()
                 and token==self.Token and self:active() do task.wait(.05) end
             if token~=self.Token or not self:active() then return end
             if currentRebirths()>before then
-                self.BirthFailures=0; self.NextBirth=M.LastRebirthRequest+S.RebirthInterval
+                self.BirthFailures=0; self.NextBirth=nil; M.RebirthRetryAt=nil
                 self.BirthResult="Rebirth confirmado"
                 if S.RebirthTarget and currentRebirths()>=S.RebirthTarget then S.Rebirth=false end
                 self.Status="Rebirth confirmado; retomando treino"
@@ -3560,12 +3574,13 @@ local function initializeFastRep()
             local pending=self.PendingBirth
             local elapsed=pending and os.clock()-pending.Started or 0
             local observed=pending and currentRebirths()>pending.Before
-            return string.format("%s | aguardando %s há %.1fs",observed and "Rebirth observado na conta" or "Reps suspensas para priorizar rebirth",
+            return string.format("%s | aguardando %s há %.1fs",observed and "Rebirth observado; treino contínuo" or "Treino contínuo durante rebirth",
                 pending and pending.Phase or "confirmação",elapsed)
         end
         if numberStat("Strength")<self:rebirthRequirement() then return "Treinando até a força necessária para rebirth" end
-        local nextRequest=math.max(self.NextBirth or 0,(M.LastRebirthRequest or -math.huge)+S.RebirthInterval)
-        return string.format("%s | espera restante: %.2fs",self.BirthResult or "Pronto para pedir rebirth",math.max(0,nextRequest-os.clock()))
+        local nextRequest=math.max(self.NextBirth or 0,M.RebirthRetryAt or 0,(M.LastRebirthRequest or -math.huge)+S.RebirthInterval)
+        local localWait=S.RebirthInterval==0 and "sem espera local" or string.format("intervalo local %.2fs",S.RebirthInterval)
+        return string.format("%s | %s | espera restante: %.2fs",self.BirthResult or "Pronto para pedir rebirth",localWait,math.max(0,nextRequest-os.clock()))
     end
     function F:sample(dt,active)
         local values={Strength=numberStat("Strength"),Durability=numberStat("Durability"),Rebirths=currentRebirths()}
@@ -3615,14 +3630,7 @@ local function initializeFastRep()
         end
         self:trialTick(elapsed)
         if self.Trial then limit=math.min(limit,self.Trial.Done and self.Trial.BestRate or self.Trial.Target) end
-        local waiting=self:waitingBirth()
-        if waiting then
-            self.Tokens=0; self.BatchTokens=0; self.WaitingForBirth=true
-            self.Status=self:rebirthStatus().." | prioridade ao rebirth; sem reps excedentes"
-            return
-        elseif self.WaitingForBirth then
-            self.WaitingForBirth=false; self.LastControl=nil
-        end
+        self.WaitingForBirth=self:waitingBirth()==true
         if not self.LastControl then
             self.LastControl=now; self.ControlStrength=strength; self.ControlDurability=durability; self.ControlBirths=currentRebirths(); self.NoProgress=0
         elseif now-self.LastControl>=.5 then
@@ -3631,7 +3639,9 @@ local function initializeFastRep()
             else
                 self.NoProgress+=now-self.LastControl
                 if self.NoProgress>=2 then self.Rate=math.max(40,self.Rate*.65); self.Tokens=0 end
-                if self.NoProgress>=10 then S.FastRep=false; S.Rebirth=false; self:cancel(); self.Status="Parado: 10s sem ganho observado"; return end
+                if self.NoProgress>=10 and not (S.Rebirth and (self.WaitingForBirth or self.Busy or M.RebirthInFlight)) then
+                    S.FastRep=false; S.Rebirth=false; self:cancel(); self.Status="Parado: 10s sem ganho observado"; return
+                end
             end
             self.LastControl=now; self.ControlStrength=strength; self.ControlDurability=durability; self.ControlBirths=currentRebirths()
         end
@@ -4672,8 +4682,8 @@ local function cleanUI()
     local pace=action("farm_pace","Rendimento do Fast Rep","Força, durabilidade, rebirths e pedidos enviados; atualiza a cada segundo sem alterar seus pets.",function() report("Rendimento observado",function() return HubRuntime.FastRep:report() end) end)
     input("farm_interval","Outros métodos: intervalo em rajada (ms)",S.FarmIntervalMs,function(value) return M:setFarmTiming("FarmIntervalMs",value) end)
     input("farm_reps","Outros métodos: reps por ciclo em rajada",S.FarmReps,function(value) return M:setFarmTiming("FarmReps",value) end)
-    switch("rebirth_auto","Fast rebirth / rebirth automático","Prioriza a confirmação quando a força já basta, suspende reps excedentes e limita treino a 450 pedidos/s; seus pets atuais são mantidos.","Rebirth",canRebirth)
-    numeric("rebirth_interval","Intervalo entre rebirths (segundos)","RebirthInterval",.5,30)
+    switch("rebirth_auto","Fast rebirth / rebirth automático","Mantém o treino de força durante resposta e confirmação, com um pedido de rebirth por vez. Zero remove a espera local. Seus pets são mantidos.","Rebirth",canRebirth)
+    numeric("rebirth_interval","Espera local do rebirth (0 = sem cooldown)","RebirthInterval",0,30)
     input("rebirth_target","Meta absoluta de rebirths (0 = sem limite)",S.RebirthTarget or 0,function(value)
         local n=tonumber(value); if not n or n~=n or n%1~=0 or n<0 or n>1e15 then return false,"Use um inteiro de 0 a 1e15" end
         S.RebirthTarget=n>0 and n or nil; return true
