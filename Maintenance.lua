@@ -8,21 +8,29 @@ return function(settings, clock)
         Stalled = false, WasTraining = false, Samples = {}, ActiveSeconds = 0,
         BossCounts = {}, BossObservations = 0, BossRecent = {},
     }
-    M.AutoKeys = {"Train", "Rebirth", "Chests", "Hatch", "AutoNovaPhoenix", "Brawl", "AutoPunch",
+    M.AutoKeys = {"FastRep", "Rebirth", "Chests", "Hatch", "AutoPunch",
         "TrainWeight", "TrainPushups", "TrainSitups", "TrainHandstands", "PvpAny", "PvpGood", "PvpEvil",
-        "SmartRock", "LockPosition", "AutoMachine", "AutoBestMachine", "StrengthRebirth",
-        "TurboStrength", "MaxStrengthF2P", "AutoBoss", "AutoAgility", "SmartFarm",
-        "AutoEquipAfterHatch", "AutoEvolveAfterHatch", "GoalEnabled"}
-    local booleans = {"PreserveFarmPets", "FarmCustom", "BossAutoLoot", "BossReturn", "BossDefense", "ResumeAfterDeath", "HealthGuard", "StallAlerts", "PerformanceMode", "StabilityMode", "RebirthGuard", "BreakEnabled"}
+        "SmartRock", "AutoMachine",
+        "MaxStrengthF2P", "AutoBoss", "AutoAgility",
+        "GoalEnabled",
+        "AutoWheel", "AutoEggs", "AutoBoosts", "AutoBestPetObjective", "AutoEvolveOwned",
+        "SetSpeed", "SetSize", "SetFOV", "InfiniteJump", "AntiFling", "Spectate", "ShiftLock"}
+    local booleans = { "PvpUniversal", "PreserveFarmPets", "FarmCustom", "BossAutoLoot", "BossReturn", "BossDefense", "BossAbove", "ResumeAfterDeath", "HealthGuard", "StallAlerts", "PerformanceMode", "StabilityMode", "RebirthGuard", "BreakEnabled", "PvpProtectFriends", "PvpOnlySelected"}
     local numbers = {
-        FarmIntervalMs = {1, 5000}, FarmReps = {1, 160}, FarmSpeed = {1, 3}, NovaMaxOpens = {1, 1000}, PvpRadius = {10, 500}, PvpAttackRange = {1.5, 5}, RepDelay = {.05, 5}, HatchDelay = {.1, 30}, BossDistance = {2, 12},
+        FastRepLimit = {40, 10000},
+        PvpAuraRadius = {5, 500}, CharacterSpeed = {1, 500}, CharacterSize = {1, 100}, CameraFOV = {30, 120}, ShopCount = {1, 20},
+        FarmIntervalMs = {1, 5000}, FarmReps = {1, 160}, FarmSpeed = {1, 3}, HatchMaxOpens = {1, 100}, PvpRadius = {10, 500}, PvpAttackRange = {1.5, 5}, RepDelay = {.05, 5}, HatchDelay = {.1, 30}, BossDistance = {2, 12},
         HealthLow = {5, 60}, HealthResume = {65, 100}, StallSeconds = {30, 600},
         GoalValue = {1, 1e15}, RebirthTarget = {1, 1e15}, ProgressionTarget = {1, 1e15},
-        RebirthFloor = {0, 1e15}, RebirthInterval = {.5, 30}, BreakEvery = {1, 240}, BreakMinutes = {1, 60},
+        RebirthFloor = {0, 1e15}, RebirthInterval = {0, 30}, BreakEvery = {1, 240}, BreakMinutes = {1, 60},
     }
-    local choices = {SmartObjective = {"Força", "Durabilidade", "Agilidade", "Rebirths"},
+    local choices = {
+        FastRepProfile={"Combinado","Ultra (lotes)","Explorar limite","Intensivo","Adaptativo"},
+        FarmMode={"Fast Rep (packs)","Automático","Peso","Flexões","Abdominais","Parada de mãos","Máquina","Pedras","Esteira"},
+        PvpMode={"Aproximar","Distancia","Bring","Aura"},
+        PvpFilter={"Todos","Karma bom","Karma ruim","Selecionado","Multiplos","Blacklist"}, PetObjective={"strength","durability","agility"}, SmartObjective = {"Força", "Durabilidade", "Agilidade", "Rebirths"},
         GoalStat = {"Strength", "Agility", "Durability", "Rebirths"}}
-    local strings = {"HatchCrystal", "NovaCrystal", "SelectedMachine", "BossPreference"}
+    local strings = {"HatchCrystal", "HatchTargetPet", "SelectedMachine", "BossPreference"}
 
     function M:log(kind, message)
         self.History[#self.History + 1] = {Time = math.floor(clock() - self.Started), Kind = kind, Message = tostring(message)}
@@ -63,7 +71,7 @@ return function(settings, clock)
         M.Conflicts[a][b], M.Conflicts[b][a] = true, true
     end
     -- Only competing tool/position owners. Selection and passive helpers stay on.
-    local trainers = {"Train", "TrainWeight", "TrainPushups", "TrainSitups", "TrainHandstands", "TurboStrength", "MaxStrengthF2P", "AutoMachine", "AutoAgility"}
+    local trainers = {"FastRep", "Train", "TrainWeight", "TrainPushups", "TrainSitups", "TrainHandstands", "TurboStrength", "MaxStrengthF2P", "AutoMachine", "AutoAgility"}
     for i, a in ipairs(trainers) do
         for j = i + 1, #trainers do conflict(a, trainers[j]) end
         conflict(a, "AutoPunch"); conflict(a, "SmartRock")
@@ -73,9 +81,8 @@ return function(settings, clock)
     for _, key in ipairs({"Train", "TrainWeight", "TrainPushups", "TrainSitups", "TrainHandstands", "TurboStrength", "MaxStrengthF2P", "AutoMachine", "AutoBestMachine", "AutoAgility", "SmartRock", "AutoPunch", "StrengthRebirth", "Rebirth", "LockPosition"}) do conflict("SmartFarm", key) end
     for _, mode in ipairs({"PvpAny", "PvpGood", "PvpEvil"}) do
         for _, key in ipairs(trainers) do conflict(mode, key) end
-        for _, key in ipairs({"AutoBoss", "Brawl", "SmartRock", "AutoPunch", "LockPosition", "SmartFarm", "Rebirth", "StrengthRebirth"}) do conflict(mode, key) end
+        for _, key in ipairs({"FastRep", "AutoBoss", "Brawl", "SmartRock", "AutoPunch", "LockPosition", "SmartFarm", "Rebirth", "StrengthRebirth"}) do conflict(mode, key) end
     end
-    conflict("Hatch", "AutoNovaPhoenix")
     conflict("PvpGood", "PvpEvil")
     conflict("PvpAny", "PvpGood"); conflict("PvpAny", "PvpEvil")
     function M:pvpEligible(good, evil)
@@ -185,7 +192,8 @@ return function(settings, clock)
         for key, bounds in pairs(numbers) do
             local value = source[key]
             if value ~= nil then
-                if type(value) ~= "number" or value ~= value or value < bounds[1] or value > bounds[2] then return nil, key end
+                if type(value) ~= "number" or value ~= value or value < bounds[1] or value > bounds[2]
+                    or ((key == "ShopCount" or key == "HatchMaxOpens" or key == "FastRepLimit") and value % 1 ~= 0) then return nil, key end
                 result[key] = value
             end
         end
@@ -212,6 +220,7 @@ return function(settings, clock)
         settings.StopAt = nil
         for key, value in pairs(validated) do settings[key] = value end
         settings.PvpAny, settings.PvpGood, settings.PvpEvil = false, false, false
+        for _, key in ipairs({"AutoNovaPhoenix","AutoEquipAfterHatch","AutoEvolveAfterHatch","Train","TurboStrength","SmartFarm","StrengthRebirth","AutoBestMachine","Brawl","HideName","HideStats","PlayerESP","LockPosition","BreakEnabled","RebirthGuard"}) do settings[key]=false end
         self:normalizeConflicts()
         self:pause("Manual", true)
         self:resetBreak()
@@ -273,9 +282,10 @@ return function(settings, clock)
     end
     function M:canRequestRebirth(strength, rebirths)
         if not self:canAct() or self.Comparing or self.RebirthInFlight then return false end
+        if clock() < (self.RebirthRetryAt or -math.huge) then return false end
         if settings.RebirthTarget and rebirths >= settings.RebirthTarget then return false end
         if settings.RebirthGuard and strength < (settings.RebirthFloor or 0) then return false end
-        return clock() - (self.LastRebirthRequest or -math.huge) >= (settings.RebirthInterval or 1)
+        return clock() - (self.LastRebirthRequest or -math.huge) >= (settings.RebirthInterval or 0)
     end
     function M:resetBreak()
         self.ActiveSeconds, self.BreakUntil = 0, nil

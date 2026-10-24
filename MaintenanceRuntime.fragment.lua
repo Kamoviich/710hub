@@ -150,70 +150,7 @@ function M:bossDiagnostic()
     return table.concat(lines, "\n\n")
 end
 
-function M:beginComparison()
-    if self.Comparing then return false, "Comparacao ja em andamento" end
-    if not self:canAct() then return false, "Retome a sessao antes de comparar" end
-    local methods = {}
-    if canTrain() then
-        methods[#methods + 1] = {Name = "Ferramenta", Key = "Train"}
-        methods[#methods + 1] = {Name = "Rajada", Key = "TurboStrength"}
-    end
-    if canMachineFarm() then methods[#methods + 1] = {Name = "Maquina", Key = "AutoMachine"} end
-    if #methods < 2 then return false, "Sao necessarios dois metodos disponiveis" end
-    local snapshot = self:automationSnapshot()
-    self:clearAutomation()
-    finishBossFight(true)
-    self.BenchmarkToken += 1
-    local token = self.BenchmarkToken
-    self.Comparing = true
-    self.BestTraining = nil
-    self.BenchmarkResults = {}
-    task.spawn(function()
-        local ok, err = pcall(function()
-            for _, method in ipairs(methods) do
-                if not SESSION.Alive or self.BenchmarkToken ~= token or not self:canAct() then break end
-                self:clearAutomation()
-                S[method.Key] = true
-                if method.Key == "AutoMachine" then selectBestMachine() end
-                self.ComparisonStatus = "Medindo " .. method.Name .. " por 20 segundos"
-                local startTime, startStrength, startRebirths = os.clock(), numberStat("Strength"), currentRebirths()
-                local valid = true
-                while os.clock() - startTime < 20 do
-                    task.wait(.25)
-                    if not SESSION.Alive or self.BenchmarkToken ~= token or not self:canAct() then return end
-                    if currentRebirths() ~= startRebirths or numberStat("Strength") < startStrength or not S[method.Key] then
-                        valid = false
-                        break
-                    end
-                end
-                local elapsed = math.max(.1, os.clock() - startTime)
-                self.BenchmarkResults[#self.BenchmarkResults + 1] = {Name = method.Name, Valid = valid,
-                    Rate = math.max(0, numberStat("Strength") - startStrength) * 60 / elapsed}
-            end
-        end)
-        if self.BenchmarkToken == token then
-            self:restoreAutomation(snapshot)
-            self.Comparing = false
-            if not ok then
-                self.ComparisonStatus = "Comparacao interrompida: " .. tostring(err)
-            elseif not self:canAct() then
-                self.ComparisonStatus = "Comparacao interrompida por pausa; repita quando o personagem estiver pronto"
-            else
-                local best, validCount = nil, 0
-                for _, result in ipairs(self.BenchmarkResults) do
-                    if result.Valid then validCount += 1 end
-                    if result.Valid and result.Rate > 0 and (not best or result.Rate > best.Rate) then best = result end
-                end
-                self.BestTraining = validCount >= 2 and best and best.Name or nil
-                self.ComparisonStatus = validCount >= 2 and best and ("Melhor observado: " .. best.Name .. " (" .. math.floor(best.Rate) .. "/min)")
-                    or "Menos de duas amostras validas ou nenhum ganho; comparacao inconclusiva"
-            end
-            self:log("Comparacao", self.ComparisonStatus)
-            if HubRuntime.RenderToggles then HubRuntime.RenderToggles() end
-        end
-    end)
-    return true, "Comparacao iniciada; as rotinas anteriores serao restauradas"
-end
+
 
 do
     local generation, deathConnection = 0, nil
@@ -352,7 +289,8 @@ function M:pvpTick()
                 S.PvpAny, S.PvpGood, S.PvpEvil = false, false, false; M:stopPvp()
                 M.PvpStopReason = "Parado por vida baixa; recupere antes de ligar novamente"; M.PvpStatus = M.PvpStopReason; return
             end
-            local target, targetRoot, targetHum, distance = nil, nil, nil, S.PvpRadius
+            local searchRadius = S.PvpUniversal and math.huge or S.PvpRadius
+            local target, targetRoot, targetHum, distance = nil, nil, nil, searchRadius
             local counts = {missing=0, protected=0, unknown=0, karma=0, far=0, blocked=0}
             local details = {}
             for _, player in ipairs(Players:GetPlayers()) do
@@ -363,13 +301,14 @@ function M:pvpTick()
                     local good = M:playerKarma(player, {"goodKarma", "LightKarma"})
                     local evil = M:playerKarma(player, {"evilKarma", "DarkKarma"})
                     local reason
-                    if not otherRoot or not otherHum or otherHum.Health <= 0 then reason = "missing"
+                    if HubRuntime.Extras and not HubRuntime.Extras:pvpAllowed(player) then reason = "protected"
+                    elseif not otherRoot or not otherHum or otherHum.Health <= 0 then reason = "missing"
                     elseif model:FindFirstChildOfClass("ForceField") then reason = "protected"
                     elseif not S.PvpAny and (good == nil or evil == nil) then reason = "unknown"
                     elseif not M:pvpEligible(good, evil) then reason = "karma"
                     else
                         local d = (root.Position - otherRoot.Position).Magnitude
-                        if d > S.PvpRadius then reason = "far"
+                        if d > searchRadius then reason = "far"
                         else
                             local params = RaycastParams.new(); params.FilterType = Enum.RaycastFilterType.Exclude
                             params.FilterDescendantsInstances = {character, model}; params.RespectCanCollide = true
@@ -405,6 +344,7 @@ function M:pvpTick()
                 if (face - root.Position).Magnitude > .01 then root.CFrame = CFrame.lookAt(root.Position, face) end
                 local function allowed()
                     return (S.PvpAny or S.PvpGood or S.PvpEvil) and M.PvpTarget == target and not HubRuntime.BossActive
+                        and (not HubRuntime.Extras or HubRuntime.Extras:pvpAllowed(target))
                         and target.Character == targetRoot.Parent and targetHum.Health > 0
                         and not targetRoot.Parent:FindFirstChildOfClass("ForceField")
                         and (root.Position - targetRoot.Position).Magnitude <= attackRange
