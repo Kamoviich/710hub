@@ -349,7 +349,9 @@ function M:pvpTick()
                         and not targetRoot.Parent:FindFirstChildOfClass("ForceField")
                         and (root.Position - targetRoot.Position).Magnitude <= attackRange
                 end
-                local punched, reason = doAnimatedPunch(allowed)
+                local punched, reason
+                if HubRuntime.Pvp then punched, reason = HubRuntime.Pvp:punchNearby(target,targetRoot,targetHum,allowed)
+                else punched, reason = doAnimatedPunch(allowed) end
                 if not punched then M.PvpStatus = reason
                 elseif os.clock() - M.PvpLastDamageAt >= 8 then
                     M.PvpStatus = "Punch ativado, mas sem queda de vida observada: " .. target.Name .. ". Confira alcance ou protecao do jogo."
@@ -357,7 +359,7 @@ function M:pvpTick()
             end
 end
 task.spawn(function()
-    while SESSION.Alive and task.wait(.35) do
+    while SESSION.Alive and task.wait(HubRuntime.Pvp and HubRuntime.Pvp:interval() or .35) do
         local ok, failure = pcall(function() M:pvpTick() end)
         if not ok then S.PvpAny, S.PvpGood, S.PvpEvil = false, false, false; M:stopPvp(); M.PvpStopReason = "Erro: " .. tostring(failure); M.PvpStatus = M.PvpStopReason; M:log("PvP", M.PvpStatus) end
     end

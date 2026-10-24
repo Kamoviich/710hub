@@ -12,8 +12,10 @@ S.HealthGuard=false; S.PvpProtectFriends=false; S.PvpOnlySelected=false
 S.PvpFilter="Todos"; X.Whitelist={}
 local originalTouch=firetouchinterest
 local contacts={}
-firetouchinterest=function(hand,root,state)
-    contacts[#contacts+1]={Hand=hand,Root=root,State=state}
+firetouchinterest=function(first,second,state)
+    local hand,root=first,second
+    if second.Parent==Mock.Player.Character then hand,root=second,first end
+    contacts[#contacts+1]={Hand=hand,Root=root,State=state,Time=Mock.Now}
 end
 ownRoot.CFrame=CFrame.new(0,5,0); enemyRoot.CFrame=CFrame.new(1000,5,0)
 select("pvp_mode","Distancia"); value("pvp_radius","30")
@@ -87,11 +89,102 @@ end
 methods.GetPlayers=function() return playerSet end
 select("pvp_mode","Distancia"); select("pvp_filter","Multiplos"); click("pvp_start")
 before=#contacts; Mock.Run(.36)
-check(#contacts-before<=16,"Lote PvP limita trabalho a oito alvos por tick")
+local batchRoots={}
+for index=before+1,#contacts do
+    local contact=contacts[index]; local at=contact.Time or 0
+    batchRoots[at]=batchRoots[at] or {}; batchRoots[at][contact.Root]=true
+end
+for _,roots in pairs(batchRoots) do
+    local n=0; for _ in pairs(roots) do n+=1 end
+    check(n<=8,"Lote PvP limita trabalho a oito alvos por tick")
+end
 Mock.Run(1.2)
 local reached={}; for index=before+1,#contacts do reached[contacts[index].Root]=true end
 check(reached[playerSet[#playerSet].Character.HumanoidRootPart],"Rotacao de lotes atende tambem os ultimos jogadores")
 methods.GetPlayers=originalPlayers; stop()
+-- A server fixture accepts only a completed contact and its matching hand command.
+-- This tests protocol ordering, not the actual game's damage rules.
+local protocolFire=methods.FireServer
+local protocolTouch=firetouchinterest
+local pending={}
+local protocolCommands={}
+firetouchinterest=function(target,hand,state)
+    protocolTouch(target,hand,state)
+    if state==0 then pending[hand]={Root=target,Ended=false}
+    elseif pending[hand] and pending[hand].Root==target then pending[hand].Ended=true end
+end
+function methods:FireServer(command,side,...)
+    protocolFire(self,command,side,...)
+    if self.Name=="muscleEvent" and command=="punch" then
+        protocolCommands[side]=(protocolCommands[side] or 0)+1
+        local left=side=="leftHand"
+        local hand=Mock.Player.Character:FindFirstChild(left and "LeftHand" or "RightHand")
+            or Mock.Player.Character:FindFirstChild(left and "Left Arm" or "Right Arm")
+        local contact=pending[hand]
+        if contact and contact.Ended and contact.Root==enemyRoot then
+            enemyHum.Health=math.max(0,enemyHum.Health-3); pending[hand]=nil
+        end
+    end
+end
+enemyHum.Health=1000; enemyHum.MaxHealth=1000
+enemyRoot.CFrame=CFrame.new(2000,5,0); ownRoot.CFrame=CFrame.new(0,5,0)
+select("pvp_filter","Todos"); select("pvp_priority","Rotacao")
+value("pvp_interval","0.12"); value("pvp_interval","0.001")
+check(S.PvpInterval==.12,"Cadencia de ataque rejeita intervalo abaixo do limite")
+select("pvp_mode","Distancia"); click("pvp_start"); Mock.Run(.6)
+check((protocolCommands.leftHand or 0)>0 and (protocolCommands.rightHand or 0)>0 and enemyHum.Health<1000,
+    "Protocolo completa contatos antes dos golpes nas duas maos")
+check(Pv.DamageTotal>0 and ownRoot.Position.X==0,"Distancia mede dano da fixture sem deslocar usuario")
+local leftHand=Mock.Player.Character.LeftHand; local rightHand=Mock.Player.Character.RightHand
+leftHand.Name="Left Arm"; rightHand.Name="Right Arm"
+local lifeR6=enemyHum.Health; Mock.Run(.4)
+check(enemyHum.Health<lifeR6,"Rigs R6 usam os comandos corretos de mao")
+leftHand.Name="LeftHand"; rightHand.Name="RightHand"
+select("pvp_mode","Perseguir"); Mock.Run(.4)
+check((ownRoot.Position-enemyRoot.Position).Magnitude<=4 and Pv.LockedUserId==enemy.UserId,"Perseguir acompanha alvo e posiciona personagem perto para atacar")
+click("pvp_report"); check(U.Main:FindFirstChild("710Hub_Choice")~=nil,"Relatorio mostra protocolo, dependencias e dano observado")
+stop(); Mock.Run(.3)
+-- Compare actual request counts; dictionary length is not a command count.
+local sentAfter=Pv.PunchRequests; Mock.Run(.3)
+check(Pv.PunchRequests==sentAfter,"Parada encerra envio explicito de golpes")
+local second=node("Player","SecondTarget",services.Players); second.UserId=99; second.DisplayName=second.Name
+second.Character=Mock.Character(second.Name,workspace); second.Character.Humanoid.Health=20
+second.Character.HumanoidRootPart.CFrame=CFrame.new(2,5,0)
+local choicesToOrder={
+    {Player=enemy,Root=enemyRoot,Hum=enemyHum},
+    {Player=second,Root=second.Character.HumanoidRootPart,Hum=second.Character.Humanoid},
+}
+select("pvp_mode","Distancia"); select("pvp_priority","Menor vida"); Pv:orderTargets(choicesToOrder,ownRoot)
+check(choicesToOrder[1].Player==second,"Prioridade por vida ordena alvo mais fraco primeiro")
+ownRoot.CFrame=CFrame.new(0,5,0); select("pvp_priority","Mais proximo"); Pv:orderTargets(choicesToOrder,ownRoot)
+check(choicesToOrder[1].Player==second,"Prioridade por distancia ordena alvo mais proximo primeiro")
+select("pvp_priority","Manter alvo"); Pv.LockedUserId=enemy.UserId; Pv:orderTargets(choicesToOrder,ownRoot)
+check(choicesToOrder[1].Player==enemy,"Prioridade manter alvo preserva foco valido")
+select("pvp_priority","Rotacao")
+select("pvp_mode","Perseguir"); Pv.LockedUserId=enemy.UserId; Pv.LockedAt=Mock.Now-5
+Pv.Observed[enemy.UserId].LastDamageAt=Mock.Now-6
+Pv:orderTargets(choicesToOrder,ownRoot)
+check(choicesToOrder[1].Player==second,"Perseguir troca alvo sem dano apos quatro segundos quando ha alternativas")
+select("pvp_mode","Distancia")
+enemyHum.Health=1; click("pvp_start"); Mock.Run(.5)
+check(Pv.DeathsObserved==1 and Pv.DamageTotal==1,"Dano e morte sao observados mesmo quando alvo morto sai da selecao")
+stop()
+second:Destroy(); methods.FireServer=protocolFire; firetouchinterest=protocolTouch
+enemyHum.Health=100; enemyHum.MaxHealth=100
+click("pvp_start"); Mock.Run(4.6)
+check((M.PvpStatus or ""):find("SEM DANO OBSERVADO"),"Servidor sem dano gera estado explicito em vez de alegar kill")
+Mock.Rejections.muscleEvent="error"; local rejectedBefore=Pv.PunchRequests; Mock.Run(.3)
+check(Pv.PunchRequests==rejectedBefore and Pv.LastAttackError:find("nao enviado"),"Erro de envio nao e contado como golpe enviado")
+Mock.Rejections.muscleEvent=nil; stop()
+local contactFailure=firetouchinterest
+local endedAfterFailure=false
+firetouchinterest=function(_,_,state)
+    if state==0 then error("Falha de contato na fixture") end
+    endedAfterFailure=true
+end
+click("pvp_start"); Mock.Run(.4)
+check(endedAfterFailure and Pv.PunchRequests==0 and Pv.LastAttackError:find("Contato recusado"),"Contato com erro e encerrado e nao dispara golpe sem par completo")
+firetouchinterest=contactFailure; stop()
 -- Cancellation while equipping Punch must invalidate the pending contacts.
 local punch=Mock.Player.Character:FindFirstChild("Punch") or Mock.Backpack:FindFirstChild("Punch")
 punch.Parent=Mock.Backpack

@@ -1,12 +1,15 @@
-# PvP e desempenho — 2026.10-pvp.46
+# PvP e desempenho — 2026.10-pvp.47
 
-Execute `710Hub.lua` inteiro em Muscle Legends. `710Hub.protegido.lua` contém a mesma versão. A revisão está disponível no ramo `codex/pvp-46` do repositório `Kamoviich/710hub`; o loader de teste aponta para a publicação desta versão.
+Execute `710Hub.lua` inteiro em Muscle Legends. `710Hub.protegido.lua` contém a mesma versão. A revisão está disponível no ramo `codex/pvp-47` do repositório `Kamoviich/710hub`; o loader de teste aponta para a publicação desta versão.
+
+A revisão .47 substitui o contato em uma só mão por uma sequência explícita de contato e comando `punch` para cada mão. Adiciona Perseguir, prioridades de alvo, cadência ajustável e diagnóstico de dano. A comparação das fontes está em [PESQUISA-PVP.md](PESQUISA-PVP.md).
 
 Na categoria **PvP**, selecione um jogador e o **Modo de ataque PvP**. Use **Iniciar / parar PvP** para ligar ou desligar o controlador.
 
 | Opção | Comportamento |
 | --- | --- |
 | Aproximar | Caminha até um alvo e ativa Punch, com verificação de obstáculos. |
+| Perseguir | Move seu personagem para perto do alvo e acompanha sua posição para solicitar contatos e golpes nas duas mãos. Mantém o alvo enquanto elegível. |
 | Distancia | Ativa Punch e solicita contatos com o alvo sem mover seu personagem. Exige `firetouchinterest`. |
 | Bring | Tenta trazer os alvos para perto antes de solicitar contato. A mudança pode ficar somente no seu cliente ou ser corrigida pelo servidor. |
 | Aura | Solicita contatos apenas com jogadores dentro da esfera fixa que você marcou. Seu personagem pode se afastar do centro. |
@@ -14,6 +17,14 @@ Na categoria **PvP**, selecione um jogador e o **Modo de ataque PvP**. Use **Ini
 | Selecionado | Filtra pela conta escolhida no seletor. |
 | Multiplos | Usa as contas adicionadas em **Adicionar / remover alvo multiplo**. Atende no máximo oito por rodada, alternando os lotes. |
 | Blacklist | Filtra tags salvas nos nomes, nomes de exibição ou atributos/valores replicados de clã. A comparação ignora maiúsculas e usa texto literal. |
+
+**Prioridade dos alvos PvP:** Rotacao distribui os lotes; Menor vida e Mais proximo ordenam o atendimento; Manter alvo concentra os golpes em uma conta até que ela deixe de ser elegível. Perseguir usa um alvo por rodada. Os demais modos atendem até oito por rodada, ou quatro no modo estável.
+
+**Intervalo do ataque PvP:** o padrão é 0,12 segundo e aceita valores de 0,08 a 1 segundo. O modo estável mantém no mínimo 0,35 segundo. O limite central de chamadas continua valendo; reduzir o intervalo não garante mais dano. Apenas uma execução de ataque pode estar em andamento, inclusive durante a troca de ferramenta.
+
+Para começar com perseguição, escolha **Perseguir**, o filtro desejado e, se quiser remover o raio de busca, **Range de Kill Universal**. Depois use **Iniciar / parar PvP**. O modo Distancia mantém seu personagem na posição atual.
+
+**Diagnostico de dano PvP** mostra os canais disponíveis, pares de contato, golpes enviados, queda de vida e mortes observadas. Após quatro segundos de solicitações sem queda de vida, os modos avançados mostram **SEM DANO OBSERVADO**. Uma morte observada não comprova que seu ataque a causou. Falhas de contato ou envio não são contadas como golpes enviados.
 
 **Whitelist:** selecione uma conta e use **Proteger / liberar jogador**, ou digite `+12345` no campo de whitelist para proteger um UserId e `-12345` para remover a proteção. A whitelist tem prioridade em todos os modos, inclusive blacklist. A proteção de amigos e a proteção de spawn continuam sendo respeitadas.
 

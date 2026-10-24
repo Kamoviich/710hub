@@ -1,8 +1,8 @@
 # 710Hub — controlador de farm e rotas
 
-**Atualização 2026.10-pvp.46:** [PvP com distância, bring, aura, listas persistentes, Player Hunter limitado e redução de carga](PVP-E-DESEMPENHO.md).
+**Atualização 2026.10-pvp.47:** [PvP nas duas mãos, perseguição, prioridades, cadência e diagnóstico de dano](PVP-E-DESEMPENHO.md). A comparação de sistemas está em [PESQUISA-PVP.md](PESQUISA-PVP.md).
 
-**Versão atual selecionada:** execute `710Hub.lua` (`2026.10-pvp.46`). Os novos controles estão em [PVP-E-DESEMPENHO.md](PVP-E-DESEMPENHO.md). Força e fast rebirth estão em [FAST-REP-E-REBIRTH.md](FAST-REP-E-REBIRTH.md); a seleção anterior está em [MENU-SELECIONADO.md](MENU-SELECIONADO.md). `710Hub.protegido.lua` acompanha a versão atual. As instruções abaixo descrevem a versão anterior preservada em `710Hub.original.lua`.
+**Versão atual selecionada:** execute `710Hub.lua` (`2026.10-pvp.47`). Os novos controles estão em [PVP-E-DESEMPENHO.md](PVP-E-DESEMPENHO.md). Força e fast rebirth estão em [FAST-REP-E-REBIRTH.md](FAST-REP-E-REBIRTH.md); a seleção anterior está em [MENU-SELECIONADO.md](MENU-SELECIONADO.md). `710Hub.protegido.lua` acompanha a versão atual. As instruções abaixo descrevem a versão anterior preservada em `710Hub.original.lua`.
 
 Execute o arquivo inteiro `710Hub.original.lua` em Muscle Legends. A versão exibida no console é `2026.10-personal.15`.
 

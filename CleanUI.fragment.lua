@@ -159,7 +159,12 @@ local function cleanUI()
         setHubStatus(X.Whitelist[player.UserId] and "Conta protegida" or "Proteção removida")
     end)
     local P=HubRuntime.Pvp
-    choices("pvp_mode","Modo de ataque PvP","Distancia e aura tentam contato sem mover voce. Bring depende da replicacao do jogo.",strings({"Aproximar","Distancia","Bring","Aura"}),function(value) P:setMode(value); renderAllToggles() end)
+    choices("pvp_mode","Modo de ataque PvP","Perseguir move voce ate o alvo. Distancia e aura preservam sua posicao. Bring depende da replicacao.",strings({"Aproximar","Perseguir","Distancia","Bring","Aura"}),function(value) P:setMode(value); renderAllToggles() end)
+    choices("pvp_priority","Prioridade dos alvos PvP","Rotacao atende todos; menor vida ou proximidade ordenam o lote; manter alvo concentra os ataques.",strings({"Rotacao","Menor vida","Mais proximo","Manter alvo"}),function(value)
+        P.Token+=1; P.LockedUserId=nil; P.Cursor=0; S.PvpPriority=value
+    end)
+    numeric("pvp_interval","Intervalo do ataque PvP (segundos)","PvpInterval",.08,1)
+    action("pvp_report","Diagnostico de dano PvP","Mostra golpes enviados, vida observada e dependencias do ataque.",function() report("Diagnostico PvP",function() return P:report() end) end)
     numeric("pvp_radius","Raio de busca PvP (10 a 500)","PvpRadius",10,500)
     switch("pvp_universal","Range de Kill Universal","Remove o limite de busca; alcanca personagens carregados. O servidor valida o dano.","PvpUniversal")
     action("pvp_target","Adicionar / remover alvo multiplo","Alterna a conta selecionada na lista persistente de alvos.",function()
@@ -291,7 +296,7 @@ local function cleanUI()
         for id,key in pairs({fast_rep_limit="FastRepLimit",farm_interval="FarmIntervalMs",farm_reps="FarmReps",rebirth_interval="RebirthInterval",
             boss_height="BossDistance",hatch_limit="HatchMaxOpens",hatch_target="HatchTargetPet",shop_count="ShopCount",
             character_speed="CharacterSpeed",character_size="CharacterSize",camera_fov="CameraFOV",
-            pvp_radius="PvpRadius",pvp_aura_radius="PvpAuraRadius"}) do
+            pvp_radius="PvpRadius",pvp_aura_radius="PvpAuraRadius",pvp_interval="PvpInterval"}) do
             registry[id].Object.Text=tostring(S[key]); registry[id].Object.TextColor3=COLORS.White
         end
         registry.rebirth_target.Object.Text=tostring(S.RebirthTarget or 0)
@@ -306,6 +311,7 @@ local function cleanUI()
             farm.Detail.Text="Método: "..S.FarmMode.." | "..(C:farming() and "Ativo" or "Desligado")
             pvp.Detail.Text="Modo: "..S.PvpMode.." | Filtro: "..S.PvpFilter.." | "..(M.PvpStatus or "Desligado")
             registry.pvp_mode.Detail.Text="Selecionado: "..S.PvpMode.." | dano e bring dependem do servidor"
+            registry.pvp_priority.Detail.Text="Prioridade: "..S.PvpPriority.." | intervalo efetivo: "..P:interval().."s"
             boss.Detail.Text=(M.BossState or "Aguardando").." | "..HubRuntime.BossTarget
             hatch.Detail.Text=C.HatchStatus
             status.Detail.Text=M:reasonText().." | FPS: "..math.floor(HubRuntime.AvgFPS).." | "..HubRuntime.Status

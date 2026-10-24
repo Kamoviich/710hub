@@ -18,7 +18,7 @@ return function(settings, clock)
     local booleans = { "PvpUniversal", "PreserveFarmPets", "FarmCustom", "BossAutoLoot", "BossReturn", "BossDefense", "BossAbove", "ResumeAfterDeath", "HealthGuard", "StallAlerts", "PerformanceMode", "StabilityMode", "RebirthGuard", "BreakEnabled", "PvpProtectFriends", "PvpOnlySelected"}
     local numbers = {
         FastRepLimit = {40, 10000},
-        PvpAuraRadius = {5, 500}, CharacterSpeed = {1, 500}, CharacterSize = {1, 100}, CameraFOV = {30, 120}, ShopCount = {1, 20},
+        PvpInterval = {.08, 1}, PvpAuraRadius = {5, 500}, CharacterSpeed = {1, 500}, CharacterSize = {1, 100}, CameraFOV = {30, 120}, ShopCount = {1, 20},
         FarmIntervalMs = {1, 5000}, FarmReps = {1, 160}, FarmSpeed = {1, 3}, HatchMaxOpens = {1, 100}, PvpRadius = {10, 500}, PvpAttackRange = {1.5, 5}, RepDelay = {.05, 5}, HatchDelay = {.1, 30}, BossDistance = {2, 12},
         HealthLow = {5, 60}, HealthResume = {65, 100}, StallSeconds = {30, 600},
         GoalValue = {1, 1e15}, RebirthTarget = {1, 1e15}, ProgressionTarget = {1, 1e15},
@@ -27,7 +27,8 @@ return function(settings, clock)
     local choices = {
         FastRepProfile={"Combinado","Ultra (lotes)","Explorar limite","Intensivo","Adaptativo"},
         FarmMode={"Fast Rep (packs)","Automático","Peso","Flexões","Abdominais","Parada de mãos","Máquina","Pedras","Esteira"},
-        PvpMode={"Aproximar","Distancia","Bring","Aura"},
+        PvpPriority={"Rotacao","Menor vida","Mais proximo","Manter alvo"},
+        PvpMode={"Aproximar","Perseguir","Distancia","Bring","Aura"},
         PvpFilter={"Todos","Karma bom","Karma ruim","Selecionado","Multiplos","Blacklist"}, PetObjective={"strength","durability","agility"}, SmartObjective = {"Força", "Durabilidade", "Agilidade", "Rebirths"},
         GoalStat = {"Strength", "Agility", "Durability", "Rebirths"}}
     local strings = {"HatchCrystal", "HatchTargetPet", "SelectedMachine", "BossPreference"}
